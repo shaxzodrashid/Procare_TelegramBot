@@ -1,4 +1,5 @@
 import { Bot, GrammyError, HttpError, session } from 'grammy';
+import type { BotCommand } from 'grammy/types';
 
 import type { ClientRegistrationGateway } from '../services/client-registration.service.js';
 import { RegistrationError } from '../services/client-registration.service.js';
@@ -36,15 +37,35 @@ export interface BotDependencies {
   repairOrderService: RepairOrderGateway;
   unknownClientStore: UnknownClientStore;
   logger: Logger;
+  allowManualPhoneEntry: boolean;
 }
 
 const CATEGORY_PAGE_SIZE = 10;
 
 const initialSession = (): BotSession => ({ locale: 'uz', stage: 'choosing_language' });
 
+export const localizedBotCommands = (locale: Locale): BotCommand[] => [
+  { command: 'start', description: t(locale, 'commandStart') },
+  { command: 'help', description: t(locale, 'commandHelp') },
+  { command: 'logout', description: t(locale, 'commandLogout') },
+];
+
+export const setLocalizedBotCommands = async (bot: Bot<BotContext>): Promise<void> => {
+  await bot.api.setMyCommands(localizedBotCommands('uz'));
+  await bot.api.setMyCommands(localizedBotCommands('uz'), { language_code: 'uz' });
+  await bot.api.setMyCommands(localizedBotCommands('ru'), { language_code: 'ru' });
+};
+
 const clearUnknownFlow = (sessionData: BotSession): void => {
   delete sessionData.unknownClient;
   delete sessionData.repairDraft;
+};
+
+const resetSession = (sessionData: BotSession, locale: Locale): void => {
+  delete sessionData.client;
+  clearUnknownFlow(sessionData);
+  sessionData.locale = locale;
+  sessionData.stage = 'choosing_language';
 };
 
 const createDraft = (): RepairRequestDraft => ({
@@ -77,11 +98,10 @@ const saveUnknownClient = async (
   reason: UnknownClientDeclineReason,
 ): Promise<void> => {
   const unknown = ctx.session.unknownClient;
-  if (!unknown || !ctx.from || !ctx.chat) return;
+  if (!unknown || !ctx.from) return;
 
   await store.save({
-    telegram_user_id: String(ctx.from.id),
-    telegram_chat_id: String(ctx.chat.id),
+    telegram_id: String(ctx.from.id),
     telegram_username: unknown.username,
     first_name: unknown.firstName,
     last_name: unknown.lastName,
@@ -90,6 +110,71 @@ const saveUnknownClient = async (
     reason,
     saved_at: new Date().toISOString(),
   });
+};
+
+export const canRegisterWithManualPhone = (
+  sessionData: BotSession,
+  allowManualPhoneEntry: boolean,
+): boolean =>
+  allowManualPhoneEntry && sessionData.stage === 'awaiting_phone' && !sessionData.client;
+
+const registerByPhone = async (
+  ctx: BotContext,
+  dependencies: BotDependencies,
+  phoneNumber: string,
+): Promise<void> => {
+  if (!ctx.from || !ctx.chat) return;
+
+  const normalizedPhone = normalizeUzPhone(phoneNumber);
+  if (!normalizedPhone) {
+    await ctx.reply(t(ctx.session.locale, 'invalidPhone'), {
+      reply_markup: registrationKeyboard(ctx.session.locale),
+    });
+    return;
+  }
+
+  const pendingMessage = await ctx.reply(t(ctx.session.locale, 'registering'));
+  try {
+    const client = await dependencies.registrationService.registerByPhone(normalizedPhone);
+    ctx.session.client = client;
+    clearUnknownFlow(ctx.session);
+    delete ctx.session.stage;
+    await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
+    await ctx.reply(
+      t(ctx.session.locale, 'registered', {
+        name: client.first_name || ctx.from.first_name,
+      }),
+      { reply_markup: mainKeyboard(ctx.session.locale) },
+    );
+  } catch (error) {
+    await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
+    if (error instanceof RegistrationError && error.code === 'not_found') {
+      ctx.session.unknownClient = {
+        phoneNumber: normalizedPhone,
+        firstName: ctx.from.first_name,
+        lastName: ctx.from.last_name ?? null,
+        username: ctx.from.username ?? null,
+      };
+      ctx.session.stage = 'offering_request';
+      await ctx.reply(t(ctx.session.locale, 'notFound'), {
+        reply_markup: requestOfferKeyboard(ctx.session.locale),
+      });
+      return;
+    }
+
+    const key =
+      error instanceof RegistrationError
+        ? error.code === 'invalid_phone'
+          ? 'invalidPhone'
+          : error.code === 'maintenance'
+            ? 'maintenance'
+            : 'unavailable'
+        : 'unavailable';
+    dependencies.logger.error('Client registration failed', error);
+    await ctx.reply(t(ctx.session.locale, key), {
+      reply_markup: registrationKeyboard(ctx.session.locale),
+    });
+  }
 };
 
 const showConfirmation = async (ctx: BotContext): Promise<void> => {
@@ -176,6 +261,28 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
     });
   });
 
+  bot.command('logout', async (ctx) => {
+    if (!ctx.from) return;
+
+    try {
+      await dependencies.unknownClientStore.deleteByTelegramId(String(ctx.from.id));
+      const locale = ctx.session.locale;
+      resetSession(ctx.session, locale);
+      await ctx.reply(t(locale, 'logoutSuccess'), {
+        reply_markup: languageKeyboard(),
+      });
+    } catch (error) {
+      dependencies.logger.error('Failed to delete Telegram user during logout', error);
+      await ctx.reply(t(ctx.session.locale, 'logoutFailed'), {
+        reply_markup: ctx.session.client
+          ? mainKeyboard(ctx.session.locale)
+          : ctx.session.stage === 'awaiting_phone'
+            ? registrationKeyboard(ctx.session.locale)
+            : languageKeyboard(),
+      });
+    }
+  });
+
   bot.hears([t('uz', 'uzbek'), t('ru', 'russian')], async (ctx) => {
     const text = ctx.msg?.text;
     if (!text) return;
@@ -217,56 +324,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
       return;
     }
 
-    const normalizedPhone = normalizeUzPhone(contact.phone_number);
-    if (!normalizedPhone) {
-      await ctx.reply(t(ctx.session.locale, 'invalidPhone'), {
-        reply_markup: registrationKeyboard(ctx.session.locale),
-      });
-      return;
-    }
-
-    const pendingMessage = await ctx.reply(t(ctx.session.locale, 'registering'));
-    try {
-      const client = await dependencies.registrationService.registerByPhone(normalizedPhone);
-      ctx.session.client = client;
-      clearUnknownFlow(ctx.session);
-      delete ctx.session.stage;
-      await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
-      await ctx.reply(
-        t(ctx.session.locale, 'registered', {
-          name: client.first_name || ctx.from.first_name,
-        }),
-        { reply_markup: mainKeyboard(ctx.session.locale) },
-      );
-    } catch (error) {
-      await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
-      if (error instanceof RegistrationError && error.code === 'not_found') {
-        ctx.session.unknownClient = {
-          phoneNumber: normalizedPhone,
-          firstName: ctx.from.first_name,
-          lastName: ctx.from.last_name ?? null,
-          username: ctx.from.username ?? null,
-        };
-        ctx.session.stage = 'offering_request';
-        await ctx.reply(t(ctx.session.locale, 'notFound'), {
-          reply_markup: requestOfferKeyboard(ctx.session.locale),
-        });
-        return;
-      }
-
-      const key =
-        error instanceof RegistrationError
-          ? error.code === 'invalid_phone'
-            ? 'invalidPhone'
-            : error.code === 'maintenance'
-              ? 'maintenance'
-              : 'unavailable'
-          : 'unavailable';
-      dependencies.logger.error('Client registration failed', error);
-      await ctx.reply(t(ctx.session.locale, key), {
-        reply_markup: registrationKeyboard(ctx.session.locale),
-      });
-    }
+    await registerByPhone(ctx, dependencies, contact.phone_number);
   });
 
   bot.callbackQuery('request:accept', async (ctx) => {
@@ -623,6 +681,11 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
         ctx,
         ctx.message.text === t(ctx.session.locale, 'skipNote') ? '' : ctx.message.text,
       );
+      return;
+    }
+
+    if (canRegisterWithManualPhone(ctx.session, dependencies.allowManualPhoneEntry)) {
+      await registerByPhone(ctx, dependencies, ctx.message.text);
       return;
     }
 

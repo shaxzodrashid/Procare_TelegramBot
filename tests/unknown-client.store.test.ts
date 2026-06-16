@@ -26,6 +26,12 @@ describe('PostgresUnknownClientStore', () => {
         merged = payload;
         return Promise.resolve();
       },
+      where() {
+        return this;
+      },
+      delete() {
+        return Promise.resolve();
+      },
     };
     const database = Object.assign(
       (table: string) => {
@@ -37,8 +43,7 @@ describe('PostgresUnknownClientStore', () => {
     const store = new PostgresUnknownClientStore(database);
 
     await store.save({
-      telegram_user_id: '1',
-      telegram_chat_id: '10',
+      telegram_id: '1',
       telegram_username: 'ali',
       first_name: 'Ali',
       last_name: 'Valiyev',
@@ -54,5 +59,45 @@ describe('PostgresUnknownClientStore', () => {
     assert.equal(inserted?.last_decline_reason, 'declined_offer');
     assert.deepEqual(inserted?.declined_at, new Date('2026-06-15T10:00:00.000Z'));
     assert.equal(merged?.updated_at, now);
+  });
+
+  it('deletes a stored user by Telegram user ID', async () => {
+    let tableName: string | undefined;
+    let whereClause: Record<string, unknown> | undefined;
+    let deleted = false;
+
+    const query = {
+      where(payload: Record<string, unknown>) {
+        whereClause = payload;
+        return this;
+      },
+      delete() {
+        deleted = true;
+        return Promise.resolve();
+      },
+      insert() {
+        return this;
+      },
+      onConflict() {
+        return this;
+      },
+      merge() {
+        return Promise.resolve();
+      },
+    };
+    const database = Object.assign(
+      (table: string) => {
+        tableName = table;
+        return query;
+      },
+      { fn: { now: () => new Date('2026-06-15T10:02:00.000Z') } },
+    ) as unknown as Knex;
+    const store = new PostgresUnknownClientStore(database);
+
+    await store.deleteByTelegramId('1');
+
+    assert.equal(tableName, 'users');
+    assert.deepEqual(whereClause, { telegram_id: '1' });
+    assert.equal(deleted, true);
   });
 });

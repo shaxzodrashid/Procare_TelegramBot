@@ -2,7 +2,7 @@ import type { Bot } from 'grammy';
 import type { FastifyInstance } from 'fastify';
 
 import { createApiServer } from '../api/server.js';
-import { createBot } from '../bot/create-bot.js';
+import { createBot, setLocalizedBotCommands } from '../bot/create-bot.js';
 import type { BotContext } from '../bot/context.js';
 import type { AppConfig } from '../config/index.js';
 import { createDatabase, migrateDatabase } from '../database/database.js';
@@ -56,8 +56,10 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       repairOrderService,
       unknownClientStore,
       logger,
+      allowManualPhoneEntry: config.nodeEnv === 'development',
     });
     await bot.init();
+    await setLocalizedBotCommands(bot);
     logger.info(`Telegram bot @${bot.botInfo.username} authenticated`);
   }
 
