@@ -27,6 +27,7 @@ import {
   formatRepairRequestSummary,
 } from './formatters.js';
 import {
+  adminKeyboard,
   categoryKeyboard,
   confirmationKeyboard,
   languageKeyboard,
@@ -62,6 +63,13 @@ const summarizeSession = (sessionData: BotSession): Record<string, unknown> => (
         id: sessionData.client.id,
         status: sessionData.client.status,
         repair_orders_count: sessionData.client.repair_orders.length,
+      }
+    : undefined,
+  admin: sessionData.admin
+    ? {
+        id: sessionData.admin.id,
+        status: sessionData.admin.status,
+        is_active: sessionData.admin.is_active,
       }
     : undefined,
   unknownClient: sessionData.unknownClient
@@ -280,6 +288,7 @@ const clearUnknownFlow = (sessionData: BotSession): void => {
 
 const resetSession = (sessionData: BotSession, locale: Locale): void => {
   delete sessionData.client;
+  delete sessionData.admin;
   clearUnknownFlow(sessionData);
   sessionData.locale = locale;
   sessionData.stage = 'choosing_language';
@@ -298,6 +307,18 @@ const createDraft = (): RepairRequestDraft => ({
 
 const fullTelegramName = (ctx: BotContext): string =>
   [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(' ').trim() || 'Telegram user';
+
+const adminDisplayName = (ctx: BotContext): string =>
+  ctx.session.admin?.first_name || ctx.from?.first_name || 'Procare';
+
+const replyWithAdminRegistration = async (ctx: BotContext): Promise<void> => {
+  await ctx.reply(
+    t(ctx.session.locale, 'adminRegistered', {
+      name: adminDisplayName(ctx),
+    }),
+    { reply_markup: adminKeyboard(ctx.session.locale) },
+  );
+};
 
 const categoryMessage = (draft: RepairRequestDraft, locale: Locale): string => {
   const path = draft.categoryPath.map((item) => localizedCatalogName(item, locale)).join(' → ');
@@ -333,7 +354,10 @@ export const canRegisterWithManualPhone = (
   sessionData: BotSession,
   allowManualPhoneEntry: boolean,
 ): boolean =>
-  allowManualPhoneEntry && sessionData.stage === 'awaiting_phone' && !sessionData.client;
+  allowManualPhoneEntry &&
+  sessionData.stage === 'awaiting_phone' &&
+  !sessionData.client &&
+  !sessionData.admin;
 
 const registerByPhone = async (
   ctx: BotContext,
@@ -352,14 +376,23 @@ const registerByPhone = async (
 
   const pendingMessage = await ctx.reply(t(ctx.session.locale, 'registering'));
   try {
-    const client = await dependencies.registrationService.registerByPhone(normalizedPhone);
-    ctx.session.client = client;
+    const registration = await dependencies.registrationService.registerByPhone(normalizedPhone);
+    delete ctx.session.client;
+    delete ctx.session.admin;
     clearUnknownFlow(ctx.session);
     delete ctx.session.stage;
     await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
+
+    if (registration.account_type === 'admin') {
+      ctx.session.admin = registration.admin;
+      await replyWithAdminRegistration(ctx);
+      return;
+    }
+
+    ctx.session.client = registration;
     await ctx.reply(
       t(ctx.session.locale, 'registered', {
-        name: client.first_name || ctx.from.first_name,
+        name: registration.first_name || ctx.from.first_name,
       }),
       { reply_markup: mainKeyboard(ctx.session.locale) },
     );
@@ -473,6 +506,10 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
       );
       return;
     }
+    if (ctx.session.admin) {
+      await replyWithAdminRegistration(ctx);
+      return;
+    }
 
     clearUnknownFlow(ctx.session);
     ctx.session.stage = 'choosing_language';
@@ -485,9 +522,11 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
     await ctx.reply(t(ctx.session.locale, 'help'), {
       reply_markup: ctx.session.client
         ? mainKeyboard(ctx.session.locale)
-        : ctx.session.stage === 'awaiting_phone'
-          ? registrationKeyboard(ctx.session.locale)
-          : languageKeyboard(),
+        : ctx.session.admin
+          ? adminKeyboard(ctx.session.locale)
+          : ctx.session.stage === 'awaiting_phone'
+            ? registrationKeyboard(ctx.session.locale)
+            : languageKeyboard(),
     });
   });
 
@@ -506,9 +545,11 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
       await ctx.reply(t(ctx.session.locale, 'logoutFailed'), {
         reply_markup: ctx.session.client
           ? mainKeyboard(ctx.session.locale)
-          : ctx.session.stage === 'awaiting_phone'
-            ? registrationKeyboard(ctx.session.locale)
-            : languageKeyboard(),
+          : ctx.session.admin
+            ? adminKeyboard(ctx.session.locale)
+            : ctx.session.stage === 'awaiting_phone'
+              ? registrationKeyboard(ctx.session.locale)
+              : languageKeyboard(),
       });
     }
   });
@@ -531,6 +572,10 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
       );
       return;
     }
+    if (ctx.session.admin) {
+      await replyWithAdminRegistration(ctx);
+      return;
+    }
 
     ctx.session.stage = 'awaiting_phone';
     await ctx.reply(t(ctx.session.locale, 'welcome'), {
@@ -539,6 +584,11 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
   });
 
   bot.on('message:contact', async (ctx) => {
+    if (ctx.session.admin) {
+      await replyWithAdminRegistration(ctx);
+      return;
+    }
+
     if (ctx.session.stage !== 'awaiting_phone' && !ctx.session.client) {
       await ctx.reply(t(ctx.session.locale, 'chooseLanguage'), {
         reply_markup: languageKeyboard(),
@@ -892,9 +942,13 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
   bot.hears([t('uz', 'orders'), t('ru', 'orders')], async (ctx) => {
     const client = ctx.session.client;
     if (!client) {
-      await ctx.reply(t(ctx.session.locale, 'registerFirst'), {
-        reply_markup: languageKeyboard(),
-      });
+      if (ctx.session.admin) {
+        await replyWithAdminRegistration(ctx);
+      } else {
+        await ctx.reply(t(ctx.session.locale, 'registerFirst'), {
+          reply_markup: languageKeyboard(),
+        });
+      }
       return;
     }
     await ctx.reply(
@@ -919,13 +973,18 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
       return;
     }
 
-    await ctx.reply(t(ctx.session.locale, ctx.session.client ? 'help' : 'phoneOnly'), {
-      reply_markup: ctx.session.client
-        ? mainKeyboard(ctx.session.locale)
-        : ctx.session.stage === 'awaiting_phone'
-          ? registrationKeyboard(ctx.session.locale)
-          : languageKeyboard(),
-    });
+    await ctx.reply(
+      t(ctx.session.locale, ctx.session.client || ctx.session.admin ? 'help' : 'phoneOnly'),
+      {
+        reply_markup: ctx.session.client
+          ? mainKeyboard(ctx.session.locale)
+          : ctx.session.admin
+            ? adminKeyboard(ctx.session.locale)
+            : ctx.session.stage === 'awaiting_phone'
+              ? registrationKeyboard(ctx.session.locale)
+              : languageKeyboard(),
+      },
+    );
   });
 
   bot.catch((error) => {

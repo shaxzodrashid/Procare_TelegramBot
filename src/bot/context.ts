@@ -1,6 +1,6 @@
 import type { Context, SessionFlavor } from 'grammy';
 
-import type { ClientProfile, Locale } from '../types/client.js';
+import type { AdminProfile, ClientProfile, Locale } from '../types/client.js';
 import type { OsType, PhoneCategory, ProblemCategory } from '../types/repair-order.js';
 
 export type RegistrationStage =
@@ -38,6 +38,7 @@ export interface RepairRequestDraft {
 export interface BotSession {
   locale: Locale;
   client?: ClientProfile;
+  admin?: AdminProfile;
   stage?: RegistrationStage;
   unknownClient?: UnknownClientSession;
   repairDraft?: RepairRequestDraft;

@@ -14,6 +14,9 @@ export const registrationKeyboard = (locale: Locale): Keyboard =>
 export const mainKeyboard = (locale: Locale): Keyboard =>
   new Keyboard().text(t(locale, 'orders')).row().text(t(locale, 'language')).resized();
 
+export const adminKeyboard = (locale: Locale): Keyboard =>
+  new Keyboard().text(t(locale, 'language')).resized();
+
 export const requestOfferKeyboard = (locale: Locale): InlineKeyboard =>
   new InlineKeyboard()
     .text(t(locale, 'leaveRequest'), 'request:accept')

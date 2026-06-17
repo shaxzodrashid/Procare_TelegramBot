@@ -12,7 +12,7 @@ describe('bot command metadata', () => {
     );
     assert.deepEqual(
       localizedBotCommands('ru').map((command) => command.description),
-      ['Начать или перезапустить бота', 'Получить помощь', 'Выйти из системы'],
+      ['✨ Начать или перезапустить Procare', '💬 Получить помощь', '👋 Выйти из системы'],
     );
   });
 });
@@ -30,6 +30,7 @@ describe('manual phone registration gate', () => {
       locale: 'uz',
       stage: 'awaiting_phone',
       client: {
+        account_type: 'client',
         id: 'client-1',
         customer_code: null,
         first_name: 'Ali',
@@ -46,10 +47,33 @@ describe('manual phone registration gate', () => {
         source: 'crm',
         status: 'active',
         is_active: true,
+        is_admin: false,
+        admin: null,
         created_at: '2026-06-15T10:00:00.000Z',
         updated_at: '2026-06-15T10:00:00.000Z',
         created_by: null,
         repair_orders: [],
+      },
+    };
+
+    assert.equal(canRegisterWithManualPhone(session, true), false);
+  });
+
+  it('does not allow typed phone numbers for admin sessions', () => {
+    const session: BotSession = {
+      locale: 'uz',
+      stage: 'awaiting_phone',
+      admin: {
+        id: 'admin-1',
+        first_name: 'Ali',
+        last_name: null,
+        phone_number: '+998901234567',
+        phone_verified: true,
+        language: 'uz',
+        status: 'Open',
+        is_active: true,
+        created_at: '2026-06-15T10:00:00.000Z',
+        updated_at: '2026-06-15T10:00:00.000Z',
       },
     };
 

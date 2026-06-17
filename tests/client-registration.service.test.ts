@@ -17,10 +17,66 @@ const logger: Logger = {
 };
 
 const profile = {
+  account_type: 'client',
   id: 'client-id',
+  customer_code: null,
+  first_name: 'Ali',
+  last_name: null,
   phone_number1: '+998901234567',
+  phone_number2: null,
+  phone_verified: true,
+  passport_series: null,
+  birth_date: null,
+  id_card_number: null,
+  language: 'uz',
+  telegram_chat_id: null,
+  telegram_username: null,
+  source: 'other',
+  status: 'Open',
+  is_active: true,
+  is_admin: false,
+  admin: null,
+  created_at: '2026-06-15T10:00:00.000Z',
+  updated_at: '2026-06-15T10:00:00.000Z',
+  created_by: null,
   repair_orders: [],
-};
+} as const;
+
+const legacyClientProfile = {
+  id: 'client-id',
+  customer_code: null,
+  first_name: 'Ali',
+  last_name: null,
+  phone_number1: '+998901234567',
+  phone_number2: null,
+  phone_verified: true,
+  passport_series: null,
+  birth_date: null,
+  id_card_number: null,
+  language: 'uz',
+  telegram_chat_id: null,
+  telegram_username: null,
+  source: 'other',
+  status: 'Open',
+  is_active: true,
+  created_at: '2026-06-15T10:00:00.000Z',
+  updated_at: '2026-06-15T10:00:00.000Z',
+  created_by: null,
+  repair_orders: [],
+} as const;
+
+const adminProfile = {
+  id: 'admin-id',
+  first_name: 'Ali',
+  last_name: 'Valiyev',
+  phone_number: '+998901234567',
+  phone_verified: true,
+  language: 'uz',
+  status: 'Open',
+  is_active: true,
+  created_at: '2026-06-15T10:00:00.000Z',
+  updated_at: '2026-06-15T10:00:00.000Z',
+} as const;
 
 describe('HttpClientRegistrationService', () => {
   it('normalizes the phone and authenticates the request', async () => {
@@ -44,9 +100,58 @@ describe('HttpClientRegistrationService', () => {
 
     const result = await service.registerByPhone('90 123 45 67');
 
+    assert.equal(result.account_type, 'client');
+    if (result.account_type !== 'client') assert.fail('Expected client registration result');
     assert.equal(result.id, 'client-id');
     assert.deepEqual(JSON.parse(requestBody), { phone_number: '+998901234567' });
     assert.equal(authorization, `Basic ${Buffer.from('bot:secret').toString('base64')}`);
+  });
+
+  it('accepts and normalizes client responses without account metadata', async () => {
+    const service = new HttpClientRegistrationService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () => Response.json(legacyClientProfile),
+      },
+      logger,
+    );
+
+    const result = await service.registerByPhone('+998901234567');
+
+    assert.equal(result.account_type, 'client');
+    if (result.account_type !== 'client') assert.fail('Expected client registration result');
+    assert.equal(result.id, 'client-id');
+    assert.equal(result.is_admin, false);
+    assert.equal(result.admin, null);
+  });
+
+  it('accepts an admin-only registration response', async () => {
+    const service = new HttpClientRegistrationService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () =>
+          Response.json({
+            account_type: 'admin',
+            is_admin: true,
+            admin: adminProfile,
+          }),
+      },
+      logger,
+    );
+
+    const result = await service.registerByPhone('+998901234567');
+
+    assert.equal(result.account_type, 'admin');
+    if (result.account_type !== 'admin') assert.fail('Expected admin registration result');
+    assert.equal(result.admin.id, 'admin-id');
   });
 
   it('maps a missing client to a non-retryable error', async () => {
@@ -100,6 +205,61 @@ describe('HttpClientRegistrationService', () => {
 
     assert.equal(attempts, 3);
     assert.deepEqual(delays, [250, 500]);
+  });
+
+  it('retries 500 responses as unavailable failures', async () => {
+    let attempts = 0;
+    const delays: number[] = [];
+    const service = new HttpClientRegistrationService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 1,
+        fetchImpl: async () => {
+          attempts += 1;
+          return attempts === 1
+            ? Response.json({ message: 'Unexpected error' }, { status: 500 })
+            : Response.json(profile);
+        },
+        sleep: async (ms) => {
+          delays.push(ms);
+        },
+      },
+      logger,
+    );
+
+    const result = await service.registerByPhone('+998901234567');
+
+    assert.equal(result.account_type, 'client');
+    if (result.account_type !== 'client') assert.fail('Expected client registration result');
+    assert.equal(attempts, 2);
+    assert.deepEqual(delays, [250]);
+  });
+
+  it('rejects malformed success responses', async () => {
+    const service = new HttpClientRegistrationService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () =>
+          Response.json({
+            account_type: 'admin',
+            is_admin: true,
+            admin: { ...adminProfile, phone_number: null },
+          }),
+      },
+      logger,
+    );
+
+    await assert.rejects(
+      service.registerByPhone('+998901234567'),
+      (error: unknown) => error instanceof RegistrationError && error.code === 'invalid_response',
+    );
   });
 
   it('emits sanitized extra diagnostics for registration traffic', async () => {

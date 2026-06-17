@@ -1,4 +1,10 @@
-import type { ClientProfile } from '../types/client.js';
+import type {
+  AdminProfile,
+  ClientProfile,
+  LocalizedReference,
+  RegistrationResult,
+  RepairOrderStatus,
+} from '../types/client.js';
 import {
   redactPhoneNumber,
   redactPhoneNumbersInText,
@@ -27,7 +33,7 @@ export class RegistrationError extends Error {
 }
 
 export interface ClientRegistrationGateway {
-  registerByPhone(phoneNumber: string): Promise<ClientProfile>;
+  registerByPhone(phoneNumber: string): Promise<RegistrationResult>;
 }
 
 interface ErrorEnvelope {
@@ -36,21 +42,139 @@ interface ErrorEnvelope {
 
 const registrationPath = '/api/v1/users/register-client';
 
-const isClientProfile = (value: unknown): value is ClientProfile => {
-  if (!value || typeof value !== 'object') return false;
-  const profile = value as Partial<ClientProfile>;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object';
+
+const isNullableString = (value: unknown): value is string | null =>
+  value === null || typeof value === 'string';
+
+const isLocalizedReference = (value: unknown): value is LocalizedReference => {
+  if (!isRecord(value)) return false;
   return (
-    typeof profile.id === 'string' &&
-    typeof profile.phone_number1 === 'string' &&
-    Array.isArray(profile.repair_orders)
+    isNullableString(value.id) &&
+    isNullableString(value.name_uz) &&
+    isNullableString(value.name_ru) &&
+    isNullableString(value.name_en)
   );
 };
 
+const isRepairOrderStatus = (value: unknown): value is RepairOrderStatus => {
+  if (!isLocalizedReference(value) || !isRecord(value)) return false;
+  return isNullableString(value.color) && isNullableString(value.bg_color);
+};
+
+const isRepairOrder = (value: unknown): value is ClientProfile['repair_orders'][number] => {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    typeof value.total === 'string' &&
+    isNullableString(value.imei) &&
+    isNullableString(value.delivery_method) &&
+    isNullableString(value.pickup_method) &&
+    isNullableString(value.priority) &&
+    typeof value.status === 'string' &&
+    typeof value.call_count === 'number' &&
+    Number.isFinite(value.call_count) &&
+    typeof value.created_at === 'string' &&
+    isNullableString(value.description) &&
+    isLocalizedReference(value.branch) &&
+    isLocalizedReference(value.phone_category) &&
+    isRepairOrderStatus(value.repair_order_status)
+  );
+};
+
+const isAdminProfile = (value: unknown): value is AdminProfile => {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    isNullableString(value.first_name) &&
+    isNullableString(value.last_name) &&
+    typeof value.phone_number === 'string' &&
+    typeof value.phone_verified === 'boolean' &&
+    isNullableString(value.language) &&
+    typeof value.status === 'string' &&
+    typeof value.is_active === 'boolean' &&
+    typeof value.created_at === 'string' &&
+    typeof value.updated_at === 'string'
+  );
+};
+
+type ClientProfilePayload = Omit<ClientProfile, 'account_type' | 'is_admin' | 'admin'> &
+  Partial<Pick<ClientProfile, 'account_type' | 'is_admin' | 'admin'>>;
+
+const isClientProfilePayload = (value: unknown): value is ClientProfilePayload => {
+  if (!isRecord(value)) return false;
+  const profile = value;
+  const admin = 'admin' in profile ? profile.admin : null;
+  const isAdmin = 'is_admin' in profile ? profile.is_admin : admin !== null;
+
+  if ('account_type' in profile && profile.account_type !== 'client') return false;
+  if (typeof isAdmin !== 'boolean') return false;
+  if (!(admin === null || isAdminProfile(admin))) return false;
+  if (isAdmin !== (admin !== null)) return false;
+
+  return (
+    typeof profile.id === 'string' &&
+    isNullableString(profile.customer_code) &&
+    isNullableString(profile.first_name) &&
+    isNullableString(profile.last_name) &&
+    typeof profile.phone_number1 === 'string' &&
+    isNullableString(profile.phone_number2) &&
+    typeof profile.phone_verified === 'boolean' &&
+    isNullableString(profile.passport_series) &&
+    isNullableString(profile.birth_date) &&
+    isNullableString(profile.id_card_number) &&
+    isNullableString(profile.language) &&
+    isNullableString(profile.telegram_chat_id) &&
+    isNullableString(profile.telegram_username) &&
+    typeof profile.source === 'string' &&
+    typeof profile.status === 'string' &&
+    typeof profile.is_active === 'boolean' &&
+    typeof profile.created_at === 'string' &&
+    typeof profile.updated_at === 'string' &&
+    isNullableString(profile.created_by) &&
+    Array.isArray(profile.repair_orders) &&
+    profile.repair_orders.every(isRepairOrder)
+  );
+};
+
+const normalizeClientProfile = (profile: ClientProfilePayload): ClientProfile => ({
+  ...profile,
+  account_type: 'client',
+  is_admin: profile.is_admin ?? (profile.admin !== undefined && profile.admin !== null),
+  admin: profile.admin ?? null,
+});
+
+const parseRegistrationResult = (value: unknown): RegistrationResult | null => {
+  if (!isRecord(value)) return null;
+  if (isClientProfilePayload(value)) return normalizeClientProfile(value);
+  if (value.account_type === 'admin' && value.is_admin === true && isAdminProfile(value.admin)) {
+    return {
+      account_type: 'admin',
+      is_admin: true,
+      admin: value.admin,
+    };
+  }
+  return null;
+};
+
+const summarizeAdminProfile = (profile: AdminProfile): Record<string, unknown> => ({
+  id: profile.id,
+  status: profile.status,
+  is_active: profile.is_active,
+  phone_number: redactPhoneNumber(profile.phone_number),
+  phone_verified: profile.phone_verified,
+  language: profile.language,
+});
+
 const summarizeClientProfile = (profile: ClientProfile): Record<string, unknown> => ({
+  account_type: profile.account_type,
   id: profile.id,
   customer_code: profile.customer_code,
   status: profile.status,
   is_active: profile.is_active,
+  is_admin: profile.is_admin,
+  admin: profile.admin ? summarizeAdminProfile(profile.admin) : null,
   source: profile.source,
   phone_number1: redactPhoneNumber(profile.phone_number1),
   phone_number2: redactPhoneNumber(profile.phone_number2),
@@ -62,7 +186,15 @@ const summarizeClientProfile = (profile: ClientProfile): Record<string, unknown>
 });
 
 const summarizeRegistrationPayload = (payload: unknown): unknown => {
-  if (isClientProfile(payload)) return summarizeClientProfile(payload);
+  const registration = parseRegistrationResult(payload);
+  if (registration?.account_type === 'client') return summarizeClientProfile(registration);
+  if (registration?.account_type === 'admin') {
+    return {
+      account_type: registration.account_type,
+      is_admin: registration.is_admin,
+      admin: summarizeAdminProfile(registration.admin),
+    };
+  }
   if (payload && typeof payload === 'object' && 'message' in payload) {
     const message = (payload as ErrorEnvelope).message;
     return { message: typeof message === 'string' ? redactPhoneNumbersInText(message) : undefined };
@@ -84,7 +216,7 @@ export class HttpClientRegistrationService implements ClientRegistrationGateway 
     private readonly logger: Logger,
   ) {}
 
-  async registerByPhone(phoneNumber: string): Promise<ClientProfile> {
+  async registerByPhone(phoneNumber: string): Promise<RegistrationResult> {
     const normalizedPhone = normalizeUzPhone(phoneNumber);
     if (!normalizedPhone) {
       throw new RegistrationError('invalid_phone', 'Invalid Uzbek phone number');
@@ -115,7 +247,7 @@ export class HttpClientRegistrationService implements ClientRegistrationGateway 
     throw new RegistrationError('unavailable', 'CRM registration request failed');
   }
 
-  private async request(phoneNumber: string): Promise<ClientProfile> {
+  private async request(phoneNumber: string): Promise<RegistrationResult> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
     let response: Response;
     this.logger.extra('CRM registration request', {
@@ -148,7 +280,7 @@ export class HttpClientRegistrationService implements ClientRegistrationGateway 
 
     const payload = (await response.json().catch(() => null)) as
       | ErrorEnvelope
-      | ClientProfile
+      | RegistrationResult
       | null;
 
     this.logger.extra('CRM registration response', {
@@ -160,10 +292,14 @@ export class HttpClientRegistrationService implements ClientRegistrationGateway 
     });
 
     if (response.ok) {
-      if (!isClientProfile(payload)) {
-        throw new RegistrationError('invalid_response', 'CRM returned an invalid client profile');
+      const registration = parseRegistrationResult(payload);
+      if (!registration) {
+        throw new RegistrationError(
+          'invalid_response',
+          'CRM returned an invalid registration result',
+        );
       }
-      return payload;
+      return registration;
     }
 
     const message =

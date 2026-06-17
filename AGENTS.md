@@ -118,10 +118,12 @@ The bot is a stateful private-chat experience:
 5. The phone is normalized to `+998XXXXXXXXX`.
 6. The CRM registration endpoint looks up an active client.
 7. A known client is held in session and can view the repair orders returned by that lookup.
-8. A `404` starts the unknown-client repair-request flow.
-9. The user chooses OS, navigates paginated category levels, selects zero or more problems, adds an
-   optional note, reviews the request, and submits or cancels it.
-10. Declining the initial offer or cancelling at confirmation upserts the user into PostgreSQL.
+8. An active admin without a matching client is held as an admin-only session and is not offered
+   client repair orders or unknown-client repair creation.
+9. A `404` starts the unknown-client repair-request flow.
+10. The user chooses OS, navigates paginated category levels, selects zero or more problems, adds an
+    optional note, reviews the request, and submits or cancels it.
+11. Declining the initial offer or cancelling at confirmation upserts the user into PostgreSQL.
 
 The stage union in `src/bot/context.ts` and the checks in every handler protect against stale inline
 buttons. New flow states must be added to the session type, assigned deliberately, and rejected by
@@ -170,9 +172,10 @@ Behavior:
 
 - Normalize the phone before sending.
 - Never log the Basic Auth password or complete authorization header.
+- Use `account_type` to distinguish client and admin-only `200 OK` responses.
 - Map `400` to `invalid_phone`, `401` to `unauthorized`, `404` to `not_found`, and `503` to
   `maintenance`.
-- Treat network failures and other HTTP failures as `unavailable`.
+- Treat `500`, network failures, and other HTTP failures as `unavailable`.
 - Retry only `maintenance` and `unavailable`, up to `CRM_MAX_RETRIES`, with 250 ms exponential
   backoff.
 - Validate successful JSON before returning it. Do not blindly cast upstream responses.

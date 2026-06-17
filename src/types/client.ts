@@ -28,7 +28,21 @@ export interface RepairOrder {
   repair_order_status: RepairOrderStatus;
 }
 
+export interface AdminProfile {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  phone_number: string;
+  phone_verified: boolean;
+  language: string | null;
+  status: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ClientProfile {
+  account_type: 'client';
   id: string;
   customer_code: string | null;
   first_name: string | null;
@@ -45,8 +59,18 @@ export interface ClientProfile {
   source: string;
   status: string;
   is_active: boolean;
+  is_admin: boolean;
+  admin: AdminProfile | null;
   created_at: string;
   updated_at: string;
   created_by: string | null;
   repair_orders: RepairOrder[];
 }
+
+export interface AdminRegistration {
+  account_type: 'admin';
+  is_admin: true;
+  admin: AdminProfile;
+}
+
+export type RegistrationResult = ClientProfile | AdminRegistration;

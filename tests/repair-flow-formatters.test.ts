@@ -33,7 +33,7 @@ describe('repair request presentation', () => {
     assert.equal(text, '11. Model 11\n12. Model 12');
     assert.deepEqual(
       keyboard.inline_keyboard.flat().map((button) => button.text),
-      ['11', '12', '‹', 'Orqaga'],
+      ['11', '12', '‹', '⬅️ Orqaga'],
     );
   });
 

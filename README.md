@@ -36,6 +36,9 @@ PostgreSQL.
   -> existing CRM client
        -> show profile confirmation
        -> show repair orders from the registration response
+  -> active CRM admin without a matching client profile
+       -> show admin-account confirmation
+       -> do not offer client repair orders or unknown-client repair creation
   -> unknown client
        -> offer a new repair request
        -> choose OS
@@ -276,8 +279,10 @@ POST /api/v1/repair-orders/open
 ```
 
 Registration and catalog reads retry bounded maintenance or availability failures with exponential
-backoff. Public repair-order creation is intentionally attempted once because the upstream endpoint
-is not idempotent and a retry can create a duplicate order.
+backoff. Client registration treats `account_type=client` as the client repair-order flow and
+`account_type=admin` as a recognized admin-only session. Public repair-order creation is
+intentionally attempted once because the upstream endpoint is not idempotent and a retry can create a
+duplicate order.
 
 See:
 
@@ -336,6 +341,7 @@ Do not log bot tokens, passwords, authorization headers, or unnecessary personal
 - Sessions are in memory and disappear on restart.
 - Multiple replicas cannot share session state.
 - Registered client data and repair orders are not refreshed after the initial lookup.
+- Admin-only registration is recognized, but this bot does not expose an admin interface.
 - The bot uses long polling, not webhooks.
 - Private-chat operation is assumed by the data model but is not enforced by a global chat-type
   guard.
