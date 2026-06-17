@@ -71,6 +71,7 @@ always validates CRM and database configuration, connects to PostgreSQL, and run
 | `src/bot/formatters.ts`                       | Repair-order and repair-request presentation                            |
 | `src/services/client-registration.service.ts` | Authenticated CRM client lookup                                         |
 | `src/services/repair-order.service.ts`        | Public catalog reads and repair-order creation                          |
+| `src/services/registered-user.store.ts`       | PostgreSQL upsert for registered client and employee role rows          |
 | `src/services/unknown-client.store.ts`        | PostgreSQL upsert for declined unknown clients                          |
 | `src/database/database.ts`                    | Knex connection and migration runner                                    |
 | `src/database/migrations/`                    | Local application schema                                                |
@@ -117,13 +118,16 @@ The bot is a stateful private-chat experience:
    (`contact.user_id === ctx.from.id`).
 5. The phone is normalized to `+998XXXXXXXXX`.
 6. The CRM registration endpoint looks up an active client.
-7. A known client is held in session and can view the repair orders returned by that lookup.
-8. An active admin without a matching client is held as an admin-only session and is not offered
-   client repair orders or unknown-client repair creation.
-9. A `404` starts the unknown-client repair-request flow.
-10. The user chooses OS, navigates paginated category levels, selects zero or more problems, adds an
+7. A `200 OK` response is persisted into PostgreSQL as an employee when `is_admin = true`; otherwise
+   it is persisted as a client.
+8. A known non-admin client is held in session and can view the repair orders returned by that
+   lookup.
+9. An active admin is held as an admin-only session and is not offered client repair orders or
+   unknown-client repair creation.
+10. A `404` starts the unknown-client repair-request flow.
+11. The user chooses OS, navigates paginated category levels, selects zero or more problems, adds an
     optional note, reviews the request, and submits or cancels it.
-11. Declining the initial offer or cancelling at confirmation upserts the user into PostgreSQL.
+12. Declining the initial offer or cancelling at confirmation upserts the user into PostgreSQL.
 
 The stage union in `src/bot/context.ts` and the checks in every handler protect against stale inline
 buttons. New flow states must be added to the session type, assigned deliberately, and rejected by
@@ -172,7 +176,7 @@ Behavior:
 
 - Normalize the phone before sending.
 - Never log the Basic Auth password or complete authorization header.
-- Use `account_type` to distinguish client and admin-only `200 OK` responses.
+- Use `is_admin` to distinguish employee and client `200 OK` responses.
 - Map `400` to `invalid_phone`, `401` to `unauthorized`, `404` to `not_found`, and `503` to
   `maintenance`.
 - Treat `500`, network failures, and other HTTP failures as `unavailable`.
@@ -210,8 +214,9 @@ contract changes.
 
 ## Database Rules
 
-The local database currently owns one application table, `users`, plus Knex migration metadata.
-`users.telegram_id` is the unique identity used for upserts.
+The local database currently owns three application tables: `users`, `clients`, and `employees`,
+plus Knex migration metadata. `users.telegram_id` is the unique Telegram identity used for upserts.
+`clients.user_id` and `employees.user_id` reference `users.id`.
 
 The unknown-client store persists:
 

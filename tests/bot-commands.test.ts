@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { canRegisterWithManualPhone, localizedBotCommands } from '../src/bot/create-bot.js';
+import {
+  canRegisterWithManualPhone,
+  localizedBotCommands,
+  registrationAccountKind,
+} from '../src/bot/create-bot.js';
 import type { BotSession } from '../src/bot/context.js';
 
 describe('bot command metadata', () => {
@@ -78,5 +82,29 @@ describe('manual phone registration gate', () => {
     };
 
     assert.equal(canRegisterWithManualPhone(session, true), false);
+  });
+});
+
+describe('registration account classification', () => {
+  it('treats is_admin registration responses as employees', () => {
+    assert.equal(
+      registrationAccountKind({
+        account_type: 'admin',
+        is_admin: true,
+        admin: {
+          id: 'admin-1',
+          first_name: 'Ali',
+          last_name: null,
+          phone_number: '+998901234567',
+          phone_verified: true,
+          language: 'uz',
+          status: 'Open',
+          is_active: true,
+          created_at: '2026-06-15T10:00:00.000Z',
+          updated_at: '2026-06-15T10:00:00.000Z',
+        },
+      }),
+      'employee',
+    );
   });
 });

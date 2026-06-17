@@ -1,6 +1,6 @@
 import { InlineKeyboard, Keyboard } from 'grammy';
 
-import type { Locale } from '../types/client.js';
+import type { AdminProfile, ClientProfile, Locale } from '../types/client.js';
 import type { OsType, ProblemCategory } from '../types/repair-order.js';
 import { localizedCatalogName } from '../types/repair-order.js';
 import { t } from './messages.js';
@@ -11,11 +11,23 @@ export const languageKeyboard = (): Keyboard =>
 export const registrationKeyboard = (locale: Locale): Keyboard =>
   new Keyboard().requestContact(t(locale, 'sharePhone')).resized().oneTime();
 
-export const mainKeyboard = (locale: Locale): Keyboard =>
+export interface PersonalMenuUser {
+  locale: Locale;
+  client?: Pick<ClientProfile, 'account_type'> | null;
+  admin?: Pick<AdminProfile, 'id'> | null;
+}
+
+const clientMenuKeyboard = (locale: Locale): Keyboard =>
   new Keyboard().text(t(locale, 'orders')).row().text(t(locale, 'language')).resized();
 
-export const adminKeyboard = (locale: Locale): Keyboard =>
+const employeeMenuKeyboard = (locale: Locale): Keyboard =>
   new Keyboard().text(t(locale, 'language')).resized();
+
+export const personalMenuKeyboard = (user: PersonalMenuUser): Keyboard => {
+  if (user.client) return clientMenuKeyboard(user.locale);
+  if (user.admin) return employeeMenuKeyboard(user.locale);
+  return languageKeyboard();
+};
 
 export const requestOfferKeyboard = (locale: Locale): InlineKeyboard =>
   new InlineKeyboard()

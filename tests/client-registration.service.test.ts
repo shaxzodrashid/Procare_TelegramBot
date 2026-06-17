@@ -154,6 +154,32 @@ describe('HttpClientRegistrationService', () => {
     assert.equal(result.admin.id, 'admin-id');
   });
 
+  it('accepts a client response that also has an active admin account', async () => {
+    const service = new HttpClientRegistrationService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () =>
+          Response.json({
+            ...profile,
+            is_admin: true,
+            admin: adminProfile,
+          }),
+      },
+      logger,
+    );
+
+    const result = await service.registerByPhone('+998901234567');
+
+    assert.equal(result.account_type, 'client');
+    if (result.account_type !== 'client') assert.fail('Expected client registration result');
+    assert.equal(result.is_admin, true);
+    assert.equal(result.admin?.id, 'admin-id');
+  });
+
   it('maps a missing client to a non-retryable error', async () => {
     let attempts = 0;
     const service = new HttpClientRegistrationService(

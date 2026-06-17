@@ -7,6 +7,7 @@ import type { BotContext } from '../bot/context.js';
 import type { AppConfig } from '../config/index.js';
 import { createDatabase, migrateDatabase } from '../database/database.js';
 import { HttpClientRegistrationService } from '../services/client-registration.service.js';
+import { PostgresRegisteredUserStore } from '../services/registered-user.store.js';
 import { HttpRepairOrderService } from '../services/repair-order.service.js';
 import { PostgresUnknownClientStore } from '../services/unknown-client.store.js';
 import type { Logger } from '../utils/logger.js';
@@ -49,12 +50,14 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
     logger,
   );
   const unknownClientStore = new PostgresUnknownClientStore(database);
+  const registeredUserStore = new PostgresRegisteredUserStore(database);
 
   if (config.bot.enabled) {
     bot = createBot(config.bot.token!, {
       registrationService,
       repairOrderService,
       unknownClientStore,
+      registeredUserStore,
       logger,
       allowManualPhoneEntry: config.nodeEnv === 'development',
     });

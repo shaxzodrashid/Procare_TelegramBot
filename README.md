@@ -4,8 +4,8 @@ Procare Telegram Bot is a TypeScript service that connects Telegram users to Pro
 registers existing clients by their shared phone number, displays repair orders returned by CRM,
 and lets unknown clients submit a public repair request.
 
-The process also exposes a small Fastify health API and stores declined unknown-client requests in
-PostgreSQL.
+The process also exposes a small Fastify health API and stores Telegram user registrations in
+PostgreSQL, including separate client and employee role rows.
 
 ## Features
 
@@ -19,7 +19,8 @@ PostgreSQL.
 - repair catalog navigation with category pagination
 - multi-select repair problems and an optional note
 - public repair-order submission with confirmation
-- PostgreSQL upsert for unknown clients who decline or cancel
+- PostgreSQL upsert for registered clients, registered employees, and unknown clients who decline or
+  cancel
 - localized repair-order formatting
 - Fastify `GET /health` endpoint
 - console and per-session file logging
@@ -279,10 +280,10 @@ POST /api/v1/repair-orders/open
 ```
 
 Registration and catalog reads retry bounded maintenance or availability failures with exponential
-backoff. Client registration treats `account_type=client` as the client repair-order flow and
-`account_type=admin` as a recognized admin-only session. Public repair-order creation is
-intentionally attempted once because the upstream endpoint is not idempotent and a retry can create a
-duplicate order.
+backoff. Client registration treats any `is_admin=true` response as an employee session; all other
+successful registration responses are client sessions. Public repair-order creation is intentionally
+attempted once because the upstream endpoint is not idempotent and a retry can create a duplicate
+order.
 
 See:
 
@@ -291,9 +292,13 @@ See:
 
 ## Database And Migrations
 
-The local `users` table stores unknown clients who decline the repair offer or cancel during final
-confirmation. `telegram_id` identifies the Telegram account and is the unique upsert key. A separate
-chat ID is not stored because the bot currently targets private user chats.
+The local `users` table stores Telegram identity and the latest phone/locale seen by the bot.
+`telegram_id` identifies the Telegram account and is the unique upsert key. Registered users are
+classified into exactly one role table: `employees` when CRM returns `is_admin=true`, otherwise
+`clients`. Both role tables reference `users.id` through `user_id` and cascade on user deletion.
+Unknown clients who decline the repair offer or cancel during final confirmation are still upserted
+into `users` with the latest decline metadata. A separate chat ID is not stored because the bot
+currently targets private user chats.
 
 While this project is pre-production and has no real user data, edit an existing table's original
 migration instead of creating follow-up alteration migrations. Add a new migration file only when
@@ -318,6 +323,7 @@ Current coverage includes:
 - CRM request authentication and retries
 - repair API paths, payloads, and retry safety
 - repair flow formatting and pagination
+- registered-user client/employee upsert behavior
 - unknown-client upsert behavior
 - logger output and level gating
 

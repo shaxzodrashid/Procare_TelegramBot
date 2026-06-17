@@ -4,10 +4,11 @@ import type { BotCommand } from 'grammy/types';
 
 import type { ClientRegistrationGateway } from '../services/client-registration.service.js';
 import { RegistrationError } from '../services/client-registration.service.js';
+import type { RegisteredUserStore } from '../services/registered-user.store.js';
 import type { RepairOrderGateway } from '../services/repair-order.service.js';
 import { RepairOrderError } from '../services/repair-order.service.js';
 import type { UnknownClientStore } from '../services/unknown-client.store.js';
-import type { Locale } from '../types/client.js';
+import type { AdminProfile, Locale, RegistrationResult } from '../types/client.js';
 import { localizedCatalogName } from '../types/repair-order.js';
 import type { UnknownClientDeclineReason } from '../types/unknown-client.js';
 import {
@@ -27,13 +28,12 @@ import {
   formatRepairRequestSummary,
 } from './formatters.js';
 import {
-  adminKeyboard,
   categoryKeyboard,
   confirmationKeyboard,
   languageKeyboard,
-  mainKeyboard,
   noteKeyboard,
   osTypesKeyboard,
+  personalMenuKeyboard,
   problemsKeyboard,
   registrationKeyboard,
   requestOfferKeyboard,
@@ -44,11 +44,18 @@ export interface BotDependencies {
   registrationService: ClientRegistrationGateway;
   repairOrderService: RepairOrderGateway;
   unknownClientStore: UnknownClientStore;
+  registeredUserStore: RegisteredUserStore;
   logger: Logger;
   allowManualPhoneEntry: boolean;
 }
 
 const CATEGORY_PAGE_SIZE = 10;
+
+export type RegistrationAccountKind = 'client' | 'employee';
+
+export const registrationAccountKind = (
+  registration: RegistrationResult,
+): RegistrationAccountKind => (registration.is_admin ? 'employee' : 'client');
 
 const initialSession = (): BotSession => ({ locale: 'uz', stage: 'choosing_language' });
 
@@ -311,12 +318,19 @@ const fullTelegramName = (ctx: BotContext): string =>
 const adminDisplayName = (ctx: BotContext): string =>
   ctx.session.admin?.first_name || ctx.from?.first_name || 'Procare';
 
+const currentReplyKeyboard = (sessionData: BotSession) =>
+  sessionData.client || sessionData.admin
+    ? personalMenuKeyboard(sessionData)
+    : sessionData.stage === 'awaiting_phone'
+      ? registrationKeyboard(sessionData.locale)
+      : languageKeyboard();
+
 const replyWithAdminRegistration = async (ctx: BotContext): Promise<void> => {
   await ctx.reply(
     t(ctx.session.locale, 'adminRegistered', {
       name: adminDisplayName(ctx),
     }),
-    { reply_markup: adminKeyboard(ctx.session.locale) },
+    { reply_markup: personalMenuKeyboard(ctx.session) },
   );
 };
 
@@ -350,6 +364,52 @@ const saveUnknownClient = async (
   });
 };
 
+const registrationAdminProfile = (registration: RegistrationResult): AdminProfile | null =>
+  registration.account_type === 'admin' ? registration.admin : registration.admin;
+
+const saveRegisteredUser = async (
+  ctx: BotContext,
+  store: RegisteredUserStore,
+  registration: RegistrationResult,
+  phoneNumber: string,
+): Promise<void> => {
+  if (!ctx.from) return;
+
+  const user = {
+    telegram_id: String(ctx.from.id),
+    telegram_username: ctx.from.username ?? null,
+    first_name: ctx.from.first_name,
+    last_name: ctx.from.last_name ?? null,
+    phone_number: phoneNumber,
+    locale: ctx.session.locale,
+  };
+
+  if (registrationAccountKind(registration) === 'employee') {
+    const admin = registrationAdminProfile(registration);
+    if (!admin) throw new Error('CRM marked registration as admin without an admin profile');
+
+    await store.saveEmployee({
+      ...user,
+      crm_admin_id: admin.id,
+      status: admin.status,
+      is_active: admin.is_active,
+    });
+    return;
+  }
+
+  if (registration.account_type !== 'client') {
+    throw new Error('CRM returned a non-client registration without admin privileges');
+  }
+
+  await store.saveClient({
+    ...user,
+    crm_client_id: registration.id,
+    customer_code: registration.customer_code,
+    status: registration.status,
+    is_active: registration.is_active,
+  });
+};
+
 export const canRegisterWithManualPhone = (
   sessionData: BotSession,
   allowManualPhoneEntry: boolean,
@@ -377,16 +437,23 @@ const registerByPhone = async (
   const pendingMessage = await ctx.reply(t(ctx.session.locale, 'registering'));
   try {
     const registration = await dependencies.registrationService.registerByPhone(normalizedPhone);
+    await saveRegisteredUser(ctx, dependencies.registeredUserStore, registration, normalizedPhone);
     delete ctx.session.client;
     delete ctx.session.admin;
     clearUnknownFlow(ctx.session);
     delete ctx.session.stage;
     await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
 
-    if (registration.account_type === 'admin') {
-      ctx.session.admin = registration.admin;
+    if (registrationAccountKind(registration) === 'employee') {
+      const admin = registrationAdminProfile(registration);
+      if (!admin) throw new Error('CRM marked registration as admin without an admin profile');
+      ctx.session.admin = admin;
       await replyWithAdminRegistration(ctx);
       return;
+    }
+
+    if (registration.account_type !== 'client') {
+      throw new Error('CRM returned a non-client registration without admin privileges');
     }
 
     ctx.session.client = registration;
@@ -394,7 +461,7 @@ const registerByPhone = async (
       t(ctx.session.locale, 'registered', {
         name: registration.first_name || ctx.from.first_name,
       }),
-      { reply_markup: mainKeyboard(ctx.session.locale) },
+      { reply_markup: personalMenuKeyboard(ctx.session) },
     );
   } catch (error) {
     await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
@@ -502,7 +569,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
         t(ctx.session.locale, 'registered', {
           name: ctx.session.client.first_name || ctx.from?.first_name || 'Procare',
         }),
-        { reply_markup: mainKeyboard(ctx.session.locale) },
+        { reply_markup: personalMenuKeyboard(ctx.session) },
       );
       return;
     }
@@ -520,13 +587,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
 
   bot.command('help', async (ctx) => {
     await ctx.reply(t(ctx.session.locale, 'help'), {
-      reply_markup: ctx.session.client
-        ? mainKeyboard(ctx.session.locale)
-        : ctx.session.admin
-          ? adminKeyboard(ctx.session.locale)
-          : ctx.session.stage === 'awaiting_phone'
-            ? registrationKeyboard(ctx.session.locale)
-            : languageKeyboard(),
+      reply_markup: currentReplyKeyboard(ctx.session),
     });
   });
 
@@ -543,13 +604,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
     } catch (error) {
       dependencies.logger.error('Failed to delete Telegram user during logout', error);
       await ctx.reply(t(ctx.session.locale, 'logoutFailed'), {
-        reply_markup: ctx.session.client
-          ? mainKeyboard(ctx.session.locale)
-          : ctx.session.admin
-            ? adminKeyboard(ctx.session.locale)
-            : ctx.session.stage === 'awaiting_phone'
-              ? registrationKeyboard(ctx.session.locale)
-              : languageKeyboard(),
+        reply_markup: currentReplyKeyboard(ctx.session),
       });
     }
   });
@@ -568,7 +623,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
         t(ctx.session.locale, 'registered', {
           name: ctx.session.client.first_name || ctx.from?.first_name || 'Procare',
         }),
-        { reply_markup: mainKeyboard(ctx.session.locale) },
+        { reply_markup: personalMenuKeyboard(ctx.session) },
       );
       return;
     }
@@ -955,7 +1010,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
       client.repair_orders.length > 0
         ? formatRepairOrders(client.repair_orders, ctx.session.locale)
         : t(ctx.session.locale, 'noOrders'),
-      { parse_mode: 'HTML', reply_markup: mainKeyboard(ctx.session.locale) },
+      { parse_mode: 'HTML', reply_markup: personalMenuKeyboard(ctx.session) },
     );
   });
 
@@ -976,13 +1031,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
     await ctx.reply(
       t(ctx.session.locale, ctx.session.client || ctx.session.admin ? 'help' : 'phoneOnly'),
       {
-        reply_markup: ctx.session.client
-          ? mainKeyboard(ctx.session.locale)
-          : ctx.session.admin
-            ? adminKeyboard(ctx.session.locale)
-            : ctx.session.stage === 'awaiting_phone'
-              ? registrationKeyboard(ctx.session.locale)
-              : languageKeyboard(),
+        reply_markup: currentReplyKeyboard(ctx.session),
       },
     );
   });
