@@ -9,6 +9,7 @@ const logger: Logger = {
   warn: () => undefined,
   error: () => undefined,
   debug: () => undefined,
+  extra: () => undefined,
   table: () => undefined,
 };
 
@@ -99,5 +100,51 @@ describe('HttpRepairOrderService', () => {
 
     assert.equal(attempts, 2);
     assert.deepEqual(result, [osType]);
+  });
+
+  it('emits sanitized extra diagnostics for public repair-order creation', async () => {
+    const extraLogs: unknown[] = [];
+    const service = new HttpRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () =>
+          Response.json({
+            id: 'repair-id',
+            number_id: 'RO-123',
+            user_id: 'user-id',
+            phone_category_id: 'category-id',
+            phone_number: '+998901234567',
+            name: 'Ali Valiyev',
+            description: 'Muammolar: ekran siniq',
+            source: 'telegram',
+            total: '0',
+            pricing_currency_id: 'currency-id',
+            sort: 1,
+            created_at: '2026-06-16T00:00:00.000Z',
+          }),
+      },
+      {
+        ...logger,
+        extra: (_message, ...args) => {
+          extraLogs.push(args);
+        },
+      },
+    );
+
+    await service.createOpenRepairOrder({
+      name: 'Ali Valiyev',
+      phone_number: '+998901234567',
+      phone_category: 'category-id',
+      description: 'Muammolar: ekran siniq',
+    });
+
+    const serialized = JSON.stringify(extraLogs);
+    assert.match(serialized, /\+998\*{5}4567/);
+    assert.match(serialized, /"description":\{"length":22\}/);
+    assert.doesNotMatch(serialized, /901234567/);
+    assert.doesNotMatch(serialized, /Ali Valiyev/);
+    assert.doesNotMatch(serialized, /Muammolar: ekran siniq/);
   });
 });

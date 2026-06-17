@@ -325,7 +325,9 @@ YYYY-MM-DD_HH-mm.log
 ```
 
 `info`, `warn`, and `error` are always active. `debug` is enabled in development or with
-`LOG_LEVEL=debug|extra-high`. Table output is enabled in development or `extra-high`.
+`LOG_LEVEL=debug|extra-high`. `extra-high` also enables sanitized Telegram, CRM registration, and
+public repair API request/response diagnostics. Table output is enabled in development or
+`extra-high`.
 
 Do not log bot tokens, passwords, authorization headers, or unnecessary personal data.
 

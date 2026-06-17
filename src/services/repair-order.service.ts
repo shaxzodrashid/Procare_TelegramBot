@@ -1,10 +1,17 @@
 import type {
+  LocalizedCatalogItem,
   OpenRepairOrderInput,
   OpenRepairOrderResult,
   OsType,
   PhoneCategory,
   ProblemCategory,
 } from '../types/repair-order.js';
+import {
+  redactPhoneNumber,
+  redactPhoneNumbersInText,
+  summarizeText,
+  summarizeUnknownPayload,
+} from '../utils/log-redaction.js';
 import type { Logger } from '../utils/logger.js';
 
 export type RepairOrderFailureCode =
@@ -70,6 +77,80 @@ const isOpenRepairOrderResult = (value: unknown): value is OpenRepairOrderResult
   typeof value.id === 'string' &&
   typeof value.number_id === 'string' &&
   typeof value.phone_number === 'string';
+
+const summarizeCatalogItem = (item: LocalizedCatalogItem): Record<string, unknown> => ({
+  id: item.id,
+  name_uz: item.name_uz,
+  name_ru: item.name_ru,
+  name_en: item.name_en,
+  has_children: isObject(item) ? item.has_children : undefined,
+  has_problems: isObject(item) ? item.has_problems : undefined,
+  price: isObject(item) ? item.price : undefined,
+  cost: isObject(item) ? item.cost : undefined,
+});
+
+const summarizeOpenRepairOrderInput = (input: OpenRepairOrderInput): Record<string, unknown> => ({
+  name_present: input.name.trim().length > 0,
+  phone_number: redactPhoneNumber(input.phone_number),
+  phone_category: input.phone_category,
+  description: summarizeText(input.description),
+});
+
+const summarizeOpenRepairOrderResult = (
+  result: OpenRepairOrderResult,
+): Record<string, unknown> => ({
+  id: result.id,
+  number_id: result.number_id,
+  user_id: result.user_id,
+  phone_category_id: result.phone_category_id,
+  phone_number: redactPhoneNumber(result.phone_number),
+  name_present: result.name.trim().length > 0,
+  description: summarizeText(result.description),
+  source: result.source,
+  total: result.total,
+});
+
+const summarizeRequestBody = (body: BodyInit | null | undefined): unknown => {
+  if (typeof body !== 'string') return summarizeUnknownPayload(body);
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    if (
+      isObject(parsed) &&
+      typeof parsed.name === 'string' &&
+      typeof parsed.phone_number === 'string' &&
+      typeof parsed.phone_category === 'string' &&
+      typeof parsed.description === 'string'
+    ) {
+      return summarizeOpenRepairOrderInput({
+        name: parsed.name,
+        phone_number: parsed.phone_number,
+        phone_category: parsed.phone_category,
+        description: parsed.description,
+      });
+    }
+    return summarizeUnknownPayload(parsed);
+  } catch {
+    return { type: 'string', length: body.length };
+  }
+};
+
+const summarizeRepairPayload = (payload: unknown): unknown => {
+  if (Array.isArray(payload)) {
+    return {
+      type: 'array',
+      count: payload.length,
+      sample: payload
+        .filter((item): item is LocalizedCatalogItem => isLocalizedItem(item))
+        .slice(0, 3)
+        .map(summarizeCatalogItem),
+    };
+  }
+  if (isOpenRepairOrderResult(payload)) return summarizeOpenRepairOrderResult(payload);
+  if (isObject(payload) && typeof payload.message === 'string') {
+    return { message: redactPhoneNumbersInText(payload.message) };
+  }
+  return summarizeUnknownPayload(payload);
+};
 
 export class HttpRepairOrderService implements RepairOrderGateway {
   constructor(
@@ -152,6 +233,18 @@ export class HttpRepairOrderService implements RepairOrderGateway {
     validator: (value: unknown) => value is T,
   ): Promise<T> {
     let response: Response;
+    const method = init?.method ?? 'GET';
+    this.logger.extra('Public repair API request', {
+      method,
+      path,
+      headers: {
+        accept: 'application/json',
+        'content-type': new Headers(init?.headers).get('content-type') ?? undefined,
+      },
+      body: init?.body ? summarizeRequestBody(init.body) : undefined,
+      timeoutMs: this.options.timeoutMs,
+    });
+
     try {
       response = await (this.options.fetchImpl ?? fetch)(`${this.options.baseUrl}${path}`, {
         ...init,
@@ -164,6 +257,14 @@ export class HttpRepairOrderService implements RepairOrderGateway {
     }
 
     const payload = (await response.json().catch(() => null)) as ErrorEnvelope | T | null;
+    this.logger.extra('Public repair API response', {
+      method,
+      path,
+      status: response.status,
+      ok: response.ok,
+      body: summarizeRepairPayload(payload),
+    });
+
     if (response.ok) {
       if (!validator(payload)) {
         throw new RepairOrderError('invalid_response', 'Public repair API returned invalid data');

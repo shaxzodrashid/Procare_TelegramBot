@@ -71,6 +71,7 @@ describe('createLogger', () => {
       logger.warn('Warning');
       logger.error('Failure', new Error('broken'));
       logger.debug('Diagnostic');
+      logger.extra('Deep diagnostic');
 
       assert.equal(output.info.length, 1);
       assert.equal(output.warn.length, 1);
@@ -84,6 +85,7 @@ describe('createLogger', () => {
       assert.match(persisted, /\[WARN].*Warning/);
       assert.match(persisted, /\[ERROR].*Error: broken/);
       assert.match(persisted, /\[DEBUG].*Diagnostic/);
+      assert.doesNotMatch(persisted, /Deep diagnostic/);
       assert.match(persisted, /third/);
       assert.equal(persisted.includes('\u001B['), false);
     } finally {
@@ -127,6 +129,43 @@ describe('createLogger', () => {
       }
 
       await Promise.all(enabledLogsDirectories.map(readSessionLog));
+    } finally {
+      console.debug = originalDebug;
+    }
+  });
+
+  it('enables extra diagnostics only for extra-high mode', async () => {
+    const calls: string[] = [];
+    const originalDebug = console.debug;
+    console.debug = (line?: unknown) => calls.push(String(line));
+
+    try {
+      createLogger({
+        environment: 'development',
+        level: 'info',
+        logsDirectory: createLogsDirectory(),
+      }).extra('Extra visibility');
+      createLogger({
+        environment: 'production',
+        level: 'debug',
+        logsDirectory: createLogsDirectory(),
+      }).extra('Extra visibility');
+
+      assert.equal(calls.length, 0);
+
+      const enabledLogsDirectory = createLogsDirectory();
+      createLogger({
+        environment: 'production',
+        level: 'extra-high',
+        logsDirectory: enabledLogsDirectory,
+      }).extra('Extra visibility', { safe: true });
+
+      assert.equal(calls.length, 1);
+      assert.match(calls[0]!, /\[EXTRA].*Extra visibility/);
+
+      const persisted = await readSessionLog(enabledLogsDirectory);
+      assert.match(persisted, /\[EXTRA].*Extra visibility/);
+      assert.match(persisted, /safe/);
     } finally {
       console.debug = originalDebug;
     }

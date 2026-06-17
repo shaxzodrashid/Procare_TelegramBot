@@ -1,4 +1,9 @@
 import type { ClientProfile } from '../types/client.js';
+import {
+  redactPhoneNumber,
+  redactPhoneNumbersInText,
+  summarizeUnknownPayload,
+} from '../utils/log-redaction.js';
 import type { Logger } from '../utils/logger.js';
 import { normalizeUzPhone } from '../utils/phone.js';
 
@@ -29,6 +34,8 @@ interface ErrorEnvelope {
   message?: string;
 }
 
+const registrationPath = '/api/v1/users/register-client';
+
 const isClientProfile = (value: unknown): value is ClientProfile => {
   if (!value || typeof value !== 'object') return false;
   const profile = value as Partial<ClientProfile>;
@@ -37,6 +44,30 @@ const isClientProfile = (value: unknown): value is ClientProfile => {
     typeof profile.phone_number1 === 'string' &&
     Array.isArray(profile.repair_orders)
   );
+};
+
+const summarizeClientProfile = (profile: ClientProfile): Record<string, unknown> => ({
+  id: profile.id,
+  customer_code: profile.customer_code,
+  status: profile.status,
+  is_active: profile.is_active,
+  source: profile.source,
+  phone_number1: redactPhoneNumber(profile.phone_number1),
+  phone_number2: redactPhoneNumber(profile.phone_number2),
+  phone_verified: profile.phone_verified,
+  language: profile.language,
+  telegram_chat_id_present: Boolean(profile.telegram_chat_id),
+  telegram_username_present: Boolean(profile.telegram_username),
+  repair_orders_count: profile.repair_orders.length,
+});
+
+const summarizeRegistrationPayload = (payload: unknown): unknown => {
+  if (isClientProfile(payload)) return summarizeClientProfile(payload);
+  if (payload && typeof payload === 'object' && 'message' in payload) {
+    const message = (payload as ErrorEnvelope).message;
+    return { message: typeof message === 'string' ? redactPhoneNumbersInText(message) : undefined };
+  }
+  return summarizeUnknownPayload(payload);
 };
 
 export class HttpClientRegistrationService implements ClientRegistrationGateway {
@@ -87,9 +118,19 @@ export class HttpClientRegistrationService implements ClientRegistrationGateway 
   private async request(phoneNumber: string): Promise<ClientProfile> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
     let response: Response;
+    this.logger.extra('CRM registration request', {
+      method: 'POST',
+      path: registrationPath,
+      headers: {
+        authorization: 'Basic <redacted>',
+        'content-type': 'application/json',
+      },
+      body: { phone_number: redactPhoneNumber(phoneNumber) },
+      timeoutMs: this.options.timeoutMs,
+    });
 
     try {
-      response = await fetchImpl(`${this.options.baseUrl}/api/v1/users/register-client`, {
+      response = await fetchImpl(`${this.options.baseUrl}${registrationPath}`, {
         method: 'POST',
         headers: {
           authorization: `Basic ${Buffer.from(
@@ -109,6 +150,14 @@ export class HttpClientRegistrationService implements ClientRegistrationGateway 
       | ErrorEnvelope
       | ClientProfile
       | null;
+
+    this.logger.extra('CRM registration response', {
+      method: 'POST',
+      path: registrationPath,
+      status: response.status,
+      ok: response.ok,
+      body: summarizeRegistrationPayload(payload),
+    });
 
     if (response.ok) {
       if (!isClientProfile(payload)) {

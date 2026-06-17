@@ -10,6 +10,7 @@ const logger: Logger = {
   warn: () => undefined,
   error: () => undefined,
   debug: () => undefined,
+  extra: () => undefined,
   table: () => undefined,
 };
 

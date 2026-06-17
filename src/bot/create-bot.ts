@@ -1,4 +1,5 @@
 import { Bot, GrammyError, HttpError, session } from 'grammy';
+import type { RawApi, Transformer } from 'grammy';
 import type { BotCommand } from 'grammy/types';
 
 import type { ClientRegistrationGateway } from '../services/client-registration.service.js';
@@ -9,6 +10,12 @@ import type { UnknownClientStore } from '../services/unknown-client.store.js';
 import type { Locale } from '../types/client.js';
 import { localizedCatalogName } from '../types/repair-order.js';
 import type { UnknownClientDeclineReason } from '../types/unknown-client.js';
+import {
+  redactPhoneNumber,
+  redactPhoneNumbersInText,
+  summarizeText,
+  summarizeUnknownPayload,
+} from '../utils/log-redaction.js';
 import type { Logger } from '../utils/logger.js';
 import { normalizeUzPhone } from '../utils/phone.js';
 import type { BotContext, BotSession, RepairRequestDraft } from './context.js';
@@ -43,6 +50,216 @@ export interface BotDependencies {
 const CATEGORY_PAGE_SIZE = 10;
 
 const initialSession = (): BotSession => ({ locale: 'uz', stage: 'choosing_language' });
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object';
+
+const summarizeSession = (sessionData: BotSession): Record<string, unknown> => ({
+  locale: sessionData.locale,
+  stage: sessionData.stage ?? 'registered',
+  client: sessionData.client
+    ? {
+        id: sessionData.client.id,
+        status: sessionData.client.status,
+        repair_orders_count: sessionData.client.repair_orders.length,
+      }
+    : undefined,
+  unknownClient: sessionData.unknownClient
+    ? {
+        phoneNumber: redactPhoneNumber(sessionData.unknownClient.phoneNumber),
+        username_present: Boolean(sessionData.unknownClient.username),
+        first_name_present: Boolean(sessionData.unknownClient.firstName),
+        last_name_present: Boolean(sessionData.unknownClient.lastName),
+      }
+    : undefined,
+  repairDraft: sessionData.repairDraft
+    ? {
+        selectedOsId: sessionData.repairDraft.selectedOs?.id,
+        selectedCategoryId: sessionData.repairDraft.selectedCategory?.id,
+        categoryPathIds: sessionData.repairDraft.categoryPath.map((item) => item.id),
+        categoriesCount: sessionData.repairDraft.categories.length,
+        categoryPage: sessionData.repairDraft.categoryPage,
+        problemsCount: sessionData.repairDraft.problems.length,
+        selectedProblemIds: sessionData.repairDraft.selectedProblemIds,
+        note: summarizeText(sessionData.repairDraft.note),
+        submitting: sessionData.repairDraft.submitting,
+      }
+    : undefined,
+});
+
+const summarizeTelegramText = (text: string): Record<string, unknown> => ({
+  kind: text.startsWith('/') ? 'command' : 'text',
+  command: text.startsWith('/') ? text.split(/\s+/, 1)[0] : undefined,
+  length: text.length,
+});
+
+const summarizeTelegramMessage = (ctx: BotContext): Record<string, unknown> | undefined => {
+  const message = ctx.message;
+  if (!message) return undefined;
+
+  const summary: Record<string, unknown> = {
+    message_id: message.message_id,
+    date: message.date,
+  };
+
+  if ('text' in message && typeof message.text === 'string') {
+    summary.kind = 'text';
+    summary.text = summarizeTelegramText(message.text);
+  } else if ('contact' in message && message.contact) {
+    const { contact } = message;
+    summary.kind = 'contact';
+    summary.contact = {
+      user_id: contact.user_id,
+      is_own_contact: contact.user_id === ctx.from?.id,
+      phone_number: redactPhoneNumber(contact.phone_number),
+    };
+  } else {
+    summary.kind = 'other';
+    summary.keys = Object.keys(message).slice(0, 20);
+  }
+
+  return summary;
+};
+
+const summarizeTelegramCallback = (ctx: BotContext): Record<string, unknown> | undefined => {
+  const callbackQuery = ctx.callbackQuery;
+  if (!callbackQuery) return undefined;
+
+  return {
+    id: callbackQuery.id,
+    data: callbackQuery.data,
+    from_id: callbackQuery.from.id,
+    message_id:
+      callbackQuery.message && 'message_id' in callbackQuery.message
+        ? callbackQuery.message.message_id
+        : undefined,
+  };
+};
+
+const summarizeTelegramUpdate = (ctx: BotContext): Record<string, unknown> => ({
+  update_id: ctx.update.update_id,
+  type: ctx.callbackQuery ? 'callback_query' : ctx.message ? 'message' : 'other',
+  from: ctx.from
+    ? {
+        id: ctx.from.id,
+        is_bot: ctx.from.is_bot,
+        language_code: ctx.from.language_code,
+      }
+    : undefined,
+  chat: ctx.chat
+    ? {
+        id: ctx.chat.id,
+        type: ctx.chat.type,
+      }
+    : undefined,
+  message: summarizeTelegramMessage(ctx),
+  callbackQuery: summarizeTelegramCallback(ctx),
+  session: summarizeSession(ctx.session),
+});
+
+const summarizeReplyMarkup = (value: unknown): unknown => {
+  if (!isRecord(value)) return summarizeUnknownPayload(value);
+  if ('inline_keyboard' in value && Array.isArray(value.inline_keyboard)) {
+    return {
+      type: 'inline_keyboard',
+      rows: value.inline_keyboard.length,
+      buttons: value.inline_keyboard.reduce(
+        (count, row) => count + (Array.isArray(row) ? row.length : 0),
+        0,
+      ),
+    };
+  }
+  if ('keyboard' in value && Array.isArray(value.keyboard)) {
+    return {
+      type: 'reply_keyboard',
+      rows: value.keyboard.length,
+      buttons: value.keyboard.reduce(
+        (count, row) => count + (Array.isArray(row) ? row.length : 0),
+        0,
+      ),
+      resize_keyboard: value.resize_keyboard,
+      one_time_keyboard: value.one_time_keyboard,
+    };
+  }
+  return summarizeUnknownPayload(value);
+};
+
+const summarizeTelegramApiPayload = (payload: unknown): unknown => {
+  if (!isRecord(payload)) return summarizeUnknownPayload(payload);
+
+  const summary: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (key === 'phone_number') {
+      summary[key] = redactPhoneNumber(typeof value === 'string' ? value : undefined);
+    } else if (key === 'contact') {
+      summary[key] = summarizeUnknownPayload(value);
+    } else if (key === 'text' || key === 'caption') {
+      summary[key] = summarizeText(typeof value === 'string' ? value : undefined);
+    } else if (key === 'reply_markup') {
+      summary[key] = summarizeReplyMarkup(value);
+    } else {
+      summary[key] = value;
+    }
+  }
+  return summary;
+};
+
+const summarizeTelegramApiResult = (result: unknown): unknown => {
+  if (result === true) return true;
+  if (!isRecord(result)) return summarizeUnknownPayload(result);
+
+  if ('message_id' in result) {
+    const text = typeof result.text === 'string' ? result.text : undefined;
+    const chat = isRecord(result.chat) ? result.chat : undefined;
+    return {
+      type: 'message',
+      message_id: result.message_id,
+      date: result.date,
+      chat: chat ? { id: chat.id, type: chat.type } : undefined,
+      text: summarizeText(text),
+    };
+  }
+
+  if ('id' in result && 'username' in result && 'is_bot' in result) {
+    return {
+      type: 'bot_user',
+      id: result.id,
+      username: result.username,
+      is_bot: result.is_bot,
+    };
+  }
+
+  return summarizeUnknownPayload(result);
+};
+
+const createTelegramApiLoggingTransformer =
+  (logger: Logger): Transformer<RawApi> =>
+  async (prev, method, payload, signal) => {
+    logger.extra('Telegram API request', {
+      method,
+      payload: summarizeTelegramApiPayload(payload),
+    });
+
+    try {
+      const response = await prev(method, payload, signal);
+      logger.extra('Telegram API response', {
+        method,
+        ok: response.ok,
+        result: response.ok ? summarizeTelegramApiResult(response.result) : undefined,
+        error:
+          response.ok === false
+            ? {
+                error_code: response.error_code,
+                description: redactPhoneNumbersInText(response.description),
+              }
+            : undefined,
+      });
+      return response;
+    } catch (error) {
+      logger.extra('Telegram API request failed', { method });
+      throw error;
+    }
+  };
 
 export const localizedBotCommands = (locale: Locale): BotCommand[] => [
   { command: 'start', description: t(locale, 'commandStart') },
@@ -223,14 +440,27 @@ const acceptNote = async (ctx: BotContext, note: string): Promise<void> => {
 export const createBot = (token: string, dependencies: BotDependencies): Bot<BotContext> => {
   const bot = new Bot<BotContext>(token);
 
+  bot.api.config.use(createTelegramApiLoggingTransformer(dependencies.logger));
+
   bot.use(session({ initial: initialSession }));
   bot.use(async (ctx, next) => {
     const startedAt = Date.now();
     dependencies.logger.debug(`Incoming Telegram update ${ctx.update.update_id}`);
-    await next();
-    dependencies.logger.info(
-      `Telegram update ${ctx.update.update_id} processed in ${Date.now() - startedAt}ms`,
-    );
+    dependencies.logger.extra(`Incoming Telegram update ${ctx.update.update_id}`, {
+      update: summarizeTelegramUpdate(ctx),
+    });
+    try {
+      await next();
+    } finally {
+      const durationMs = Date.now() - startedAt;
+      dependencies.logger.info(
+        `Telegram update ${ctx.update.update_id} processed in ${durationMs}ms`,
+      );
+      dependencies.logger.extra(`Telegram update ${ctx.update.update_id} completed`, {
+        durationMs,
+        session: summarizeSession(ctx.session),
+      });
+    }
   });
 
   bot.command('start', async (ctx) => {

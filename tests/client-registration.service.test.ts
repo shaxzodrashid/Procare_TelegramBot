@@ -12,6 +12,7 @@ const logger: Logger = {
   warn: () => undefined,
   error: () => undefined,
   debug: () => undefined,
+  extra: () => undefined,
   table: () => undefined,
 };
 
@@ -99,5 +100,63 @@ describe('HttpClientRegistrationService', () => {
 
     assert.equal(attempts, 3);
     assert.deepEqual(delays, [250, 500]);
+  });
+
+  it('emits sanitized extra diagnostics for registration traffic', async () => {
+    const extraLogs: unknown[] = [];
+    const service = new HttpClientRegistrationService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () => Response.json(profile),
+      },
+      {
+        ...logger,
+        extra: (_message, ...args) => {
+          extraLogs.push(args);
+        },
+      },
+    );
+
+    await service.registerByPhone('+998901234567');
+
+    const serialized = JSON.stringify(extraLogs);
+    assert.match(serialized, /\+998\*{5}4567/);
+    assert.doesNotMatch(serialized, /901234567/);
+    assert.doesNotMatch(serialized, /secret/);
+    assert.doesNotMatch(serialized, /Basic [A-Za-z0-9+/=]+/);
+  });
+
+  it('redacts phone numbers echoed by upstream error messages', async () => {
+    const extraLogs: unknown[] = [];
+    const service = new HttpClientRegistrationService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () =>
+          Response.json({ message: 'Phone +998901234567 was not found' }, { status: 404 }),
+      },
+      {
+        ...logger,
+        extra: (_message, ...args) => {
+          extraLogs.push(args);
+        },
+      },
+    );
+
+    await assert.rejects(
+      service.registerByPhone('+998901234567'),
+      (error: unknown) => error instanceof RegistrationError && error.code === 'not_found',
+    );
+
+    const serialized = JSON.stringify(extraLogs);
+    assert.match(serialized, /\+998\*{5}4567/);
+    assert.doesNotMatch(serialized, /901234567/);
   });
 });

@@ -9,6 +9,7 @@ export interface Logger {
   warn(message: string, ...args: unknown[]): void;
   error(message: string, ...args: unknown[]): void;
   debug(message: string, ...args: unknown[]): void;
+  extra(message: string, ...args: unknown[]): void;
   table(tabularData: unknown, properties?: string[]): void;
 }
 
@@ -49,6 +50,7 @@ export const createLogger = (options: {
     options.environment === 'development' ||
     options.level === 'debug' ||
     options.level === 'extra-high';
+  const extraEnabled = options.level === 'extra-high';
   const tableEnabled = options.environment === 'development' || options.level === 'extra-high';
 
   const writeToFile = (line: string): void => {
@@ -60,7 +62,7 @@ export const createLogger = (options: {
   };
 
   const write = (
-    level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG',
+    level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG' | 'EXTRA',
     message: string,
     args: unknown[],
   ): void => {
@@ -74,7 +76,7 @@ export const createLogger = (options: {
         ? console.error
         : level === 'WARN'
           ? console.warn
-          : level === 'DEBUG'
+          : level === 'DEBUG' || level === 'EXTRA'
             ? console.debug
             : console.info;
 
@@ -88,6 +90,9 @@ export const createLogger = (options: {
     error: (message, ...args) => write('ERROR', message, args),
     debug: (message, ...args) => {
       if (debugEnabled) write('DEBUG', message, args);
+    },
+    extra: (message, ...args) => {
+      if (extraEnabled) write('EXTRA', message, args);
     },
     table: (tabularData, properties) => {
       if (!tableEnabled) return;

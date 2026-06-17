@@ -53,6 +53,7 @@ Depending on the environment and log level configured, different methods are res
 | **`logger.warn(...)`** | Always active | `console.warn` (stderr) | Active session log file | Warnings regarding non-fatal discrepancies. |
 | **`logger.error(...)`** | Always active | `console.error` (stderr) | Active session log file | Caught/uncaught runtime exceptions. |
 | **`logger.debug(...)`** | `isDevelopment` OR `LOG_LEVEL === 'debug'` OR `LOG_LEVEL === 'extra-high'` | `console.debug` (stdout) | Active session log file | Low-level developer logs and debug context. |
+| **`logger.extra(...)`** | `LOG_LEVEL === 'extra-high'` | `console.debug` (stdout) | Active session log file | High-detail diagnostics such as sanitized Telegram, CRM, and repair API request/response summaries. |
 | **`logger.table(...)`** | `isDevelopment` OR `LOG_LEVEL === 'extra-high'` | `console.table` (stdout) | Active session log file (as serialized JSON) | Visual arrays/objects mapping in development. |
 
 ---
@@ -136,31 +137,41 @@ const buildLine = (level: string, message: string, args: unknown[]): string => {
 ## 5. System Integrations
 
 ### 5.1 Telegram Bot Middleware (Grammy)
-In [src/middlewares/logger.middleware.ts](file:///d:/Shakhzod/Javascript/Probox_TelegramBot/src/middlewares/logger.middleware.ts), the logger integrates with the Telegram Update pipeline. It logs execution benchmarks for updates:
+In [src/bot/create-bot.ts](file:///d:/Shakhzod/Javascript/Procare_TelegramBot/src/bot/create-bot.ts), the logger integrates with the Telegram Update pipeline. It logs execution benchmarks for updates:
 ```typescript
-export const loggerMiddleware = async (ctx: BotContext, next: NextFunction) => {
+bot.use(async (ctx, next) => {
   const start = Date.now();
-  
-  if (config.LOG_LEVEL === 'extra-high') {
-    logger.debug(`Incoming update ${ctx.update.update_id}:`, ctx.update);
-  }
+  logger.debug(`Incoming Telegram update ${ctx.update.update_id}`);
+  logger.extra(`Incoming Telegram update ${ctx.update.update_id}`, {
+    update: summarizeTelegramUpdate(ctx),
+  });
 
-  await next();
-  const ms = Date.now() - start;
-  logger.info(`Update ${ctx.update.update_id} processed in ${ms}ms`);
-};
+  try {
+    await next();
+  } finally {
+    logger.info(`Telegram update ${ctx.update.update_id} processed in ${Date.now() - start}ms`);
+  }
+});
 ```
 * **Performance Benchmark**: Every incoming update processed prints a latency report at the `info` level.
-* **Payload Inspection**: If the log level is set to `'extra-high'`, the full incoming JSON payload (`ctx.update`) is serialized and written via `logger.debug`.
+* **Sanitized Payload Inspection**: If the log level is set to `'extra-high'`, summarized inbound Telegram updates, outbound Telegram API calls, and post-handler session state are written via `logger.extra`. Message text is represented by length, phone numbers are redacted, and reply markup is summarized by rows/buttons.
 
-### 5.2 Fastify Server HTTP Router Errors
+### 5.2 CRM And Public Repair API Diagnostics
+The HTTP service modules emit high-detail request and response summaries only through `logger.extra`:
+
+* `src/services/client-registration.service.ts` logs the CRM registration method, path, timeout, redacted Basic Auth marker, redacted phone payload, HTTP status, and sanitized client/error response summary.
+* `src/services/repair-order.service.ts` logs public calculator and repair-order method/path details, sanitized repair-order payloads, HTTP status, catalog counts and samples, and sanitized repair-order creation results.
+
+Sensitive values are intentionally not logged: bot tokens, Basic Auth credentials, full authorization headers, full phone numbers, user names, and free-text repair descriptions.
+
+### 5.3 Fastify Server HTTP Router Errors
 In [src/api/errors/error-handler.ts](file:///d:/Shakhzod/Javascript/Probox_TelegramBot/src/api/errors/error-handler.ts#L41), the logger acts as the catching repository for unhandled API router exceptions. 
 ```typescript
 logger.error(`Unhandled API error on ${request.method} ${request.url}`, error);
 ```
 This logs the HTTP method, targeted URL, and structural stack trace of the unhandled error, helping developers inspect backend API faults.
 
-### 5.3 Error Notification Fallbacks
+### 5.4 Error Notification Fallbacks
 The bot features a notifications pipeline in [src/services/error-notification.service.ts](file:///d:/Shakhzod/Javascript/Probox_TelegramBot/src/services/error-notification.service.ts) to send structural HTML alerts directly to a Telegram group. If the Telegram notification system cannot deliver the message (e.g. because of network errors or bot blocks), the service falls back to the logger:
 ```typescript
 static async notify(params: {
@@ -185,7 +196,7 @@ static async notify(params: {
 }
 ```
 
-### 5.4 Lifecycle Tracing
+### 5.5 Lifecycle Tracing
 The logger records lifecycle events during bootstrap and shutdown phases:
 
 * **Graceful Shuts**:
@@ -207,7 +218,7 @@ The logger records lifecycle events during bootstrap and shutdown phases:
 When extending or working with this codebase, observe the following guidelines:
 
 1. **Avoid Over-logging Objects in Production**: Do not pass massive objects to `logger.info` or `logger.warn` unless absolutely necessary, as it bypasses the `LOG_LEVEL` filter and writes the full inspection output to disk.
-2. **Utilize `logger.debug` for Diagnostic Metadata**: For diagnostic telemetry (like dumping API request responses, database outputs, and JSON payloads), use `logger.debug(message, payload)` to ensure these are filtered out in production.
+2. **Use `logger.extra` for Sensitive-Boundary Diagnostics**: For Telegram updates and external API request/response summaries, use `logger.extra(message, sanitizedPayload)` so those logs appear only when `LOG_LEVEL=extra-high`.
 3. **Trace Errors Structurally**: When logging caught exceptions, pass the `Error` instance directly as the second argument rather than logging only `error.message`. Passing the full error object ensures the stack trace gets inspected and recorded:
    * **Correct**: `logger.error("Failed database write", error);`
    * **Incorrect**: `logger.error("Failed database write: " + error.message);`
