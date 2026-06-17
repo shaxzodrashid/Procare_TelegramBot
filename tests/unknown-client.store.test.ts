@@ -56,8 +56,10 @@ describe('PostgresUnknownClientStore', () => {
     assert.equal(tableName, 'users');
     assert.equal(conflictColumn, 'telegram_id');
     assert.equal(inserted?.telegram_id, '1');
+    assert.equal(inserted?.is_blocked, false);
     assert.equal(inserted?.last_decline_reason, 'declined_offer');
     assert.deepEqual(inserted?.declined_at, new Date('2026-06-15T10:00:00.000Z'));
+    assert.equal(merged?.is_blocked, false);
     assert.equal(merged?.updated_at, now);
   });
 

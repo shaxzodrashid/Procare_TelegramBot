@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   canRegisterWithManualPhone,
   localizedBotCommands,
+  parseSettingsName,
   registrationAccountKind,
 } from '../src/bot/create-bot.js';
 import type { BotSession } from '../src/bot/context.js';
@@ -18,6 +19,30 @@ describe('bot command metadata', () => {
       localizedBotCommands('ru').map((command) => command.description),
       ['✨ Начать или перезапустить Procare', '💬 Получить помощь', '👋 Выйти из системы'],
     );
+  });
+});
+
+describe('settings name parsing', () => {
+  it('normalizes whitespace and splits first and last name', () => {
+    assert.deepEqual(parseSettingsName('  Ali   Valiyev  '), {
+      firstName: 'Ali',
+      lastName: 'Valiyev',
+      fullName: 'Ali Valiyev',
+    });
+  });
+
+  it('allows a single display name', () => {
+    assert.deepEqual(parseSettingsName('Ali'), {
+      firstName: 'Ali',
+      lastName: null,
+      fullName: 'Ali',
+    });
+  });
+
+  it('rejects empty, punctuation-only, and overlong names', () => {
+    assert.equal(parseSettingsName(' '), null);
+    assert.equal(parseSettingsName('---'), null);
+    assert.equal(parseSettingsName('A'.repeat(121)), null);
   });
 });
 

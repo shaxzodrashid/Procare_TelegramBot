@@ -9,6 +9,7 @@ export const up = async (knex: Knex): Promise<void> => {
     table.string('last_name', 255).nullable();
     table.string('phone_number', 20).nullable();
     table.string('language_code', 10).notNullable().defaultTo('uz');
+    table.boolean('is_blocked').notNullable().defaultTo(false);
     table.string('last_decline_reason', 32).nullable();
     table.timestamp('declined_at', { useTz: true }).nullable();
     table.timestamp('created_at', { useTz: true }).notNullable().defaultTo(knex.fn.now());

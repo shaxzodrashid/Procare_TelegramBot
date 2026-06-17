@@ -21,6 +21,9 @@ PostgreSQL, including separate client and employee role rows.
 - public repair-order submission with confirmation
 - PostgreSQL upsert for registered clients, registered employees, and unknown clients who decline or
   cancel
+- database-backed transactional message templates with Uzbek/Russian rendering
+- Telegram notification dispatch logging and blocked-user tracking for template messages
+- admin-only template management inside the bot
 - localized repair-order formatting
 - Fastify `GET /health` endpoint
 - console and per-session file logging
@@ -39,6 +42,7 @@ PostgreSQL, including separate client and employee role rows.
        -> show repair orders from the registration response
   -> active CRM admin without a matching client profile
        -> show admin-account confirmation
+       -> manage transactional message templates
        -> do not offer client repair orders or unknown-client repair creation
   -> unknown client
        -> offer a new repair request
@@ -54,6 +58,11 @@ their details into the local `users` table.
 
 `/logout` clears the in-memory bot session and deletes the current Telegram user's row from the
 local `users` table if it exists.
+
+Admins can open `Xabar shablonlari` / `Шаблоны сообщений` from their menu to list, create, edit,
+activate, deactivate, or delete Telegram message templates. Template text supports placeholders such
+as `{{ customer_name }}` and `{{ coupon_code }}`; rendered placeholder values are HTML-escaped, and
+coupon codes are wrapped in Telegram `<code>` tags for tap-to-copy behavior.
 
 ## Technology
 
@@ -240,7 +249,7 @@ src/server.ts
   -> bootstrap application
        -> connect PostgreSQL and run migrations
        -> create CRM and repair API clients
-       -> create unknown-client store
+       -> create PostgreSQL stores
        -> initialize Telegram bot
        -> start Fastify health API
        -> start Telegram long polling
@@ -256,6 +265,8 @@ Main modules:
 | `src/bot/keyboards.ts`                        | Reply and inline keyboards              |
 | `src/bot/formatters.ts`                       | Telegram-safe presentation              |
 | `src/services/client-registration.service.ts` | Authenticated CRM client lookup         |
+| `src/services/message-template.service.ts`    | Template CRUD, rendering, and logs      |
+| `src/services/bot-notification.service.ts`    | Template delivery through Telegram      |
 | `src/services/repair-order.service.ts`        | Public catalog and repair-order API     |
 | `src/services/unknown-client.store.ts`        | Declined-user PostgreSQL upsert         |
 | `src/api/server.ts`                           | Health endpoint                         |
@@ -292,13 +303,20 @@ See:
 
 ## Database And Migrations
 
-The local `users` table stores Telegram identity and the latest phone/locale seen by the bot.
+The local `users` table stores Telegram identity, blocked-bot status, and the latest phone/locale
+seen by the bot.
 `telegram_id` identifies the Telegram account and is the unique upsert key. Registered users are
 classified into exactly one role table: `employees` when CRM returns `is_admin=true`, otherwise
 `clients`. Both role tables reference `users.id` through `user_id` and cascade on user deletion.
 Unknown clients who decline the repair offer or cancel during final confirmation are still upserted
 into `users` with the latest decline metadata. A separate chat ID is not stored because the bot
 currently targets private user chats.
+
+`message_templates` stores Uzbek and Russian Telegram template bodies, template metadata, active
+status, and a unique template key. `message_dispatch_logs` records send attempts as `sent`,
+`failed`, or `template_not_found`. The notification dispatcher marks users as blocked when Telegram
+returns a blocked-bot error and clears that flag after successful delivery or when a known user is
+saved again.
 
 While this project is pre-production and has no real user data, edit an existing table's original
 migration instead of creating follow-up alteration migrations. Add a new migration file only when
@@ -323,6 +341,7 @@ Current coverage includes:
 - CRM request authentication and retries
 - repair API paths, payloads, and retry safety
 - repair flow formatting and pagination
+- message-template rendering and notification dispatch behavior
 - registered-user client/employee upsert behavior
 - unknown-client upsert behavior
 - logger output and level gating
@@ -347,14 +366,15 @@ Do not log bot tokens, passwords, authorization headers, or unnecessary personal
 - Sessions are in memory and disappear on restart.
 - Multiple replicas cannot share session state.
 - Registered client data and repair orders are not refreshed after the initial lookup.
-- Admin-only registration is recognized, but this bot does not expose an admin interface.
+- Template management is available to CRM-recognized admins, but there is still no separate web
+  admin panel.
 - The bot uses long polling, not webhooks.
 - Private-chat operation is assumed by the data model but is not enforced by a global chat-type
   guard.
 - The health endpoint is not a dependency readiness check.
 - Repair-order creation has no client-provided idempotency key.
 - Tests do not currently include live PostgreSQL or full Telegram update integration.
-- Legacy documents under `Docs/` describe systems not implemented in this repository.
+- Legacy documents under `Docs/` may describe broader systems not implemented in this repository.
 
 Read `AGENTS.md` before making changes. It defines documentation precedence, coding conventions,
 flow invariants, migration policy, testing expectations, and completion checks.

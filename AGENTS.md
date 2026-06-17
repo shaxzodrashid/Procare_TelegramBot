@@ -32,8 +32,10 @@ Treat these documents as non-authoritative background:
   commands, modules, and dependencies that are absent here.
 - `Docs/POSTGRES_ARCHITECTURE_REPORT.md` is a snapshot of a different, larger database. It does not
   describe the schema created by this service.
-- `Docs/TemplateMessagesSystemGuide.md` is an implementation blueprint. The template, dispatch,
-  admin, coupon, and conversation systems it describes are not implemented here.
+- `Docs/TemplateMessagesSystemGuide.md` is an implementation blueprint. The current repository now
+  implements database-backed Telegram message templates, dispatch logging, blocked-user tracking,
+  and an admin template UI. Coupon business logic, scheduled campaigns, and the larger legacy
+  conversation system remain out of scope unless implemented in current source.
 - `Docs/LoggerModuleDocs.md` contains useful logger concepts, but several paths and integrations are
   from the larger application. `src/utils/logger.ts` and `tests/logger.test.ts` are authoritative.
 
@@ -70,6 +72,8 @@ always validates CRM and database configuration, connects to PostgreSQL, and run
 | `src/bot/keyboards.ts`                        | Reply and inline keyboard construction                                  |
 | `src/bot/formatters.ts`                       | Repair-order and repair-request presentation                            |
 | `src/services/client-registration.service.ts` | Authenticated CRM client lookup                                         |
+| `src/services/message-template.service.ts`    | Message template CRUD, rendering, dispatch logs, and block status       |
+| `src/services/bot-notification.service.ts`    | Telegram template notification delivery                                 |
 | `src/services/repair-order.service.ts`        | Public catalog reads and repair-order creation                          |
 | `src/services/registered-user.store.ts`       | PostgreSQL upsert for registered client and employee role rows          |
 | `src/services/unknown-client.store.ts`        | PostgreSQL upsert for declined unknown clients                          |
@@ -92,7 +96,7 @@ Startup is intentionally ordered:
 2. The logger creates the `logs/` directory and chooses a session log file.
 3. `bootstrap` creates the PostgreSQL client.
 4. Knex runs all pending migrations.
-5. CRM gateway, repair-order gateway, and unknown-client store instances are created.
+5. CRM gateway, repair-order gateway, and PostgreSQL store instances are created.
 6. When enabled, the bot authenticates with Telegram via `bot.init()`.
 7. When enabled, Fastify starts listening.
 8. The bot starts long polling.
@@ -122,8 +126,8 @@ The bot is a stateful private-chat experience:
    it is persisted as a client.
 8. A known non-admin client is held in session and can view the repair orders returned by that
    lookup.
-9. An active admin is held as an admin-only session and is not offered client repair orders or
-   unknown-client repair creation.
+9. An active admin is held as an admin-only session, can manage transactional message templates, and
+   is not offered client repair orders or unknown-client repair creation.
 10. A `404` starts the unknown-client repair-request flow.
 11. The user chooses OS, navigates paginated category levels, selects zero or more problems, adds an
     optional note, reviews the request, and submits or cancels it.
@@ -149,6 +153,8 @@ Important behavior:
   the bot is designed for private user chats.
 - The bot does not currently reject non-private chat types in middleware. If private-only operation
   must be enforced rather than assumed operationally, add an explicit chat-type guard and tests.
+- Admin template management uses the existing session state machine. `adminTemplateInput` must be
+  cleared when the admin cancels, completes, logs out, or leaves the template flow.
 
 When changing a flow, update session types, handler guards, messages, keyboards, formatters, and
 tests as one change. Avoid introducing user-facing text directly inside handlers when it belongs in
@@ -214,9 +220,10 @@ contract changes.
 
 ## Database Rules
 
-The local database currently owns three application tables: `users`, `clients`, and `employees`,
-plus Knex migration metadata. `users.telegram_id` is the unique Telegram identity used for upserts.
-`clients.user_id` and `employees.user_id` reference `users.id`.
+The local database currently owns five application tables: `users`, `clients`, `employees`,
+`message_templates`, and `message_dispatch_logs`, plus Knex migration metadata.
+`users.telegram_id` is the unique Telegram identity used for upserts. `clients.user_id`,
+`employees.user_id`, and `message_dispatch_logs.user_id` reference `users.id`.
 
 The unknown-client store persists:
 
@@ -233,6 +240,18 @@ Current decline reasons are:
 - `cancelled_confirmation`
 
 Use Knex query building and parameter binding. Do not concatenate SQL from user input.
+
+The template store persists:
+
+- unique template keys and supported template types;
+- localized Uzbek and Russian content;
+- active/inactive status;
+- per-dispatch status logs;
+- blocked-bot status on `users.is_blocked`.
+
+Template placeholder values must be escaped before being inserted into Telegram HTML output. The
+renderer intentionally preserves author-provided template markup and escapes placeholder values
+only.
 
 ### Migration Policy
 
@@ -324,8 +343,8 @@ credentials in tests.
 - Validate stale callbacks rather than assuming session state exists.
 
 When changing copy, preserve meaning across Uzbek and Russian and verify keyboard widths and message
-lengths. This repository does not currently use the database-backed message-template system
-described in `Docs/TemplateMessagesSystemGuide.md`.
+lengths. Database-backed message templates are available for transactional Telegram notifications;
+regular flow-control bot copy remains in `src/bot/messages.ts`.
 
 ## Logging And Error Handling
 
@@ -368,6 +387,7 @@ Tests currently cover:
 - formatter and keyboard pagination behavior;
 - unknown-client PostgreSQL upsert behavior;
 - logger routing, persistence, ANSI stripping, and level gating.
+- message-template rendering, caption splitting, blocked-user handling, and dispatch logging.
 
 The suite uses injected `fetch`, sleep functions, Fastify injection, temporary directories, and a
 Knex-shaped test double. It does not require Telegram, CRM, or PostgreSQL to be live.
@@ -468,8 +488,8 @@ Do not accidentally present these as implemented features:
 - Registered client profiles and repair orders are cached only in session.
 - There is no full Telegram update integration test suite.
 - There is no live PostgreSQL integration test.
-- There is no admin interface, broadcast system, coupon system, support flow, transactional template
-  system, or scheduled job layer in this repository.
+- There is no broadcast system, coupon system, support flow, or scheduled job layer in this
+  repository.
 - Public repair-order creation has no client-provided idempotency key, so it must not be retried
   automatically.
 

@@ -1,6 +1,7 @@
 import { InlineKeyboard, Keyboard } from 'grammy';
 
 import type { AdminProfile, ClientProfile, Locale } from '../types/client.js';
+import type { MessageTemplate } from '../types/message-template.js';
 import type { OsType, ProblemCategory } from '../types/repair-order.js';
 import { localizedCatalogName } from '../types/repair-order.js';
 import { t } from './messages.js';
@@ -18,16 +19,46 @@ export interface PersonalMenuUser {
 }
 
 const clientMenuKeyboard = (locale: Locale): Keyboard =>
-  new Keyboard().text(t(locale, 'orders')).row().text(t(locale, 'language')).resized();
+  new Keyboard().text(t(locale, 'orders')).row().text(t(locale, 'settings')).resized();
 
 const employeeMenuKeyboard = (locale: Locale): Keyboard =>
-  new Keyboard().text(t(locale, 'language')).resized();
+  new Keyboard().text(t(locale, 'adminTemplates')).row().text(t(locale, 'settings')).resized();
 
 export const personalMenuKeyboard = (user: PersonalMenuUser): Keyboard => {
   if (user.client) return clientMenuKeyboard(user.locale);
   if (user.admin) return employeeMenuKeyboard(user.locale);
   return languageKeyboard();
 };
+
+export const settingsKeyboard = (locale: Locale): Keyboard =>
+  new Keyboard()
+    .text(t(locale, 'settingsName'))
+    .text(t(locale, 'settingsPhone'))
+    .row()
+    .text(t(locale, 'settingsLanguage'))
+    .row()
+    .text(t(locale, 'settingsBack'))
+    .resized();
+
+export const settingsBackKeyboard = (locale: Locale): Keyboard =>
+  new Keyboard().text(t(locale, 'settingsBack')).resized().oneTime();
+
+export const settingsPhoneKeyboard = (locale: Locale): Keyboard =>
+  new Keyboard()
+    .requestContact(t(locale, 'sharePhone'))
+    .row()
+    .text(t(locale, 'settingsBack'))
+    .resized()
+    .oneTime();
+
+export const settingsLanguageKeyboard = (locale: Locale): Keyboard =>
+  new Keyboard()
+    .text(t('uz', 'uzbek'))
+    .text(t('ru', 'russian'))
+    .row()
+    .text(t(locale, 'settingsBack'))
+    .resized()
+    .oneTime();
 
 export const requestOfferKeyboard = (locale: Locale): InlineKeyboard =>
   new InlineKeyboard()
@@ -89,3 +120,43 @@ export const confirmationKeyboard = (locale: Locale): InlineKeyboard =>
   new InlineKeyboard()
     .text(t(locale, 'confirm'), 'confirm:yes')
     .text(t(locale, 'cancel'), 'confirm:no');
+
+export const adminTemplateListKeyboard = (
+  templates: Pick<MessageTemplate, 'id' | 'title' | 'is_active'>[],
+  locale: Locale,
+): InlineKeyboard => {
+  const keyboard = new InlineKeyboard();
+  templates.forEach((template) => {
+    const status = template.is_active ? '●' : '○';
+    const title =
+      template.title.length > 34 ? `${template.title.slice(0, 31).trimEnd()}...` : template.title;
+    keyboard.text(`${status} ${title}`, `tmpl:v:${template.id}`).row();
+  });
+  keyboard.text(t(locale, 'adminTemplateCreate'), 'tmpl:c');
+  return keyboard;
+};
+
+export const adminTemplateDetailKeyboard = (
+  template: Pick<MessageTemplate, 'id' | 'is_active'>,
+  locale: Locale,
+): InlineKeyboard =>
+  new InlineKeyboard()
+    .text(t(locale, 'adminTemplateEditKey'), `tmpl:e:${template.id}:k`)
+    .text(t(locale, 'adminTemplateEditType'), `tmpl:e:${template.id}:tp`)
+    .row()
+    .text(t(locale, 'adminTemplateEditTitle'), `tmpl:e:${template.id}:ti`)
+    .row()
+    .text(t(locale, 'adminTemplateEditUz'), `tmpl:e:${template.id}:uz`)
+    .text(t(locale, 'adminTemplateEditRu'), `tmpl:e:${template.id}:ru`)
+    .row()
+    .text(
+      t(locale, template.is_active ? 'adminTemplateDeactivate' : 'adminTemplateActivate'),
+      `tmpl:t:${template.id}`,
+    )
+    .row()
+    .text(t(locale, 'adminTemplateDelete'), `tmpl:d:${template.id}`)
+    .row()
+    .text(t(locale, 'adminTemplateBack'), 'tmpl:l');
+
+export const adminTemplateCancelKeyboard = (locale: Locale): Keyboard =>
+  new Keyboard().text(t(locale, 'adminTemplateCancel')).resized().oneTime();

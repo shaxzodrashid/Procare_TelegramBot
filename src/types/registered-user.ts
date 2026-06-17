@@ -21,3 +21,11 @@ export interface RegisteredEmployeeRecord extends RegisteredTelegramUserRecord {
   status: string;
   is_active: boolean;
 }
+
+export interface RegisteredUserSettingsUpdate {
+  telegram_id: string;
+  telegram_username?: string | null;
+  first_name?: string;
+  last_name?: string | null;
+  locale?: Locale;
+}

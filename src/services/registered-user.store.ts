@@ -3,12 +3,14 @@ import type { Knex } from 'knex';
 import type {
   RegisteredClientRecord,
   RegisteredEmployeeRecord,
+  RegisteredUserSettingsUpdate,
   RegisteredTelegramUserRecord,
 } from '../types/registered-user.js';
 
 export interface RegisteredUserStore {
   saveClient(record: RegisteredClientRecord): Promise<void>;
   saveEmployee(record: RegisteredEmployeeRecord): Promise<void>;
+  updateSettings(update: RegisteredUserSettingsUpdate): Promise<void>;
 }
 
 type ReturnedUserId = { id?: unknown } | string | number;
@@ -71,6 +73,19 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
     });
   }
 
+  async updateSettings(update: RegisteredUserSettingsUpdate): Promise<void> {
+    const payload: Record<string, unknown> = {
+      updated_at: this.database.fn.now(),
+    };
+
+    if ('telegram_username' in update) payload.telegram_username = update.telegram_username;
+    if ('first_name' in update) payload.first_name = update.first_name;
+    if ('last_name' in update) payload.last_name = update.last_name;
+    if ('locale' in update) payload.language_code = update.locale;
+
+    await this.database('users').where({ telegram_id: update.telegram_id }).update(payload);
+  }
+
   private async upsertUser(
     database: Knex.Transaction,
     record: RegisteredTelegramUserRecord,
@@ -83,6 +98,7 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
         last_name: record.last_name,
         phone_number: record.phone_number,
         language_code: record.locale,
+        is_blocked: false,
         last_decline_reason: null,
         declined_at: null,
       })
@@ -93,6 +109,7 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
         last_name: record.last_name,
         phone_number: record.phone_number,
         language_code: record.locale,
+        is_blocked: false,
         last_decline_reason: null,
         declined_at: null,
         updated_at: database.fn.now(),

@@ -19,6 +19,7 @@ export class PostgresUnknownClientStore implements UnknownClientStore {
         last_name: record.last_name,
         phone_number: record.phone_number,
         language_code: record.locale,
+        is_blocked: false,
         last_decline_reason: record.reason,
         declined_at: new Date(record.saved_at),
       })
@@ -29,6 +30,7 @@ export class PostgresUnknownClientStore implements UnknownClientStore {
         last_name: record.last_name,
         phone_number: record.phone_number,
         language_code: record.locale,
+        is_blocked: false,
         last_decline_reason: record.reason,
         declined_at: new Date(record.saved_at),
         updated_at: this.database.fn.now(),

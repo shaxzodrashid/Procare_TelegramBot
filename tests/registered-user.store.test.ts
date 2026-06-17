@@ -42,6 +42,10 @@ const createDatabaseDouble = (userId: string, now: Date) => {
           calls.push({ table, action: 'delete' });
           return Promise.resolve(1);
         },
+        update(payload: Record<string, unknown>) {
+          calls.push({ table, action: 'update', payload });
+          return Promise.resolve(1);
+        },
       };
       return query;
     },
@@ -90,7 +94,9 @@ describe('PostgresRegisteredUserStore', () => {
     assert.equal(transactionStarted(), true);
     assert.equal((userInsert?.payload as Record<string, unknown>).telegram_id, '1001');
     assert.equal((userInsert?.payload as Record<string, unknown>).phone_number, '+998901234567');
+    assert.equal((userInsert?.payload as Record<string, unknown>).is_blocked, false);
     assert.equal((userMerge?.payload as Record<string, unknown>).last_decline_reason, null);
+    assert.equal((userMerge?.payload as Record<string, unknown>).is_blocked, false);
     assert.equal((userMerge?.payload as Record<string, unknown>).declined_at, null);
     assert.equal((clientInsert?.payload as Record<string, unknown>).user_id, '42');
     assert.equal((clientInsert?.payload as Record<string, unknown>).crm_client_id, 'client-1');
@@ -126,5 +132,31 @@ describe('PostgresRegisteredUserStore', () => {
     assert.equal((employeeInsert?.payload as Record<string, unknown>).crm_admin_id, 'admin-1');
     assert.equal(roleConflict?.payload, 'user_id');
     assert.equal(clientDelete?.action, 'delete');
+  });
+
+  it('updates local Telegram user settings by Telegram ID', async () => {
+    const now = new Date('2026-06-17T10:00:00.000Z');
+    const { database, calls } = createDatabaseDouble('44', now);
+    const store = new PostgresRegisteredUserStore(database);
+
+    await store.updateSettings({
+      telegram_id: '1003',
+      telegram_username: 'vali',
+      first_name: 'Vali',
+      last_name: 'Karimov',
+      locale: 'ru',
+    });
+
+    const where = calls.find((call) => call.table === 'users' && call.action === 'where');
+    const update = calls.find((call) => call.table === 'users' && call.action === 'update');
+
+    assert.deepEqual(where?.payload, { telegram_id: '1003' });
+    assert.deepEqual(update?.payload, {
+      telegram_username: 'vali',
+      first_name: 'Vali',
+      last_name: 'Karimov',
+      language_code: 'ru',
+      updated_at: now,
+    });
   });
 });
