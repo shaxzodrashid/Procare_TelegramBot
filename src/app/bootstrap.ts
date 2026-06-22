@@ -6,6 +6,8 @@ import { createBot, setLocalizedBotCommands } from '../bot/create-bot.js';
 import type { BotContext } from '../bot/context.js';
 import type { AppConfig } from '../config/index.js';
 import { createDatabase, migrateDatabase } from '../database/database.js';
+import { BotDirectMessageService } from '../services/bot-notification.service.js';
+import { HttpClientRepairOrderService } from '../services/client-repair-order.service.js';
 import { HttpClientRegistrationService } from '../services/client-registration.service.js';
 import { PostgresMessageTemplateStore } from '../services/message-template.service.js';
 import { PostgresRegisteredUserStore } from '../services/registered-user.store.js';
@@ -21,6 +23,7 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
   let bot: Bot<BotContext> | undefined;
   let botTask: Promise<void> | undefined;
   let api: FastifyInstance | undefined;
+  let directMessageService: BotDirectMessageService | undefined;
   let stopping = false;
 
   const database = createDatabase(config.database);
@@ -50,6 +53,16 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
     },
     logger,
   );
+  const clientRepairOrderService = new HttpClientRepairOrderService(
+    {
+      baseUrl: config.crm.baseUrl,
+      username: config.crm.username,
+      password: config.crm.password,
+      timeoutMs: config.crm.requestTimeoutMs,
+      maxRetries: config.crm.maxRetries,
+    },
+    logger,
+  );
   const unknownClientStore = new PostgresUnknownClientStore(database);
   const registeredUserStore = new PostgresRegisteredUserStore(database);
   const messageTemplateStore = new PostgresMessageTemplateStore(database);
@@ -58,19 +71,26 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
     bot = createBot(config.bot.token!, {
       registrationService,
       repairOrderService,
+      clientRepairOrderService,
       unknownClientStore,
       registeredUserStore,
       messageTemplateStore,
       logger,
       allowManualPhoneEntry: config.nodeEnv === 'development',
+      richMessagesEnabled: config.bot.richMessagesEnabled,
     });
     await bot.init();
     await setLocalizedBotCommands(bot);
+    directMessageService = new BotDirectMessageService(
+      registeredUserStore,
+      messageTemplateStore,
+      bot.api,
+    );
     logger.info(`Telegram bot @${bot.botInfo.username} authenticated`);
   }
 
   if (config.api.enabled) {
-    api = createApiServer(config, logger);
+    api = createApiServer(config, logger, { directMessageSender: directMessageService });
     await api.listen({ host: config.api.host, port: config.api.port });
     logger.info(`Health API listening on ${config.api.host}:${config.api.port}`);
   }

@@ -9,6 +9,7 @@ export interface AppConfig {
     enabled: boolean;
     token?: string;
     username?: string;
+    richMessagesEnabled: boolean;
   };
   api: {
     enabled: boolean;
@@ -94,6 +95,11 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
     'info' as const,
   );
   const botEnabled = capture('BOT_ENABLED', () => readBoolean(env.BOT_ENABLED, true), true);
+  const richMessagesEnabled = capture(
+    'RICH_MESSAGES_ENABLED',
+    () => readBoolean(env.RICH_MESSAGES_ENABLED, false),
+    false,
+  );
   const apiEnabled = capture('API_ENABLED', () => readBoolean(env.API_ENABLED, true), true);
   const apiPort = capture(
     'API_PORT',
@@ -155,6 +161,7 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
       enabled: botEnabled,
       token: env.BOT_TOKEN?.trim(),
       username: env.BOT_USERNAME?.trim(),
+      richMessagesEnabled,
     },
     api: {
       enabled: apiEnabled,

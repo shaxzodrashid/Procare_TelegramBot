@@ -3,6 +3,8 @@ import { describe, it } from 'node:test';
 
 import {
   personalMenuKeyboard,
+  repairOrderDetailKeyboard,
+  repairOrdersKeyboard,
   settingsKeyboard,
   settingsLanguageKeyboard,
   settingsPhoneKeyboard,
@@ -68,5 +70,35 @@ describe('personal menu keyboard', () => {
       ['🇺🇿 O‘zbekcha', '🇷🇺 Русский'],
       ['⬅️ Вернуться в меню'],
     ]);
+  });
+
+  it('builds indexed order callbacks with pagination and refresh controls', () => {
+    const keyboard = repairOrdersKeyboard(
+      ['1024', '1025'],
+      { limit: 10, offset: 10, has_more: true },
+      'uz',
+    );
+
+    assert.deepEqual(
+      keyboard.inline_keyboard.flat().map((button) => ({
+        text: button.text,
+        callback_data: 'callback_data' in button ? button.callback_data : undefined,
+      })),
+      [
+        { text: '🧾 #1024', callback_data: 'ro:v:10:0' },
+        { text: '🧾 #1025', callback_data: 'ro:v:10:1' },
+        { text: '‹', callback_data: 'ro:p:0' },
+        { text: '›', callback_data: 'ro:p:20' },
+        { text: '🔄 Yangilash', callback_data: 'ro:p:10' },
+      ],
+    );
+  });
+
+  it('adds a safe map action to the detail controls', () => {
+    const keyboard = repairOrderDetailKeyboard('ru', {
+      mapUrl: 'https://maps.example.test/branch',
+    });
+
+    assert.equal(keyboard.inline_keyboard[1]?.[0]?.text, '📍 Открыть на карте');
   });
 });

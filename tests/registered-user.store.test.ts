@@ -11,7 +11,11 @@ interface QueryCall {
   payload?: unknown;
 }
 
-const createDatabaseDouble = (userId: string, now: Date) => {
+const createDatabaseDouble = (
+  userId: string,
+  now: Date,
+  firstRow?: Record<string, unknown> | null,
+) => {
   const calls: QueryCall[] = [];
   let transactionStarted = false;
 
@@ -20,6 +24,10 @@ const createDatabaseDouble = (userId: string, now: Date) => {
       const query = {
         insert(payload: Record<string, unknown>) {
           calls.push({ table, action: 'insert', payload });
+          return this;
+        },
+        select(...columns: string[]) {
+          calls.push({ table, action: 'select', payload: columns });
           return this;
         },
         onConflict(column: string) {
@@ -45,6 +53,10 @@ const createDatabaseDouble = (userId: string, now: Date) => {
         update(payload: Record<string, unknown>) {
           calls.push({ table, action: 'update', payload });
           return Promise.resolve(1);
+        },
+        first() {
+          calls.push({ table, action: 'first' });
+          return Promise.resolve(firstRow ?? undefined);
         },
       };
       return query;
@@ -158,5 +170,33 @@ describe('PostgresRegisteredUserStore', () => {
       language_code: 'ru',
       updated_at: now,
     });
+  });
+
+  it('finds a local Telegram message target by phone number', async () => {
+    const now = new Date('2026-06-17T10:00:00.000Z');
+    const { database, calls } = createDatabaseDouble('44', now, {
+      id: 45,
+      telegram_id: 1004,
+      phone_number: '+998901234567',
+      is_blocked: false,
+    });
+    const store = new PostgresRegisteredUserStore(database);
+
+    const user = await store.findByPhoneNumber('+998901234567');
+
+    assert.deepEqual(user, {
+      id: '45',
+      telegram_id: '1004',
+      phone_number: '+998901234567',
+      is_blocked: false,
+    });
+    assert.deepEqual(
+      calls.find((call) => call.table === 'users' && call.action === 'select')?.payload,
+      ['id', 'telegram_id', 'phone_number', 'is_blocked'],
+    );
+    assert.deepEqual(
+      calls.find((call) => call.table === 'users' && call.action === 'where')?.payload,
+      { phone_number: '+998901234567' },
+    );
   });
 });

@@ -1,10 +1,4 @@
-import type {
-  AdminProfile,
-  ClientProfile,
-  LocalizedReference,
-  RegistrationResult,
-  RepairOrderStatus,
-} from '../types/client.js';
+import type { AdminProfile, ClientProfile, RegistrationResult } from '../types/client.js';
 import {
   redactPhoneNumber,
   redactPhoneNumbersInText,
@@ -48,41 +42,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isNullableString = (value: unknown): value is string | null =>
   value === null || typeof value === 'string';
 
-const isLocalizedReference = (value: unknown): value is LocalizedReference => {
-  if (!isRecord(value)) return false;
-  return (
-    isNullableString(value.id) &&
-    isNullableString(value.name_uz) &&
-    isNullableString(value.name_ru) &&
-    isNullableString(value.name_en)
-  );
-};
-
-const isRepairOrderStatus = (value: unknown): value is RepairOrderStatus => {
-  if (!isLocalizedReference(value) || !isRecord(value)) return false;
-  return isNullableString(value.color) && isNullableString(value.bg_color);
-};
-
-const isRepairOrder = (value: unknown): value is ClientProfile['repair_orders'][number] => {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.id === 'string' &&
-    typeof value.total === 'string' &&
-    isNullableString(value.imei) &&
-    isNullableString(value.delivery_method) &&
-    isNullableString(value.pickup_method) &&
-    isNullableString(value.priority) &&
-    typeof value.status === 'string' &&
-    typeof value.call_count === 'number' &&
-    Number.isFinite(value.call_count) &&
-    typeof value.created_at === 'string' &&
-    isNullableString(value.description) &&
-    isLocalizedReference(value.branch) &&
-    isLocalizedReference(value.phone_category) &&
-    isRepairOrderStatus(value.repair_order_status)
-  );
-};
-
 const isAdminProfile = (value: unknown): value is AdminProfile => {
   if (!isRecord(value)) return false;
   return (
@@ -99,60 +58,53 @@ const isAdminProfile = (value: unknown): value is AdminProfile => {
   );
 };
 
-type ClientProfilePayload = Omit<ClientProfile, 'account_type' | 'is_admin' | 'admin'> &
-  Partial<Pick<ClientProfile, 'account_type' | 'is_admin' | 'admin'>>;
-
-const isClientProfilePayload = (value: unknown): value is ClientProfilePayload => {
+const isClientProfile = (value: unknown): value is ClientProfile => {
   if (!isRecord(value)) return false;
-  const profile = value;
-  const admin = 'admin' in profile ? profile.admin : null;
-  const isAdmin = 'is_admin' in profile ? profile.is_admin : admin !== null;
-
-  if ('account_type' in profile && profile.account_type !== 'client') return false;
-  if (typeof isAdmin !== 'boolean') return false;
-  if (!(admin === null || isAdminProfile(admin))) return false;
-  if (isAdmin !== (admin !== null)) return false;
-
   return (
-    typeof profile.id === 'string' &&
-    isNullableString(profile.customer_code) &&
-    isNullableString(profile.first_name) &&
-    isNullableString(profile.last_name) &&
-    typeof profile.phone_number1 === 'string' &&
-    isNullableString(profile.phone_number2) &&
-    typeof profile.phone_verified === 'boolean' &&
-    isNullableString(profile.passport_series) &&
-    isNullableString(profile.birth_date) &&
-    isNullableString(profile.id_card_number) &&
-    isNullableString(profile.language) &&
-    isNullableString(profile.telegram_chat_id) &&
-    isNullableString(profile.telegram_username) &&
-    typeof profile.source === 'string' &&
-    typeof profile.status === 'string' &&
-    typeof profile.is_active === 'boolean' &&
-    typeof profile.created_at === 'string' &&
-    typeof profile.updated_at === 'string' &&
-    isNullableString(profile.created_by) &&
-    Array.isArray(profile.repair_orders) &&
-    profile.repair_orders.every(isRepairOrder)
+    value.account_type === 'client' &&
+    typeof value.client_id === 'string' &&
+    isNullableString(value.first_name) &&
+    isNullableString(value.last_name) &&
+    isNullableString(value.language) &&
+    typeof value.has_repair_orders === 'boolean' &&
+    typeof value.is_admin === 'boolean' &&
+    (value.admin === null || isAdminProfile(value.admin)) &&
+    value.is_admin === (value.admin !== null)
   );
 };
 
-const normalizeClientProfile = (profile: ClientProfilePayload): ClientProfile => ({
-  ...profile,
+const toAdminProfile = (value: AdminProfile): AdminProfile => ({
+  id: value.id,
+  first_name: value.first_name,
+  last_name: value.last_name,
+  phone_number: value.phone_number,
+  phone_verified: value.phone_verified,
+  language: value.language,
+  status: value.status,
+  is_active: value.is_active,
+  created_at: value.created_at,
+  updated_at: value.updated_at,
+});
+
+const toClientProfile = (value: ClientProfile): ClientProfile => ({
   account_type: 'client',
-  is_admin: profile.is_admin ?? (profile.admin !== undefined && profile.admin !== null),
-  admin: profile.admin ?? null,
+  client_id: value.client_id,
+  first_name: value.first_name,
+  last_name: value.last_name,
+  language: value.language,
+  has_repair_orders: value.has_repair_orders,
+  is_admin: value.is_admin,
+  admin: value.admin ? toAdminProfile(value.admin) : null,
 });
 
 const parseRegistrationResult = (value: unknown): RegistrationResult | null => {
   if (!isRecord(value)) return null;
-  if (isClientProfilePayload(value)) return normalizeClientProfile(value);
+  if (isClientProfile(value)) return toClientProfile(value);
   if (value.account_type === 'admin' && value.is_admin === true && isAdminProfile(value.admin)) {
     return {
       account_type: 'admin',
       is_admin: true,
-      admin: value.admin,
+      admin: toAdminProfile(value.admin),
     };
   }
   return null;
@@ -169,20 +121,11 @@ const summarizeAdminProfile = (profile: AdminProfile): Record<string, unknown> =
 
 const summarizeClientProfile = (profile: ClientProfile): Record<string, unknown> => ({
   account_type: profile.account_type,
-  id: profile.id,
-  customer_code: profile.customer_code,
-  status: profile.status,
-  is_active: profile.is_active,
+  client_id: profile.client_id,
   is_admin: profile.is_admin,
   admin: profile.admin ? summarizeAdminProfile(profile.admin) : null,
-  source: profile.source,
-  phone_number1: redactPhoneNumber(profile.phone_number1),
-  phone_number2: redactPhoneNumber(profile.phone_number2),
-  phone_verified: profile.phone_verified,
   language: profile.language,
-  telegram_chat_id_present: Boolean(profile.telegram_chat_id),
-  telegram_username_present: Boolean(profile.telegram_username),
-  repair_orders_count: profile.repair_orders.length,
+  has_repair_orders: profile.has_repair_orders,
 });
 
 const summarizeRegistrationPayload = (payload: unknown): unknown => {

@@ -2,15 +2,15 @@
 
 ## Purpose
 
-The Telegram bot uses this endpoint after receiving a user's shared phone number. The API resolves
-an existing active CRM client and returns the complete client profile available to this integration,
-including all non-deleted repair orders. It also tells the bot whether the supplied phone number
-belongs to an active CRM admin.
+The Telegram bot uses this endpoint after receiving a user's shared phone number. The endpoint
+resolves an active CRM client or administrator and returns only the identity data required to start
+the correct bot session.
 
-This operation does **not** create a CRM client. An unknown, inactive, banned, pending, or deleted
-client returns `404 Not Found` only when there is also no active/open admin with the supplied phone
-number. If the client does not exist but the admin exists, the endpoint returns `200 OK` with
-`account_type = admin` and the admin details.
+Registration does not create a CRM client and never returns repair-order objects, passport data,
+identity-card data, full CRM profiles, or other customer-sensitive fields.
+
+Repair orders are loaded separately through
+`Docs/TELEGRAM_CLIENT_REPAIR_ORDERS_API.md`.
 
 ## Endpoint
 
@@ -20,31 +20,7 @@ Content-Type: application/json
 Authorization: Basic <base64(username:password)>
 ```
 
-Full local example:
-
-```http
-POST http://localhost:5001/api/v1/users/register-client
-```
-
-## Authentication
-
-Use the shared Telegram bot HTTP Basic Auth credentials configured on the API server:
-
-| Setting                            | Purpose              |
-| ---------------------------------- | -------------------- |
-| `TELEGRAM_BOT_BASIC_AUTH_USER`     | Bot service username |
-| `TELEGRAM_BOT_BASIC_AUTH_PASSWORD` | Bot service password |
-
-These credentials authenticate the bot service, not the Telegram user.
-
-Example:
-
-```bash
-curl --request POST "http://localhost:5001/api/v1/users/register-client" \
-  --user "$TELEGRAM_BOT_BASIC_AUTH_USER:$TELEGRAM_BOT_BASIC_AUTH_PASSWORD" \
-  --header "Content-Type: application/json" \
-  --data '{"phone_number":"90 123 45 67"}'
-```
+The Basic Auth credentials authenticate the trusted Telegram bot service, not the Telegram user.
 
 ## Request
 
@@ -54,71 +30,43 @@ curl --request POST "http://localhost:5001/api/v1/users/register-client" \
 }
 ```
 
-`phone_number` is required. No additional body properties are accepted.
+`phone_number` is required and no additional body properties are accepted. The API normalizes the
+documented Uzbek formats before lookup.
 
-Accepted equivalent formats:
+The lookup checks the CRM client's primary and secondary phone numbers. Only clients with
+`status = Open` and `is_active = true` are eligible. The same normalized phone candidates are
+checked against active/open administrators.
 
-| Input            | Normalized lookup value |
-| ---------------- | ----------------------- |
-| `+998901234567`  | `+998901234567`         |
-| `998901234567`   | `+998901234567`         |
-| `901234567`      | `+998901234567`         |
-| `90 123 45 67`   | `+998901234567`         |
-| `(90) 123-45-67` | `+998901234567`         |
-
-The lookup checks both `users.phone_number1` and `users.phone_number2`. Only clients with
-`status = Open` and `is_active = true` are eligible.
-
-The same normalized phone candidates are also checked against `admins.phone_number`. `is_admin` is
-`true` only when a matching admin has `status = Open` and `is_active = true`.
-
-## Response Summary
-
-| HTTP status | Meaning                                                             | Bot action                                       |
-| ----------- | ------------------------------------------------------------------- | ------------------------------------------------ |
-| `200`       | Client found, or no client found but an active/open admin was found | Use `account_type` to choose client/admin flow   |
-| `400`       | Invalid request body or phone number                                | Ask the user to share a valid Uzbek phone        |
-| `401`       | Missing, malformed, invalid, or unconfigured Basic Auth             | Do not retry until service credentials are fixed |
-| `404`       | No active/open client and no active/open admin matched the phone    | Start the bot's unknown-user flow                |
-| `500`       | Unexpected API or database failure                                  | Log and retry according to bot retry policy      |
-| `503`       | CRM API is in maintenance mode                                      | Show maintenance notice and retry later          |
-
-Except for `503`, errors use this envelope:
-
-```json
-{
-  "statusCode": 400,
-  "message": "Human-readable message",
-  "error": "Machine-readable error category",
-  "location": "field_or_failure_location",
-  "timestamp": "2026-06-15T10:00:00.000Z",
-  "path": "/api/v1/users/register-client"
-}
-```
-
-## 200 OK
-
-### Client response with matching admin
+## Client response
 
 ```json
 {
   "account_type": "client",
-  "id": "11111111-1111-4111-8111-111111111111",
-  "customer_code": "C-1001",
+  "client_id": "11111111-1111-4111-8111-111111111111",
   "first_name": "Ali",
   "last_name": "Valiyev",
-  "phone_number1": "+998901234567",
-  "phone_number2": "+998911234567",
-  "phone_verified": true,
-  "passport_series": "AA1234567",
-  "birth_date": "1995-04-12",
-  "id_card_number": "AD1234567",
   "language": "uz",
-  "telegram_chat_id": "123456789",
-  "telegram_username": "ali_valiyev",
-  "source": "employee",
-  "status": "Open",
-  "is_active": true,
+  "has_repair_orders": true,
+  "is_admin": false,
+  "admin": null
+}
+```
+
+`first_name`, `last_name`, and `language` may be `null`.
+
+`has_repair_orders` is a point-in-time hint only. The bot must still call the dedicated list
+endpoint whenever the user opens “My orders.”
+
+## Client response with matching administrator
+
+```json
+{
+  "account_type": "client",
+  "client_id": "11111111-1111-4111-8111-111111111111",
+  "first_name": "Ali",
+  "last_name": "Valiyev",
+  "language": "uz",
+  "has_repair_orders": true,
   "is_admin": true,
   "admin": {
     "id": "77777777-7777-4777-8777-777777777777",
@@ -131,83 +79,15 @@ Except for `503`, errors use this envelope:
     "is_active": true,
     "created_at": "2026-01-08T08:30:00.000Z",
     "updated_at": "2026-06-15T09:45:00.000Z"
-  },
-  "created_at": "2026-01-10T08:30:00.000Z",
-  "updated_at": "2026-06-15T09:45:00.000Z",
-  "created_by": "22222222-2222-4222-8222-222222222222",
-  "repair_orders": [
-    {
-      "id": "33333333-3333-4333-8333-333333333333",
-      "total": "350000.00",
-      "imei": "356789012345678",
-      "delivery_method": "Self",
-      "pickup_method": "Pickup",
-      "priority": "High",
-      "status": "Open",
-      "call_count": 2,
-      "created_at": "2026-06-14T11:20:00.000Z",
-      "description": "Display replacement and diagnostics",
-      "branch": {
-        "id": "44444444-4444-4444-8444-444444444444",
-        "name_uz": "Chilonzor filiali",
-        "name_ru": "Чиланзарский филиал",
-        "name_en": "Chilanzar branch"
-      },
-      "phone_category": {
-        "id": "55555555-5555-4555-8555-555555555555",
-        "name_uz": "iPhone 14 Pro",
-        "name_ru": "iPhone 14 Pro",
-        "name_en": "iPhone 14 Pro"
-      },
-      "repair_order_status": {
-        "id": "66666666-6666-4666-8666-666666666666",
-        "name_uz": "Ta'mirlashda",
-        "name_ru": "В ремонте",
-        "name_en": "In repair",
-        "color": "#16A34A",
-        "bg_color": "#DCFCE7"
-      }
-    }
-  ]
+  }
 }
 ```
 
-### Client without repair orders
+The current bot treats any successful response with `is_admin = true` as an employee-only session.
 
-`repair_orders` is always present. It is an empty array when no matching orders exist:
+## Administrator-only response
 
-```json
-{
-  "account_type": "client",
-  "id": "11111111-1111-4111-8111-111111111111",
-  "customer_code": null,
-  "first_name": "Ali",
-  "last_name": "Valiyev",
-  "phone_number1": "+998901234567",
-  "phone_number2": null,
-  "phone_verified": false,
-  "passport_series": null,
-  "birth_date": null,
-  "id_card_number": null,
-  "language": "uz",
-  "telegram_chat_id": null,
-  "telegram_username": null,
-  "source": "other",
-  "status": "Open",
-  "is_active": true,
-  "is_admin": false,
-  "admin": null,
-  "created_at": "2026-06-15T08:30:00.000Z",
-  "updated_at": "2026-06-15T08:30:00.000Z",
-  "created_by": null,
-  "repair_orders": []
-}
-```
-
-### Admin without matching client
-
-When the phone number does not belong to an active/open client but does belong to an active/open
-admin, the endpoint returns `200 OK` with only the admin branch of the response:
+When no active/open client matches but an active/open administrator does:
 
 ```json
 {
@@ -228,176 +108,34 @@ admin, the endpoint returns `200 OK` with only the admin branch of the response:
 }
 ```
 
-### Success field rules
+## Response summary
 
-- `account_type` is always present on `200 OK`. It is `client` when an active/open client matched
-  and `admin` when only an active/open admin matched.
-- `total` is a decimal string, not a JSON number.
-- `is_admin` is always present on `200 OK`; it reflects an active/open admin account with the
-  submitted phone number, not the client record itself.
-- `admin` is an object when `is_admin = true`; otherwise it is `null` on client responses.
-- `repair_orders` is present only on `account_type = client` responses.
-- `telegram_chat_id` is a string when present.
-- Nullable client fields can be `null`.
-- Joined `branch`, `phone_category`, and `repair_order_status` properties are always objects, but
-  their individual fields can be `null` if referenced data is unavailable.
-- Repair orders are sorted newest first by `created_at`.
-- Orders with `status = Deleted` are excluded. `Open`, `Closed`, and `Cancelled` orders can appear.
+| HTTP status | Meaning | Bot action |
+| --- | --- | --- |
+| `200` | Active client or administrator found | Select client/employee flow |
+| `400` | Invalid request body or phone number | Ask for a valid Uzbek number |
+| `401` | Missing, malformed, invalid, or unconfigured Basic Auth | Do not retry until credentials are fixed |
+| `404` | No active/open client or administrator matched | Start unknown-client flow |
+| `500` | Unexpected API or database failure | Treat as temporarily unavailable |
+| `503` | CRM API is in maintenance mode | Show maintenance message and retry later |
 
-## 400 Bad Request
-
-### Missing, empty, non-string, or invalid phone number
+Except for the platform maintenance response, errors use:
 
 ```json
 {
   "statusCode": 400,
-  "message": "Invalid phone number format",
-  "error": "ValidationError",
-  "location": "phone_number",
+  "message": "Human-readable message",
+  "error": "Machine-readable error category",
+  "location": "field_or_failure_location",
   "timestamp": "2026-06-15T10:00:00.000Z",
   "path": "/api/v1/users/register-client"
 }
 ```
 
-Examples that produce this response include `{}`, `{"phone_number": ""}`,
-`{"phone_number": "123"}`, and `{"phone_number": 123}`.
+## Privacy requirements
 
-### Unsupported body property
-
-Request:
-
-```json
-{
-  "phone_number": "+998901234567",
-  "extra": true
-}
-```
-
-Response:
-
-```json
-{
-  "statusCode": 400,
-  "message": "Property extra should not exist",
-  "error": "ValidationError",
-  "location": "extra",
-  "timestamp": "2026-06-15T10:00:00.000Z",
-  "path": "/api/v1/users/register-client"
-}
-```
-
-## 401 Unauthorized
-
-### Missing or non-Basic Authorization header
-
-```json
-{
-  "statusCode": 401,
-  "message": "Unauthorized: Missing or invalid basic authorization credentials",
-  "error": "UnauthorizedException",
-  "location": "basic_auth_header",
-  "timestamp": "2026-06-15T10:00:00.000Z",
-  "path": "/api/v1/users/register-client"
-}
-```
-
-### Malformed Basic credentials
-
-The decoded Basic Auth value does not contain the required `username:password` separator.
-
-```json
-{
-  "statusCode": 401,
-  "message": "Unauthorized: Invalid credentials format",
-  "error": "UnauthorizedException",
-  "location": "basic_auth_format",
-  "timestamp": "2026-06-15T10:00:00.000Z",
-  "path": "/api/v1/users/register-client"
-}
-```
-
-### Incorrect username or password
-
-```json
-{
-  "statusCode": 401,
-  "message": "Unauthorized: Invalid login or password",
-  "error": "UnauthorizedException",
-  "location": "basic_auth_credentials",
-  "timestamp": "2026-06-15T10:00:00.000Z",
-  "path": "/api/v1/users/register-client"
-}
-```
-
-### Server credentials are not configured
-
-```json
-{
-  "statusCode": 401,
-  "message": "Unauthorized: Telegram bot Basic Auth is not configured on server",
-  "error": "UnauthorizedException",
-  "location": "basic_auth_config",
-  "timestamp": "2026-06-15T10:00:00.000Z",
-  "path": "/api/v1/users/register-client"
-}
-```
-
-## 404 Not Found
-
-This response covers all of these cases:
-
-- no client has the supplied phone in `phone_number1` or `phone_number2`, and no admin has it in
-  `phone_number`;
-- any matching client and admin records are inactive;
-- any matching client and admin records have status `Pending`, `Banned`, or `Deleted`;
-- the matching client becomes unavailable between lookup and response construction.
-
-```json
-{
-  "statusCode": 404,
-  "message": "User not found",
-  "error": "NotFound",
-  "location": "phone_number",
-  "timestamp": "2026-06-15T10:00:00.000Z",
-  "path": "/api/v1/users/register-client"
-}
-```
-
-In the rare last case, the location can instead be `user_not_found`.
-
-## 500 Internal Server Error
-
-Unexpected application or database failures use the standard error envelope:
-
-```json
-{
-  "statusCode": 500,
-  "message": "Unexpected error",
-  "error": "InternalServerError",
-  "location": null,
-  "timestamp": "2026-06-15T10:00:00.000Z",
-  "path": "/api/v1/users/register-client"
-}
-```
-
-PostgreSQL failures can provide a more specific `message`, `error`, and `location`.
-
-## 503 Service Unavailable
-
-Maintenance mode is handled before the controller and returns a smaller response:
-
-```json
-{
-  "message": "🛠 Texnik ishlar ketmoqda. Iltimos, keyinroq urinib ko‘ring.",
-  "location": "maintenance_mode"
-}
-```
-
-## Bot Integration Notes
-
-- Treat the HTTP status as the primary result discriminator.
-- Do not infer success from the presence of `message`; maintenance and errors also contain it.
-- Do not retry `400`, `401`, or `404` automatically.
-- Retry `500` and `503` only with bounded backoff.
-- Never log the Basic Auth password or complete `Authorization` header.
-- The endpoint is idempotent and read-only; repeated valid requests return current CRM data.
+- Build the response from an explicit allowlist.
+- Do not return repair orders or use registration as an order cache.
+- Do not return passport, ID-card, birth-date, Telegram chat, or CRM-internal fields.
+- Never log the Basic Auth password, authorization header, or complete phone number.
+- Keep administrator data limited to the fields required by the bot's employee session.

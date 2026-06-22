@@ -45,6 +45,11 @@ export interface BotSession {
   locale: Locale;
   client?: ClientProfile;
   admin?: AdminProfile;
+  repairOrdersView?: {
+    offset: number;
+    orderNumbers: string[];
+    selectedOrderNumber?: string;
+  };
   stage?: RegistrationStage;
   unknownClient?: UnknownClientSession;
   repairDraft?: RepairRequestDraft;

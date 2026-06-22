@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import type { Api } from 'grammy';
 
 import {
+  BotDirectMessageService,
   BotNotificationService,
   isTelegramBlockedError,
 } from '../src/services/bot-notification.service.js';
@@ -18,6 +19,7 @@ import type {
   MessageTemplateType,
   MessageTemplateUpdate,
 } from '../src/types/message-template.js';
+import type { RegisteredUserMessageTarget } from '../src/types/registered-user.js';
 
 const template = (overrides: Partial<MessageTemplate> = {}): MessageTemplate => ({
   id: '1',
@@ -77,10 +79,15 @@ class MemoryTemplateStore implements MessageTemplateStore {
 }
 
 const createTelegramDouble = (sendMessageError?: unknown) => {
-  const calls: Array<{ method: string; text?: string; options?: unknown }> = [];
+  const calls: Array<{
+    method: string;
+    chatId?: string | number;
+    text?: string;
+    options?: unknown;
+  }> = [];
   const telegram = {
-    async sendMessage(_chatId: string | number, text: string, options?: unknown) {
-      calls.push({ method: 'sendMessage', text, options });
+    async sendMessage(chatId: string | number, text: string, options?: unknown) {
+      calls.push({ method: 'sendMessage', chatId, text, options });
       if (sendMessageError) throw sendMessageError;
       return {};
     },
@@ -92,6 +99,14 @@ const createTelegramDouble = (sendMessageError?: unknown) => {
 
   return { telegram, calls };
 };
+
+class MemoryRegisteredUserLookup {
+  constructor(private readonly user: RegisteredUserMessageTarget | null) {}
+
+  async findByPhoneNumber(phoneNumber: string): Promise<RegisteredUserMessageTarget | null> {
+    return this.user?.phone_number === phoneNumber ? this.user : null;
+  }
+}
 
 describe('MessageTemplateRenderer', () => {
   it('renders localized placeholders and wraps coupon codes for Telegram copy', () => {
@@ -187,5 +202,77 @@ describe('BotNotificationService', () => {
     assert.equal(store.logs[0]?.status, 'failed');
     assert.deepEqual(store.blockedUpdates, [{ telegramId: '1001', isBlocked: true }]);
     assert.equal(isTelegramBlockedError(new Error('Forbidden: bot was blocked')), true);
+  });
+});
+
+describe('BotDirectMessageService', () => {
+  it('sends plain Telegram messages to the user found by phone number', async () => {
+    const store = new MemoryTemplateStore(null);
+    const users = new MemoryRegisteredUserLookup({
+      id: '7',
+      telegram_id: '1001',
+      phone_number: '+998901234567',
+      is_blocked: false,
+    });
+    const { telegram, calls } = createTelegramDouble();
+    const service = new BotDirectMessageService(users, store, telegram);
+
+    const result = await service.sendDirectMessage({
+      phoneNumber: '+998901234567',
+      message: 'Salom',
+    });
+
+    assert.deepEqual(result, { status: 'sent' });
+    assert.deepEqual(calls, [
+      { method: 'sendMessage', chatId: '1001', text: 'Salom', options: undefined },
+    ]);
+    assert.deepEqual(store.blockedUpdates, [{ telegramId: '1001', isBlocked: false }]);
+    assert.equal(store.logs[0]?.dispatch_type, 'api_direct_message');
+    assert.equal(store.logs[0]?.status, 'sent');
+  });
+
+  it('does not send to users already marked as blocked', async () => {
+    const store = new MemoryTemplateStore(null);
+    const users = new MemoryRegisteredUserLookup({
+      id: '7',
+      telegram_id: '1001',
+      phone_number: '+998901234567',
+      is_blocked: true,
+    });
+    const { telegram, calls } = createTelegramDouble();
+    const service = new BotDirectMessageService(users, store, telegram);
+
+    const result = await service.sendDirectMessage({
+      phoneNumber: '+998901234567',
+      message: 'Salom',
+    });
+
+    assert.deepEqual(result, { status: 'blocked' });
+    assert.equal(calls.length, 0);
+    assert.equal(store.logs[0]?.status, 'failed');
+  });
+
+  it('marks a user blocked when direct Telegram delivery is forbidden', async () => {
+    const store = new MemoryTemplateStore(null);
+    const users = new MemoryRegisteredUserLookup({
+      id: '7',
+      telegram_id: '1001',
+      phone_number: '+998901234567',
+      is_blocked: false,
+    });
+    const { telegram } = createTelegramDouble({
+      error_code: 403,
+      description: 'Forbidden: bot was blocked by the user',
+    });
+    const service = new BotDirectMessageService(users, store, telegram);
+
+    const result = await service.sendDirectMessage({
+      phoneNumber: '+998901234567',
+      message: 'Salom',
+    });
+
+    assert.deepEqual(result, { status: 'failed' });
+    assert.deepEqual(store.blockedUpdates, [{ telegramId: '1001', isBlocked: true }]);
+    assert.equal(store.logs[0]?.status, 'failed');
   });
 });

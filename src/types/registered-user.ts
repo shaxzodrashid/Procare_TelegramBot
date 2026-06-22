@@ -29,3 +29,10 @@ export interface RegisteredUserSettingsUpdate {
   last_name?: string | null;
   locale?: Locale;
 }
+
+export interface RegisteredUserMessageTarget {
+  id: string;
+  telegram_id: string;
+  phone_number: string;
+  is_blocked: boolean;
+}

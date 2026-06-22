@@ -3,6 +3,7 @@ import type { Knex } from 'knex';
 import type {
   RegisteredClientRecord,
   RegisteredEmployeeRecord,
+  RegisteredUserMessageTarget,
   RegisteredUserSettingsUpdate,
   RegisteredTelegramUserRecord,
 } from '../types/registered-user.js';
@@ -11,9 +12,16 @@ export interface RegisteredUserStore {
   saveClient(record: RegisteredClientRecord): Promise<void>;
   saveEmployee(record: RegisteredEmployeeRecord): Promise<void>;
   updateSettings(update: RegisteredUserSettingsUpdate): Promise<void>;
+  findByPhoneNumber(phoneNumber: string): Promise<RegisteredUserMessageTarget | null>;
 }
 
 type ReturnedUserId = { id?: unknown } | string | number;
+type UserMessageTargetRow = {
+  id: string | number;
+  telegram_id: string | number;
+  phone_number: string;
+  is_blocked: boolean;
+};
 
 const parseReturnedUserId = (rows: ReturnedUserId[]): string => {
   const first = rows[0];
@@ -84,6 +92,22 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
     if ('locale' in update) payload.language_code = update.locale;
 
     await this.database('users').where({ telegram_id: update.telegram_id }).update(payload);
+  }
+
+  async findByPhoneNumber(phoneNumber: string): Promise<RegisteredUserMessageTarget | null> {
+    const row = (await this.database('users')
+      .select('id', 'telegram_id', 'phone_number', 'is_blocked')
+      .where({ phone_number: phoneNumber })
+      .first()) as UserMessageTargetRow | undefined;
+
+    if (!row) return null;
+
+    return {
+      id: String(row.id),
+      telegram_id: String(row.telegram_id),
+      phone_number: row.phone_number,
+      is_blocked: row.is_blocked,
+    };
   }
 
   private async upsertUser(

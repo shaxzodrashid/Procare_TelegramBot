@@ -1,7 +1,7 @@
 # Procare Telegram Bot
 
 Procare Telegram Bot is a TypeScript service that connects Telegram users to Procare CRM. It
-registers existing clients by their shared phone number, displays repair orders returned by CRM,
+registers existing clients by their shared phone number, fetches customer-safe repair tracking data,
 and lets unknown clients submit a public repair request.
 
 The process also exposes a small Fastify health API and stores Telegram user registrations in
@@ -15,6 +15,7 @@ PostgreSQL, including separate client and employee role rows.
 - development-only manual phone number entry during registration
 - Uzbek phone normalization to `+998XXXXXXXXX`
 - CRM client lookup using HTTP Basic Auth
+- authenticated, paginated customer repair-order list and detail tracking
 - bounded retries for safe upstream reads
 - repair catalog navigation with category pagination
 - multi-select repair problems and an optional note
@@ -24,7 +25,8 @@ PostgreSQL, including separate client and employee role rows.
 - database-backed transactional message templates with Uzbek/Russian rendering
 - Telegram notification dispatch logging and blocked-user tracking for template messages
 - admin-only template management inside the bot
-- localized repair-order formatting
+- API-triggered direct Telegram messages to registered users by phone number
+- localized rich repair-order cards with classic Telegram HTML fallback
 - Fastify `GET /health` endpoint
 - console and per-session file logging
 - automatic Knex migrations and graceful shutdown
@@ -39,7 +41,8 @@ PostgreSQL, including separate client and employee role rows.
      (or type the phone number manually when NODE_ENV=development)
   -> existing CRM client
        -> show profile confirmation
-       -> show repair orders from the registration response
+       -> fetch repair orders when "My orders" is opened
+       -> open and explicitly refresh customer-safe order details
   -> active CRM admin without a matching client profile
        -> show admin-account confirmation
        -> manage transactional message templates
@@ -139,6 +142,27 @@ Example response:
 
 This is a process health endpoint. It does not actively probe PostgreSQL, Telegram, or CRM.
 
+The direct message endpoint is:
+
+```http
+POST http://localhost:3000/messages/send
+Content-Type: application/json
+```
+
+Request:
+
+```json
+{
+  "phone_number": "+998901234567",
+  "message": "Salom"
+}
+```
+
+The API normalizes Uzbek phone numbers, finds the local `users` row by `phone_number`, and sends a
+plain Telegram message to that user's `telegram_id`. It returns `404` when no local user matches,
+`409` when the user is already marked as blocked, `502` when Telegram delivery fails, and `503` when
+the Telegram bot is disabled so delivery is unavailable.
+
 ## Docker Compose
 
 Create `.env`, then run:
@@ -178,6 +202,7 @@ All supported variables are listed in `.env.example`.
 | `BOT_ENABLED`                      | `true`          | Enable Telegram bot startup                |
 | `BOT_TOKEN`                        | none            | Required when `BOT_ENABLED=true`           |
 | `BOT_USERNAME`                     | none            | Optional; currently not used at runtime    |
+| `RICH_MESSAGES_ENABLED`            | `false`         | Rich order cards with HTML fallback        |
 | `API_ENABLED`                      | `true`          | Enable the Fastify health API              |
 | `API_HOST`                         | `0.0.0.0`       | API listen host                            |
 | `API_PORT`                         | `3000`          | API listen port                            |
@@ -257,20 +282,21 @@ src/server.ts
 
 Main modules:
 
-| Path                                          | Responsibility                          |
-| --------------------------------------------- | --------------------------------------- |
-| `src/app/bootstrap.ts`                        | Dependency wiring and lifecycle         |
-| `src/bot/create-bot.ts`                       | Commands and conversation state machine |
-| `src/bot/messages.ts`                         | Uzbek and Russian messages              |
-| `src/bot/keyboards.ts`                        | Reply and inline keyboards              |
-| `src/bot/formatters.ts`                       | Telegram-safe presentation              |
-| `src/services/client-registration.service.ts` | Authenticated CRM client lookup         |
-| `src/services/message-template.service.ts`    | Template CRUD, rendering, and logs      |
-| `src/services/bot-notification.service.ts`    | Template delivery through Telegram      |
-| `src/services/repair-order.service.ts`        | Public catalog and repair-order API     |
-| `src/services/unknown-client.store.ts`        | Declined-user PostgreSQL upsert         |
-| `src/api/server.ts`                           | Health endpoint                         |
-| `src/config/index.ts`                         | Environment validation                  |
+| Path                                          | Responsibility                                |
+| --------------------------------------------- | --------------------------------------------- |
+| `src/app/bootstrap.ts`                        | Dependency wiring and lifecycle               |
+| `src/bot/create-bot.ts`                       | Commands and conversation state machine       |
+| `src/bot/messages.ts`                         | Uzbek and Russian messages                    |
+| `src/bot/keyboards.ts`                        | Reply and inline keyboards                    |
+| `src/bot/formatters.ts`                       | Telegram-safe presentation                    |
+| `src/services/client-registration.service.ts` | Authenticated CRM client lookup               |
+| `src/services/client-repair-order.service.ts` | Authenticated customer repair tracking        |
+| `src/services/message-template.service.ts`    | Template CRUD, rendering, and logs            |
+| `src/services/bot-notification.service.ts`    | Template and direct delivery through Telegram |
+| `src/services/repair-order.service.ts`        | Public catalog and repair-order API           |
+| `src/services/unknown-client.store.ts`        | Declined-user PostgreSQL upsert               |
+| `src/api/server.ts`                           | Health endpoint                               |
+| `src/config/index.ts`                         | Environment validation                        |
 
 ## Upstream API Behavior
 
@@ -278,6 +304,14 @@ Client registration calls:
 
 ```http
 POST /api/v1/users/register-client
+Authorization: Basic ...
+```
+
+Client repair tracking calls:
+
+```http
+GET /api/v1/telegram/clients/{client_id}/repair-orders?limit=10&offset=0
+GET /api/v1/telegram/clients/{client_id}/repair-orders/{order_number}
 Authorization: Basic ...
 ```
 
@@ -290,15 +324,17 @@ GET  /api/v1/calculator/problem-categories/{phone_category_id}
 POST /api/v1/repair-orders/open
 ```
 
-Registration and catalog reads retry bounded maintenance or availability failures with exponential
-backoff. Client registration treats any `is_admin=true` response as an employee session; all other
-successful registration responses are client sessions. Public repair-order creation is intentionally
-attempted once because the upstream endpoint is not idempotent and a retry can create a duplicate
-order.
+Registration, client repair tracking, and catalog reads retry bounded maintenance or availability
+failures with exponential backoff. Registration returns only compact identity data and never embeds
+repair orders. Client registration treats any `is_admin=true` response as an employee session; all
+other successful registration responses are client sessions. Public repair-order creation is
+intentionally attempted once because the upstream endpoint is not idempotent and a retry can create
+a duplicate order.
 
 See:
 
 - `Docs/TELEGRAM_CLIENT_REGISTRATION_API.md`
+- `Docs/TELEGRAM_CLIENT_REPAIR_ORDERS_API.md`
 - `Docs/PUBLIC_REPAIR_ORDER_AND_CALCULATOR_API_REFERENCE.md`
 
 ## Database And Migrations
@@ -313,10 +349,10 @@ into `users` with the latest decline metadata. A separate chat ID is not stored 
 currently targets private user chats.
 
 `message_templates` stores Uzbek and Russian Telegram template bodies, template metadata, active
-status, and a unique template key. `message_dispatch_logs` records send attempts as `sent`,
-`failed`, or `template_not_found`. The notification dispatcher marks users as blocked when Telegram
-returns a blocked-bot error and clears that flag after successful delivery or when a known user is
-saved again.
+status, and a unique template key. `message_dispatch_logs` records template and direct API send
+attempts as `sent`, `failed`, or `template_not_found`. The notification dispatcher marks users as
+blocked when Telegram returns a blocked-bot error and clears that flag after successful delivery or
+when a known user is saved again.
 
 While this project is pre-production and has no real user data, edit an existing table's original
 migration instead of creating follow-up alteration migrations. Add a new migration file only when
@@ -337,6 +373,7 @@ Current coverage includes:
 
 - configuration parsing
 - health API
+- direct message API validation and response mapping
 - Uzbek phone normalization
 - CRM request authentication and retries
 - repair API paths, payloads, and retry safety
@@ -355,9 +392,9 @@ YYYY-MM-DD_HH-mm.log
 ```
 
 `info`, `warn`, and `error` are always active. `debug` is enabled in development or with
-`LOG_LEVEL=debug|extra-high`. `extra-high` also enables sanitized Telegram, CRM registration, and
-public repair API request/response diagnostics. Table output is enabled in development or
-`extra-high`.
+`LOG_LEVEL=debug|extra-high`. `extra-high` also enables sanitized Telegram, CRM registration,
+customer repair tracking, and public repair API request/response diagnostics. Table output is
+enabled in development or `extra-high`.
 
 Do not log bot tokens, passwords, authorization headers, or unnecessary personal data.
 
@@ -365,7 +402,7 @@ Do not log bot tokens, passwords, authorization headers, or unnecessary personal
 
 - Sessions are in memory and disappear on restart.
 - Multiple replicas cannot share session state.
-- Registered client data and repair orders are not refreshed after the initial lookup.
+- Registered client identity remains in the in-memory session; repair orders are fetched on demand.
 - Template management is available to CRM-recognized admins, but there is still no separate web
   admin panel.
 - The bot uses long polling, not webhooks.

@@ -1,0 +1,265 @@
+# Telegram Client Repair Orders API
+
+All endpoints are called by the trusted Telegram bot backend and require:
+
+```http
+Authorization: Basic <telegram bot service credentials>
+```
+
+`client_id` identifies the requested client. It is not an authentication credential.
+The API controller is guarded by `TelegramBotBasicAuthGuard`.
+
+## Registration
+
+```http
+POST /api/v1/users/register-client
+```
+
+```json
+{
+  "phone_number": "+998901234567"
+}
+```
+
+Client response:
+
+```json
+{
+  "account_type": "client",
+  "client_id": "11111111-1111-4111-8111-111111111111",
+  "first_name": "Ali",
+  "last_name": "Valiyev",
+  "language": "uz",
+  "has_repair_orders": true,
+  "is_admin": false,
+  "admin": null
+}
+```
+
+`has_repair_orders` is a point-in-time hint. It must not suppress future list requests.
+Registration never returns repair-order objects.
+
+## List repair orders
+
+```http
+GET /api/v1/telegram/clients/:client_id/repair-orders?limit=10&offset=0
+```
+
+- `limit`: 1–50, default 10
+- `offset`: minimum 0, default 0
+- Sort: `created_at DESC, id DESC`
+- Apply client ownership, branch visibility, status visibility, and explicit customer-status mapping
+  before pagination and total calculation.
+
+```json
+{
+  "orders": [
+    {
+      "order_number": "1024",
+      "device": {
+        "brand": "Apple",
+        "model": "iPhone 14 Pro"
+      },
+      "status": {
+        "code": "IN_REPAIR",
+        "name_uz": "Ta’mirlash jarayoni",
+        "name_ru": "В процессе ремонта",
+        "name_en": "In Repair",
+        "progress_type": "linear",
+        "step": 4,
+        "total_steps": 7,
+        "updated_at": "2026-06-18T10:00:00.000Z"
+      },
+      "created_at": "2026-06-14T11:20:00.000Z",
+      "estimated_ready_at": null,
+      "pricing": {
+        "currency": "UZS",
+        "final_total": "350000",
+        "payment_status": "partial"
+      }
+    }
+  ],
+  "pagination": {
+    "limit": 10,
+    "offset": 0,
+    "total": 1,
+    "has_more": false
+  }
+}
+```
+
+## Repair order detail
+
+```http
+GET /api/v1/telegram/clients/:client_id/repair-orders/:order_number
+```
+
+The detail response adds:
+
+- Customer-facing status messages
+- Last four IMEI digits
+- Localized problem and service summaries
+- Estimated, final, paid, and remaining totals
+- Customer-safe payment rows
+- Branch address, telephone, working hours, and map URL
+- Completion and pickup timestamps
+- Warranty period and expiry
+- Customer-visible status history
+
+Unavailable optional values are returned as `null`. Arrays are returned as empty arrays.
+
+Example:
+
+```json
+{
+  "order_number": "1024",
+  "device": {
+    "brand": "Apple",
+    "model": "iPhone 14 Pro",
+    "imei_last4": "5678"
+  },
+  "status": {
+    "code": "IN_REPAIR",
+    "name_uz": "Ta’mirlash jarayoni",
+    "name_ru": "В процессе ремонта",
+    "name_en": "In Repair",
+    "customer_message_uz": "Qurilmangiz ta’mirlanmoqda",
+    "customer_message_ru": "Ваше устройство ремонтируется",
+    "customer_message_en": "Your device is being repaired",
+    "progress_type": "linear",
+    "step": 4,
+    "total_steps": 7,
+    "updated_at": "2026-06-18T10:00:00.000Z"
+  },
+  "created_at": "2026-06-14T11:20:00.000Z",
+  "estimated_ready_at": null,
+  "updated_at": "2026-06-18T10:00:00.000Z",
+  "problem_summary": {
+    "uz": "Displey shikastlangan",
+    "ru": "Повреждён дисплей",
+    "en": "Damaged display"
+  },
+  "service_summary": {
+    "uz": "Displeyni almashtirish",
+    "ru": "Замена дисплея",
+    "en": "Display replacement"
+  },
+  "pricing": {
+    "currency": "UZS",
+    "estimated_total": null,
+    "final_total": "350000.00",
+    "paid_amount": "100000.00",
+    "remaining_amount": "250000.00",
+    "payment_status": "partial",
+    "payments": [
+      {
+        "amount": "100000.00",
+        "currency": "UZS",
+        "paid_at": "2026-06-16T09:00:00.000Z",
+        "method": "card"
+      }
+    ]
+  },
+  "branch": {
+    "name_uz": "Chilonzor filiali",
+    "name_ru": "Чиланзарский филиал",
+    "name_en": "Chilanzar branch",
+    "address_uz": "Bunyodkor ko‘chasi, 12",
+    "address_ru": "ул. Бунёдкор, 12",
+    "address_en": "12 Bunyodkor Street",
+    "telephone": "+998712000000",
+    "working_hours": {
+      "start": "09:00",
+      "end": "20:00"
+    },
+    "map_url": "https://maps.example.com/branch"
+  },
+  "completed_at": null,
+  "picked_up_at": null,
+  "warranty": {
+    "period_months": 3,
+    "warranty_until": null
+  },
+  "status_history": [
+    {
+      "code": "DIAGNOSIS",
+      "name_uz": "Diagnostika",
+      "name_ru": "Диагностика",
+      "name_en": "Diagnosis",
+      "progress_type": "linear",
+      "step": 2,
+      "total_steps": 7,
+      "changed_at": "2026-06-15T08:00:00.000Z"
+    }
+  ]
+}
+```
+
+`payment_status` is one of `unpaid`, `partial`, `paid`, or `overpaid`.
+
+## Status behavior
+
+Supported stable status codes:
+
+```text
+NEW
+DIAGNOSIS
+AWAITING_APPROVAL
+IN_REPAIR
+WAITING_FOR_PARTS
+TESTING
+READY
+OUT_FOR_DELIVERY
+COMPLETED
+CANCELLED
+MISSED
+UNREPAIRABLE
+INVALID
+```
+
+Terminal statuses use:
+
+```json
+{
+  "code": "UNREPAIRABLE",
+  "progress_type": "terminal",
+  "step": null,
+  "total_steps": null
+}
+```
+
+Linear statuses require integer `step >= 1` and `total_steps >= step`. Terminal statuses require
+both values to be `null`. Progress is supplied by an explicit customer mapping and is never derived
+from the internal status sort order.
+
+## Privacy and errors
+
+The detail endpoint returns the same `404` response when an order:
+
+- Does not exist
+- Belongs to another client
+- Is deleted
+- Has a hidden or inactive branch
+- Has a hidden or inactive status
+- Does not have an explicit customer status mapping
+
+The list endpoint applies the same visibility rules and does not include those orders in `orders` or
+`pagination.total`.
+
+Responses are built from a customer-safe allowlist. Full IMEI, internal notes, raw descriptions,
+employee data, call counts, cost prices, margins, and internal identifiers are not returned.
+
+Money values are strings. Timestamps are ISO 8601 UTC.
+
+## Errors
+
+| HTTP status | Meaning |
+| --- | --- |
+| `400` | Invalid client/order parameter or pagination |
+| `401` | Missing, invalid, or unconfigured Telegram Bot Basic Auth |
+| `404` | Client/order is absent, foreign, deleted, hidden, inactive, or unmapped |
+| `500` | Unexpected API or database failure |
+| `503` | CRM API is in maintenance mode |
+
+Except for the platform maintenance response, errors use the same structured error envelope as the
+registration endpoint.

@@ -4,6 +4,8 @@ import type { BotCommand } from 'grammy/types';
 
 import type { ClientRegistrationGateway } from '../services/client-registration.service.js';
 import { RegistrationError } from '../services/client-registration.service.js';
+import type { ClientRepairOrderGateway } from '../services/client-repair-order.service.js';
+import { ClientRepairOrderError } from '../services/client-repair-order.service.js';
 import type { MessageTemplateStore } from '../services/message-template.service.js';
 import type { RegisteredUserStore } from '../services/registered-user.store.js';
 import type { RepairOrderGateway } from '../services/repair-order.service.js';
@@ -32,8 +34,9 @@ import type { BotContext, BotSession, RegistrationStage, RepairRequestDraft } fr
 import {
   buildRepairDescription,
   formatCategoryPage,
+  formatClientRepairOrderDetail,
+  formatClientRepairOrderList,
   formatProblemList,
-  formatRepairOrders,
   formatRepairRequestSummary,
 } from './formatters.js';
 import {
@@ -48,6 +51,8 @@ import {
   personalMenuKeyboard,
   problemsKeyboard,
   registrationKeyboard,
+  repairOrderDetailKeyboard,
+  repairOrdersKeyboard,
   requestOfferKeyboard,
   settingsBackKeyboard,
   settingsKeyboard,
@@ -55,18 +60,22 @@ import {
   settingsPhoneKeyboard,
 } from './keyboards.js';
 import { t } from './messages.js';
+import { replySmart } from './rich-messages.js';
 
 export interface BotDependencies {
   registrationService: ClientRegistrationGateway;
   repairOrderService: RepairOrderGateway;
+  clientRepairOrderService: ClientRepairOrderGateway;
   unknownClientStore: UnknownClientStore;
   registeredUserStore: RegisteredUserStore;
   messageTemplateStore: MessageTemplateStore;
   logger: Logger;
   allowManualPhoneEntry: boolean;
+  richMessagesEnabled: boolean;
 }
 
 const CATEGORY_PAGE_SIZE = 10;
+const REPAIR_ORDERS_PAGE_SIZE = 10;
 
 export type RegistrationAccountKind = 'client' | 'employee';
 
@@ -84,9 +93,8 @@ const summarizeSession = (sessionData: BotSession): Record<string, unknown> => (
   stage: sessionData.stage ?? 'registered',
   client: sessionData.client
     ? {
-        id: sessionData.client.id,
-        status: sessionData.client.status,
-        repair_orders_count: sessionData.client.repair_orders.length,
+        client_id: sessionData.client.client_id,
+        has_repair_orders: sessionData.client.has_repair_orders,
       }
     : undefined,
   admin: sessionData.admin
@@ -125,6 +133,13 @@ const summarizeSession = (sessionData: BotSession): Record<string, unknown> => (
         draftKeys: sessionData.adminTemplateInput.draft
           ? Object.keys(sessionData.adminTemplateInput.draft)
           : undefined,
+      }
+    : undefined,
+  repairOrdersView: sessionData.repairOrdersView
+    ? {
+        offset: sessionData.repairOrdersView.offset,
+        orderNumbers: sessionData.repairOrdersView.orderNumbers,
+        selectedOrderNumber: sessionData.repairOrdersView.selectedOrderNumber,
       }
     : undefined,
 });
@@ -237,6 +252,11 @@ const summarizeTelegramApiPayload = (payload: unknown): unknown => {
       summary[key] = summarizeUnknownPayload(value);
     } else if (key === 'text' || key === 'caption') {
       summary[key] = summarizeText(typeof value === 'string' ? value : undefined);
+    } else if (key === 'rich_message' && isRecord(value)) {
+      summary[key] = {
+        html: summarizeText(typeof value.html === 'string' ? value.html : undefined),
+        markdown: summarizeText(typeof value.markdown === 'string' ? value.markdown : undefined),
+      };
     } else if (key === 'reply_markup') {
       summary[key] = summarizeReplyMarkup(value);
     } else {
@@ -339,6 +359,7 @@ const clearSettingsFlow = (sessionData: BotSession): void => {
 const resetSession = (sessionData: BotSession, locale: Locale): void => {
   delete sessionData.client;
   delete sessionData.admin;
+  delete sessionData.repairOrdersView;
   clearUnknownFlow(sessionData);
   clearAdminTemplateFlow(sessionData);
   clearSettingsFlow(sessionData);
@@ -768,10 +789,10 @@ const saveRegisteredUser = async (
 
   await store.saveClient({
     ...user,
-    crm_client_id: registration.id,
-    customer_code: registration.customer_code,
-    status: registration.status,
-    is_active: registration.is_active,
+    crm_client_id: registration.client_id,
+    customer_code: null,
+    status: 'Open',
+    is_active: true,
   });
 };
 
@@ -869,6 +890,7 @@ const registerByPhone = async (
     await saveRegisteredUser(ctx, dependencies.registeredUserStore, registration, normalizedPhone);
     delete ctx.session.client;
     delete ctx.session.admin;
+    delete ctx.session.repairOrdersView;
     clearUnknownFlow(ctx.session);
     if (mode === 'settings_phone') clearSettingsFlow(ctx.session);
     else delete ctx.session.stage;
@@ -940,6 +962,110 @@ const registerByPhone = async (
     await ctx.reply(t(ctx.session.locale, key), {
       reply_markup: replyKeyboard,
     });
+  }
+};
+
+const safeHttpUrl = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
+const showClientRepairOrders = async (
+  ctx: BotContext,
+  dependencies: BotDependencies,
+  offset: number,
+  showLoading = false,
+): Promise<void> => {
+  const client = ctx.session.client;
+  if (!client) {
+    await ctx.reply(t(ctx.session.locale, 'registerFirst'), {
+      reply_markup: languageKeyboard(),
+    });
+    return;
+  }
+
+  const pendingMessage =
+    showLoading && ctx.chat ? await ctx.reply(t(ctx.session.locale, 'ordersLoading')) : undefined;
+  try {
+    const result = await dependencies.clientRepairOrderService.listClientRepairOrders(
+      client.client_id,
+      {
+        limit: REPAIR_ORDERS_PAGE_SIZE,
+        offset,
+      },
+    );
+    if (pendingMessage && ctx.chat) {
+      await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
+    }
+
+    if (result.orders.length === 0) {
+      ctx.session.repairOrdersView = { offset: result.pagination.offset, orderNumbers: [] };
+      await ctx.reply(t(ctx.session.locale, 'noOrders'), {
+        reply_markup: personalMenuKeyboard(ctx.session),
+      });
+      return;
+    }
+
+    const orderNumbers = result.orders.map((order) => order.order_number);
+    ctx.session.repairOrdersView = {
+      offset: result.pagination.offset,
+      orderNumbers,
+    };
+    await replySmart(ctx, formatClientRepairOrderList(result, ctx.session.locale), {
+      enabled: dependencies.richMessagesEnabled,
+      logger: dependencies.logger,
+      replyMarkup: repairOrdersKeyboard(orderNumbers, result.pagination, ctx.session.locale),
+    });
+  } catch (error) {
+    if (pendingMessage && ctx.chat) {
+      await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
+    }
+    dependencies.logger.error('Failed to load client repair orders', error);
+    await ctx.reply(t(ctx.session.locale, 'ordersUnavailable'), {
+      reply_markup: personalMenuKeyboard(ctx.session),
+    });
+  }
+};
+
+const showClientRepairOrderDetail = async (
+  ctx: BotContext,
+  dependencies: BotDependencies,
+  orderNumber: string,
+): Promise<void> => {
+  const client = ctx.session.client;
+  if (!client) {
+    await ctx.reply(t(ctx.session.locale, 'registerFirst'), {
+      reply_markup: languageKeyboard(),
+    });
+    return;
+  }
+
+  try {
+    const order = await dependencies.clientRepairOrderService.getClientRepairOrder(
+      client.client_id,
+      orderNumber,
+    );
+    ctx.session.repairOrdersView ??= { offset: 0, orderNumbers: [] };
+    ctx.session.repairOrdersView.selectedOrderNumber = order.order_number;
+    await replySmart(ctx, formatClientRepairOrderDetail(order, ctx.session.locale), {
+      enabled: dependencies.richMessagesEnabled,
+      logger: dependencies.logger,
+      replyMarkup: repairOrderDetailKeyboard(ctx.session.locale, {
+        mapUrl: safeHttpUrl(order.branch?.map_url),
+      }),
+    });
+  } catch (error) {
+    if (error instanceof ClientRepairOrderError && error.code === 'not_found') {
+      await ctx.reply(t(ctx.session.locale, 'orderNotFound'));
+      return;
+    }
+    dependencies.logger.error('Failed to load client repair-order detail', error);
+    await ctx.reply(t(ctx.session.locale, 'ordersUnavailable'));
   }
 };
 
@@ -1548,8 +1674,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
   });
 
   bot.hears([t('uz', 'orders'), t('ru', 'orders')], async (ctx) => {
-    const client = ctx.session.client;
-    if (!client) {
+    if (!ctx.session.client) {
       if (ctx.session.admin) {
         await replyWithAdminRegistration(ctx);
       } else {
@@ -1559,12 +1684,58 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
       }
       return;
     }
-    await ctx.reply(
-      client.repair_orders.length > 0
-        ? formatRepairOrders(client.repair_orders, ctx.session.locale)
-        : t(ctx.session.locale, 'noOrders'),
-      { parse_mode: 'HTML', reply_markup: personalMenuKeyboard(ctx.session) },
-    );
+    await showClientRepairOrders(ctx, dependencies, 0, true);
+  });
+
+  bot.callbackQuery(/^ro:p:(\d+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const match = /^ro:p:(\d+)$/.exec(ctx.callbackQuery.data);
+    const offset = match?.[1] ? Number(match[1]) : Number.NaN;
+    if (!Number.isSafeInteger(offset) || offset < 0 || !ctx.session.client) {
+      await ctx.reply(t(ctx.session.locale, 'staleAction'));
+      return;
+    }
+    await showClientRepairOrders(ctx, dependencies, offset);
+  });
+
+  bot.callbackQuery(/^ro:v:(\d+):(\d+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const match = /^ro:v:(\d+):(\d+)$/.exec(ctx.callbackQuery.data);
+    const offset = match?.[1] ? Number(match[1]) : Number.NaN;
+    const index = match?.[2] ? Number(match[2]) : Number.NaN;
+    const currentView = ctx.session.repairOrdersView;
+    const orderNumber =
+      Number.isSafeInteger(offset) &&
+      offset >= 0 &&
+      Number.isSafeInteger(index) &&
+      index >= 0 &&
+      currentView?.offset === offset
+        ? currentView.orderNumbers[index]
+        : undefined;
+    if (!orderNumber || !ctx.session.client) {
+      await ctx.reply(t(ctx.session.locale, 'staleAction'));
+      return;
+    }
+    await showClientRepairOrderDetail(ctx, dependencies, orderNumber);
+  });
+
+  bot.callbackQuery('ro:r', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const orderNumber = ctx.session.repairOrdersView?.selectedOrderNumber;
+    if (!orderNumber || !ctx.session.client) {
+      await ctx.reply(t(ctx.session.locale, 'staleAction'));
+      return;
+    }
+    await showClientRepairOrderDetail(ctx, dependencies, orderNumber);
+  });
+
+  bot.callbackQuery('ro:b', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (!ctx.session.client) {
+      await ctx.reply(t(ctx.session.locale, 'staleAction'));
+      return;
+    }
+    await showClientRepairOrders(ctx, dependencies, ctx.session.repairOrdersView?.offset ?? 0);
   });
 
   bot.hears([t('uz', 'adminTemplates'), t('ru', 'adminTemplates')], async (ctx) => {

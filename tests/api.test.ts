@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import { createApiServer } from '../src/api/server.js';
 import type { AppConfig } from '../src/config/index.js';
+import type { DirectMessageDeliveryResult } from '../src/services/bot-notification.service.js';
 import type { Logger } from '../src/utils/logger.js';
 
 const logger: Logger = {
@@ -17,7 +18,7 @@ const logger: Logger = {
 const config: AppConfig = {
   nodeEnv: 'test',
   logLevel: 'info',
-  bot: { enabled: false },
+  bot: { enabled: false, richMessagesEnabled: false },
   api: { enabled: true, host: '127.0.0.1', port: 3000 },
   crm: {
     baseUrl: 'http://crm.test',
@@ -53,5 +54,84 @@ describe('health API', () => {
       timestamp: response.json<{ timestamp: string }>().timestamp,
       botEnabled: false,
     });
+  });
+});
+
+describe('direct message API', () => {
+  it('normalizes the phone number and sends the trimmed message', async () => {
+    const calls: Array<{ phoneNumber: string; message: string }> = [];
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(params) {
+          calls.push(params);
+          return { status: 'sent' };
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      payload: { phone_number: '90 123 45 67', message: '  Salom  ' },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), { status: 'sent' });
+    assert.deepEqual(calls, [{ phoneNumber: '+998901234567', message: 'Salom' }]);
+  });
+
+  it('rejects invalid request payloads before sending', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(): Promise<DirectMessageDeliveryResult> {
+          throw new Error('should not send');
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      payload: { phone_number: '123', message: '' },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.json<{ error: string }>().error, 'BadRequest');
+  });
+
+  it('returns not found when no registered user matches the phone number', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage() {
+          return { status: 'not_found' };
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      payload: { phone_number: '+998901234567', message: 'Salom' },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 404);
+    assert.equal(response.json<{ error: string }>().error, 'NotFound');
+  });
+
+  it('returns unavailable when Telegram delivery is not configured', async () => {
+    const app = createApiServer(config, logger);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      payload: { phone_number: '+998901234567', message: 'Salom' },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 503);
+    assert.equal(response.json<{ error: string }>().error, 'ServiceUnavailable');
   });
 });

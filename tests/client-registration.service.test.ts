@@ -18,51 +18,13 @@ const logger: Logger = {
 
 const profile = {
   account_type: 'client',
-  id: 'client-id',
-  customer_code: null,
+  client_id: 'client-id',
   first_name: 'Ali',
   last_name: null,
-  phone_number1: '+998901234567',
-  phone_number2: null,
-  phone_verified: true,
-  passport_series: null,
-  birth_date: null,
-  id_card_number: null,
   language: 'uz',
-  telegram_chat_id: null,
-  telegram_username: null,
-  source: 'other',
-  status: 'Open',
-  is_active: true,
+  has_repair_orders: false,
   is_admin: false,
   admin: null,
-  created_at: '2026-06-15T10:00:00.000Z',
-  updated_at: '2026-06-15T10:00:00.000Z',
-  created_by: null,
-  repair_orders: [],
-} as const;
-
-const legacyClientProfile = {
-  id: 'client-id',
-  customer_code: null,
-  first_name: 'Ali',
-  last_name: null,
-  phone_number1: '+998901234567',
-  phone_number2: null,
-  phone_verified: true,
-  passport_series: null,
-  birth_date: null,
-  id_card_number: null,
-  language: 'uz',
-  telegram_chat_id: null,
-  telegram_username: null,
-  source: 'other',
-  status: 'Open',
-  is_active: true,
-  created_at: '2026-06-15T10:00:00.000Z',
-  updated_at: '2026-06-15T10:00:00.000Z',
-  created_by: null,
-  repair_orders: [],
 } as const;
 
 const adminProfile = {
@@ -92,7 +54,11 @@ describe('HttpClientRegistrationService', () => {
         fetchImpl: async (_input, init) => {
           requestBody = String(init?.body);
           authorization = new Headers(init?.headers).get('authorization') ?? '';
-          return Response.json(profile);
+          return Response.json({
+            ...profile,
+            repair_orders: [{ imei: 'sensitive-value' }],
+            passport_series: 'sensitive-value',
+          });
         },
       },
       logger,
@@ -102,12 +68,14 @@ describe('HttpClientRegistrationService', () => {
 
     assert.equal(result.account_type, 'client');
     if (result.account_type !== 'client') assert.fail('Expected client registration result');
-    assert.equal(result.id, 'client-id');
+    assert.equal(result.client_id, 'client-id');
+    assert.equal(Object.hasOwn(result, 'repair_orders'), false);
+    assert.equal(Object.hasOwn(result, 'passport_series'), false);
     assert.deepEqual(JSON.parse(requestBody), { phone_number: '+998901234567' });
     assert.equal(authorization, `Basic ${Buffer.from('bot:secret').toString('base64')}`);
   });
 
-  it('accepts and normalizes client responses without account metadata', async () => {
+  it('rejects legacy client responses that contain no compact account metadata', async () => {
     const service = new HttpClientRegistrationService(
       {
         baseUrl: 'http://crm.test',
@@ -115,18 +83,20 @@ describe('HttpClientRegistrationService', () => {
         password: 'secret',
         timeoutMs: 1_000,
         maxRetries: 0,
-        fetchImpl: async () => Response.json(legacyClientProfile),
+        fetchImpl: async () =>
+          Response.json({
+            id: 'client-id',
+            first_name: 'Ali',
+            repair_orders: [],
+          }),
       },
       logger,
     );
 
-    const result = await service.registerByPhone('+998901234567');
-
-    assert.equal(result.account_type, 'client');
-    if (result.account_type !== 'client') assert.fail('Expected client registration result');
-    assert.equal(result.id, 'client-id');
-    assert.equal(result.is_admin, false);
-    assert.equal(result.admin, null);
+    await assert.rejects(
+      service.registerByPhone('+998901234567'),
+      (error: unknown) => error instanceof RegistrationError && error.code === 'invalid_response',
+    );
   });
 
   it('accepts an admin-only registration response', async () => {

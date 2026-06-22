@@ -19,6 +19,7 @@ Use this precedence when information conflicts:
 4. This file and `README.md`.
 5. Active upstream API contracts:
    - `Docs/TELEGRAM_CLIENT_REGISTRATION_API.md`
+   - `Docs/TELEGRAM_CLIENT_REPAIR_ORDERS_API.md`
    - `Docs/PUBLIC_REPAIR_ORDER_AND_CALCULATOR_API_REFERENCE.md`
 6. Historical, generated, or blueprint documents under `Docs/`.
 
@@ -72,6 +73,7 @@ always validates CRM and database configuration, connects to PostgreSQL, and run
 | `src/bot/keyboards.ts`                        | Reply and inline keyboard construction                                  |
 | `src/bot/formatters.ts`                       | Repair-order and repair-request presentation                            |
 | `src/services/client-registration.service.ts` | Authenticated CRM client lookup                                         |
+| `src/services/client-repair-order.service.ts` | Authenticated customer repair-order tracking                            |
 | `src/services/message-template.service.ts`    | Message template CRUD, rendering, dispatch logs, and block status       |
 | `src/services/bot-notification.service.ts`    | Telegram template notification delivery                                 |
 | `src/services/repair-order.service.ts`        | Public catalog reads and repair-order creation                          |
@@ -124,8 +126,8 @@ The bot is a stateful private-chat experience:
 6. The CRM registration endpoint looks up an active client.
 7. A `200 OK` response is persisted into PostgreSQL as an employee when `is_admin = true`; otherwise
    it is persisted as a client.
-8. A known non-admin client is held in session and can view the repair orders returned by that
-   lookup.
+8. A known non-admin client is held in session and can fetch paginated repair orders through the
+   dedicated customer tracking API.
 9. An active admin is held as an admin-only session, can manage transactional message templates, and
    is not offered client repair orders or unknown-client repair creation.
 10. A `404` starts the unknown-client repair-request flow.
@@ -141,8 +143,9 @@ Important behavior:
 
 - `/start` does not refresh an already registered client's CRM data. It reuses the profile held in
   the current session.
-- Repair orders shown in the menu are the orders returned during registration. They are not fetched
-  again when the user presses the orders button.
+- Registration never returns or caches repair-order objects.
+- Repair orders are fetched when the user presses the orders button. Detail is fetched when an order
+  is selected or explicitly refreshed.
 - Session data is lost on process restart and is not shared across replicas.
 - Callback payloads use array indices for the current session's catalog data. Do not resolve an
   index without validating the current stage, draft, and selected item.
@@ -189,6 +192,28 @@ Behavior:
 - Retry only `maintenance` and `unavailable`, up to `CRM_MAX_RETRIES`, with 250 ms exponential
   backoff.
 - Validate successful JSON before returning it. Do not blindly cast upstream responses.
+- Successful client responses contain only `client_id`, basic display identity, language,
+  `has_repair_orders`, and optional administrator metadata.
+
+### Customer Repair Tracking
+
+`HttpClientRepairOrderService` calls these Basic-Auth-protected endpoints:
+
+```text
+GET /api/v1/telegram/clients/{clientId}/repair-orders?limit={limit}&offset={offset}
+GET /api/v1/telegram/clients/{clientId}/repair-orders/{orderNumber}
+```
+
+Rules:
+
+- `client_id` identifies the resource; Basic Auth authorizes the trusted bot service.
+- Encode path identifiers and build pagination with `URLSearchParams`.
+- Fetch the list on every “My orders” action; do not treat `has_repair_orders` as authorization or
+  as a reason to suppress the request.
+- Validate list, detail, progress, money, timestamp, and nullable-field contracts at runtime.
+- Retry only maintenance and availability failures.
+- Map ownership-hidden and visibility-hidden `404` responses to the same user-safe not-found state.
+- Never log complete detail responses, full IMEI values, payment details, or authorization headers.
 
 ### Catalog And Public Repair Orders
 
@@ -286,6 +311,7 @@ with `AppConfig` and `loadConfig`.
 | `BOT_ENABLED`                      | `true`                    | Strict lowercase boolean                                  |
 | `BOT_TOKEN`                        | Required when bot enabled | Telegram bot token; secret                                |
 | `BOT_USERNAME`                     | Optional                  | Parsed for configuration; currently not used at runtime   |
+| `RICH_MESSAGES_ENABLED`            | `false`                   | Rich order cards with automatic classic HTML fallback     |
 | `API_ENABLED`                      | `true`                    | Strict lowercase boolean                                  |
 | `API_HOST`                         | `0.0.0.0`                 | Fastify listen host                                       |
 | `API_PORT`                         | `3000`                    | Integer from 1 through 65535                              |
@@ -384,6 +410,7 @@ Tests currently cover:
 - Uzbek phone normalization;
 - CRM authentication, normalization, and retry behavior;
 - repair API URL construction, payloads, and retry policy;
+- authenticated client repair-order list/detail validation and retry behavior;
 - formatter and keyboard pagination behavior;
 - unknown-client PostgreSQL upsert behavior;
 - logger routing, persistence, ANSI stripping, and level gating.
@@ -485,7 +512,7 @@ Do not accidentally present these as implemented features:
 - The bot uses long polling, not webhooks.
 - Private-chat operation is an architectural assumption, not an explicit global chat-type guard.
 - The health endpoint does not verify PostgreSQL, Telegram, or CRM readiness.
-- Registered client profiles and repair orders are cached only in session.
+- Registered client identity is cached only in session; repair-order objects are fetched on demand.
 - There is no full Telegram update integration test suite.
 - There is no live PostgreSQL integration test.
 - There is no broadcast system, coupon system, support flow, or scheduled job layer in this

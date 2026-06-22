@@ -121,6 +121,37 @@ export const confirmationKeyboard = (locale: Locale): InlineKeyboard =>
     .text(t(locale, 'confirm'), 'confirm:yes')
     .text(t(locale, 'cancel'), 'confirm:no');
 
+export const repairOrdersKeyboard = (
+  orderNumbers: string[],
+  pagination: { limit: number; offset: number; has_more: boolean },
+  locale: Locale,
+): InlineKeyboard => {
+  const keyboard = new InlineKeyboard();
+  orderNumbers.forEach((orderNumber, index) => {
+    keyboard.text(`🧾 #${orderNumber}`, `ro:v:${pagination.offset}:${index}`).row();
+  });
+
+  if (pagination.offset > 0) {
+    keyboard.text('‹', `ro:p:${Math.max(0, pagination.offset - pagination.limit)}`);
+  }
+  if (pagination.has_more) {
+    keyboard.text('›', `ro:p:${pagination.offset + pagination.limit}`);
+  }
+  keyboard.row().text(t(locale, 'ordersRefresh'), `ro:p:${pagination.offset}`);
+  return keyboard;
+};
+
+export const repairOrderDetailKeyboard = (
+  locale: Locale,
+  options: { mapUrl?: string | null } = {},
+): InlineKeyboard => {
+  const keyboard = new InlineKeyboard()
+    .text(t(locale, 'orderRefresh'), 'ro:r')
+    .text(t(locale, 'ordersBack'), 'ro:b');
+  if (options.mapUrl) keyboard.row().url(t(locale, 'orderMap'), options.mapUrl);
+  return keyboard;
+};
+
 export const adminTemplateListKeyboard = (
   templates: Pick<MessageTemplate, 'id' | 'title' | 'is_active'>[],
   locale: Locale,

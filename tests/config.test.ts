@@ -8,6 +8,7 @@ const validEnv: NodeJS.ProcessEnv = {
   BOT_ENABLED: 'false',
   API_ENABLED: 'true',
   API_PORT: '3001',
+  RICH_MESSAGES_ENABLED: 'true',
   CRM_BASE_URL: 'http://localhost:5001/',
   TELEGRAM_BOT_BASIC_AUTH_USER: 'bot',
   TELEGRAM_BOT_BASIC_AUTH_PASSWORD: 'secret',
@@ -19,6 +20,7 @@ describe('loadConfig', () => {
     const config = loadConfig(validEnv);
     assert.equal(config.api.port, 3001);
     assert.equal(config.bot.enabled, false);
+    assert.equal(config.bot.richMessagesEnabled, true);
     assert.equal(config.crm.baseUrl, 'http://localhost:5001');
     assert.equal(config.database.host, 'localhost');
     assert.equal(config.database.name, 'probox_bot_db');
