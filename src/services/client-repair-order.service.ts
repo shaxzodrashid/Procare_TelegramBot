@@ -1,4 +1,5 @@
 import {
+  CUSTOMER_SUPPORT_PHOTO_MIME_TYPES,
   CUSTOMER_REPAIR_STATUS_CODES,
   type CustomerRepairBranch,
   type CustomerRepairDocuments,
@@ -60,6 +61,7 @@ interface ErrorEnvelope {
 
 const PAYMENT_STATUSES = new Set<PaymentStatus>(['unpaid', 'partial', 'paid', 'overpaid']);
 const STATUS_CODES = new Set<string>(CUSTOMER_REPAIR_STATUS_CODES);
+const SUPPORT_PHOTO_MIME_TYPES = new Set<string>(CUSTOMER_SUPPORT_PHOTO_MIME_TYPES);
 const DECIMAL_PATTERN = /^-?\d+(?:\.\d+)?$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -271,6 +273,15 @@ const isSupportCommentPhoto = (
   typeof value.mime_type === 'string' &&
   isSupportPhotoUrlSet(value.urls);
 
+const isSupportCommentAuthor = (
+  value: unknown,
+): value is CustomerSupportCommentResponse['comment']['author'] =>
+  isRecord(value) &&
+  isUuid(value.id) &&
+  isNullableString(value.display_name) &&
+  (value.phone_number === undefined || isNullableString(value.phone_number)) &&
+  (value.username === undefined || isNullableString(value.username));
+
 const isSupportCommentResponse = (value: unknown): value is CustomerSupportCommentResponse =>
   isRecord(value) &&
   typeof value.created === 'boolean' &&
@@ -281,10 +292,7 @@ const isSupportCommentResponse = (value: unknown): value is CustomerSupportComme
   value.comment.author_type === 'user' &&
   value.comment.direction === 'inbound' &&
   isNullableString(value.comment.text) &&
-  isRecord(value.comment.author) &&
-  isUuid(value.comment.author.id) &&
-  isNullableString(value.comment.author.display_name) &&
-  isNullableString(value.comment.author.username) &&
+  isSupportCommentAuthor(value.comment.author) &&
   (value.comment.reply === null || isRecord(value.comment.reply)) &&
   Array.isArray(value.comment.photos) &&
   value.comment.photos.every(isSupportCommentPhoto) &&
@@ -388,6 +396,12 @@ export class HttpClientRepairOrderService implements ClientRepairOrderGateway {
     }
     if (photos.length > 5) {
       throw new ClientRepairOrderError('invalid_request', 'a maximum of 5 photos is allowed');
+    }
+    if (photos.some((photo) => !SUPPORT_PHOTO_MIME_TYPES.has(photo.mimeType))) {
+      throw new ClientRepairOrderError(
+        'invalid_request',
+        'only JPEG, PNG, and WebP photos are allowed',
+      );
     }
     if (Boolean(request.replyTargetType) !== Boolean(request.replyTargetId)) {
       throw new ClientRepairOrderError(

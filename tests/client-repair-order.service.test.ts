@@ -330,7 +330,7 @@ describe('HttpClientRepairOrderService', () => {
               author: {
                 id: '33333333-3333-4333-8333-333333333333',
                 display_name: 'Ali Valiyev',
-                username: null,
+                phone_number: '+998901234567',
               },
               reply: null,
               photos: [],
@@ -389,5 +389,40 @@ describe('HttpClientRepairOrderService', () => {
       (error: unknown) => error instanceof ClientRepairOrderError && error.code === 'maintenance',
     );
     assert.equal(attempts, 1);
+  });
+
+  it('rejects unsupported support photo mime types before making a request', async () => {
+    let attempts = 0;
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 2,
+        fetchImpl: async () => {
+          attempts += 1;
+          return Response.json({ created: true });
+        },
+      },
+      logger,
+    );
+
+    await assert.rejects(
+      service.registerClientSupportComment('11111111-1111-4111-8111-111111111111', {
+        photos: [
+          {
+            fileName: 'telegram-photo.jpg',
+            mimeType: 'application/octet-stream' as never,
+            data: new Uint8Array([1, 2, 3]),
+          },
+        ],
+      }),
+      (error: unknown) =>
+        error instanceof ClientRepairOrderError &&
+        error.code === 'invalid_request' &&
+        error.message === 'only JPEG, PNG, and WebP photos are allowed',
+    );
+    assert.equal(attempts, 0);
   });
 });

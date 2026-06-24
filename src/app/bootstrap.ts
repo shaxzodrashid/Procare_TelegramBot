@@ -12,6 +12,7 @@ import { HttpClientRegistrationService } from '../services/client-registration.s
 import { PostgresMessageTemplateStore } from '../services/message-template.service.js';
 import { PostgresRegisteredUserStore } from '../services/registered-user.store.js';
 import { HttpRepairOrderService } from '../services/repair-order.service.js';
+import { PostgresSupportMessageStore } from '../services/support-message.store.js';
 import { PostgresUnknownClientStore } from '../services/unknown-client.store.js';
 import type { Logger } from '../utils/logger.js';
 
@@ -66,6 +67,7 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
   const unknownClientStore = new PostgresUnknownClientStore(database);
   const registeredUserStore = new PostgresRegisteredUserStore(database);
   const messageTemplateStore = new PostgresMessageTemplateStore(database);
+  const supportMessageStore = new PostgresSupportMessageStore(database);
 
   if (config.bot.enabled) {
     bot = createBot(config.bot.token!, {
@@ -75,6 +77,7 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       unknownClientStore,
       registeredUserStore,
       messageTemplateStore,
+      supportMessageStore,
       logger,
       allowManualPhoneEntry: config.nodeEnv === 'development',
       richMessagesEnabled: config.bot.richMessagesEnabled,

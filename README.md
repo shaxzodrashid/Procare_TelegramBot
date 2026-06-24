@@ -350,14 +350,20 @@ seen by the bot.
 classified into exactly one role table: `employees` when CRM returns `is_admin=true`, otherwise
 `clients`. Both role tables reference `users.id` through `user_id` and cascade on user deletion.
 Unknown clients who decline the repair offer or cancel during final confirmation are still upserted
-into `users` with the latest decline metadata. A separate chat ID is not stored because the bot
-currently targets private user chats.
+into `users` with the latest decline metadata. Regular registration still keys users by
+`telegram_id`; support-message rows additionally store Telegram chat/message IDs so CRM replies can
+later be sent as real Telegram replies to the original client message.
 
 `message_templates` stores Uzbek and Russian Telegram template bodies, template metadata, active
 status, and a unique template key. `message_dispatch_logs` records template and direct API send
 attempts as `sent`, `failed`, or `template_not_found`. The notification dispatcher marks users as
 blocked when Telegram returns a blocked-bot error and clears that flag after successful delivery or
 when a known user is saved again.
+
+`support_messages` stores each client support message accepted by CRM with the returned CRM comment
+ID, repair-order context, Telegram chat/message IDs, content type, text, and photo count. This table
+is the durable mapping needed for future employee replies from CRM to appear as threaded Telegram
+replies.
 
 While this project is pre-production and has no real user data, edit an existing table's original
 migration instead of creating follow-up alteration migrations. Add a new migration file only when

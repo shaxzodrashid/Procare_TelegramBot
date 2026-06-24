@@ -10,9 +10,13 @@ import type { MessageTemplateStore } from '../services/message-template.service.
 import type { RegisteredUserStore } from '../services/registered-user.store.js';
 import type { RepairOrderGateway } from '../services/repair-order.service.js';
 import { RepairOrderError } from '../services/repair-order.service.js';
+import type { SupportMessageStore } from '../services/support-message.store.js';
 import type { UnknownClientStore } from '../services/unknown-client.store.js';
 import type { AdminProfile, Locale, RegistrationResult } from '../types/client.js';
-import type { CustomerSupportPhotoUpload } from '../types/client-repair-order.js';
+import {
+  CUSTOMER_SUPPORT_PHOTO_MIME_TYPES,
+  type CustomerSupportPhotoUpload,
+} from '../types/client-repair-order.js';
 import type {
   MessageTemplate,
   MessageTemplateDraft,
@@ -22,6 +26,7 @@ import type {
 import { isMessageTemplateType, MESSAGE_TEMPLATE_TYPES } from '../types/message-template.js';
 import { localizedCatalogName } from '../types/repair-order.js';
 import type { UnknownClientDeclineReason } from '../types/unknown-client.js';
+import type { SupportMessageContentType } from '../types/support-message.js';
 import { escapeHtml } from '../utils/html.js';
 import {
   redactPhoneNumber,
@@ -71,6 +76,7 @@ export interface BotDependencies {
   unknownClientStore: UnknownClientStore;
   registeredUserStore: RegisteredUserStore;
   messageTemplateStore: MessageTemplateStore;
+  supportMessageStore: SupportMessageStore;
   logger: Logger;
   allowManualPhoneEntry: boolean;
   richMessagesEnabled: boolean;
@@ -80,6 +86,7 @@ const CATEGORY_PAGE_SIZE = 10;
 const REPAIR_ORDERS_PAGE_SIZE = 10;
 const SUPPORT_COMMENT_MAX_LENGTH = 4_000;
 const SUPPORT_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+const SUPPORT_PHOTO_MIME_TYPES = new Set<string>(CUSTOMER_SUPPORT_PHOTO_MIME_TYPES);
 
 export type RegistrationAccountKind = 'client' | 'employee';
 
@@ -1140,7 +1147,16 @@ const startSupportComment = async (ctx: BotContext): Promise<void> => {
 const submitSupportComment = async (
   ctx: BotContext,
   dependencies: BotDependencies,
-  input: { text?: string; photos?: CustomerSupportPhotoUpload[] },
+  input: {
+    text?: string;
+    photos?: CustomerSupportPhotoUpload[];
+    telegramMessage?: {
+      chatId: string;
+      messageId: number;
+      date: Date | null;
+      contentType: SupportMessageContentType;
+    };
+  },
 ): Promise<void> => {
   const draft = ctx.session.supportComment;
   if (ctx.session.stage !== 'support_comment_input' || !draft || !ctx.session.client) {
@@ -1174,6 +1190,31 @@ const submitSupportComment = async (
         photos,
       },
     );
+    if (input.telegramMessage && ctx.from) {
+      try {
+        await dependencies.supportMessageStore.save({
+          crm_comment_id: result.comment.id,
+          crm_client_id: ctx.session.client.client_id,
+          repair_order_id: draft.repairOrderId,
+          order_number: draft.orderNumber,
+          telegram_id: String(ctx.from.id),
+          telegram_chat_id: input.telegramMessage.chatId,
+          telegram_message_id: input.telegramMessage.messageId,
+          telegram_message_date: input.telegramMessage.date,
+          sender_type: 'client',
+          direction: 'inbound',
+          content_type: input.telegramMessage.contentType,
+          text: text ?? null,
+          photo_count: photos.length,
+        });
+      } catch (storageError) {
+        dependencies.logger.error('Failed to store support message mapping', storageError, {
+          crm_comment_id: result.comment.id,
+          repair_order_id: draft.repairOrderId,
+          telegram_message_id: input.telegramMessage.messageId,
+        });
+      }
+    }
     if (pendingMessage && ctx.chat) {
       await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
     }
@@ -1195,6 +1236,33 @@ const submitSupportComment = async (
       reply_markup: supportCommentKeyboard(ctx.session.locale),
     });
   }
+};
+
+const supportPhotoMimeTypeFromPath = (
+  filePath: string,
+): CustomerSupportPhotoUpload['mimeType'] | null => {
+  const extension = filePath.split(/[\\/]/).pop()?.split('.').pop()?.toLowerCase();
+  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
+  if (extension === 'png') return 'image/png';
+  if (extension === 'webp') return 'image/webp';
+  return null;
+};
+
+const supportPhotoExtension = (mimeType: CustomerSupportPhotoUpload['mimeType']): string => {
+  if (mimeType === 'image/png') return 'png';
+  if (mimeType === 'image/webp') return 'webp';
+  return 'jpg';
+};
+
+const normalizeTelegramSupportPhotoMimeType = (
+  contentType: string | null,
+  filePath: string,
+): CustomerSupportPhotoUpload['mimeType'] | null => {
+  const mimeType = contentType?.split(';', 1)[0]?.trim().toLowerCase();
+  if (mimeType && SUPPORT_PHOTO_MIME_TYPES.has(mimeType)) {
+    return mimeType as CustomerSupportPhotoUpload['mimeType'];
+  }
+  return supportPhotoMimeTypeFromPath(filePath);
 };
 
 const downloadTelegramSupportPhoto = async (
@@ -1222,8 +1290,13 @@ const downloadTelegramSupportPhoto = async (
     throw new ClientRepairOrderError('invalid_request', 'support photo is too large');
   }
 
-  const mimeType = response.headers.get('content-type')?.split(';', 1)[0] || 'image/jpeg';
-  const fileName = `telegram-${largest.file_unique_id}.jpg`;
+  const mimeType = normalizeTelegramSupportPhotoMimeType(
+    response.headers.get('content-type'),
+    file.file_path,
+  );
+  if (!mimeType) return null;
+
+  const fileName = `telegram-${largest.file_unique_id}.${supportPhotoExtension(mimeType)}`;
   return { data: buffer, fileName, mimeType };
 };
 
@@ -2106,6 +2179,12 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
       await submitSupportComment(ctx, dependencies, {
         text: ctx.message.caption,
         photos: [photo],
+        telegramMessage: {
+          chatId: String(ctx.chat.id),
+          messageId: ctx.message.message_id,
+          date: new Date(ctx.message.date * 1000),
+          contentType: 'photo',
+        },
       });
     } catch (error) {
       if (error instanceof ClientRepairOrderError && error.code === 'invalid_request') {
@@ -2130,7 +2209,15 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
         });
         return;
       }
-      await submitSupportComment(ctx, dependencies, { text: ctx.message.text });
+      await submitSupportComment(ctx, dependencies, {
+        text: ctx.message.text,
+        telegramMessage: {
+          chatId: String(ctx.chat.id),
+          messageId: ctx.message.message_id,
+          date: new Date(ctx.message.date * 1000),
+          contentType: 'text',
+        },
+      });
       return;
     }
 

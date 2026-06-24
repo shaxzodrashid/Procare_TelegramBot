@@ -141,7 +141,8 @@ export type CustomerSupportReplyTargetType = 'comment' | 'history' | 'audio';
 export interface CustomerSupportCommentAuthor {
   id: string;
   display_name: string | null;
-  username: string | null;
+  phone_number?: string | null;
+  username?: string | null;
 }
 
 export interface CustomerSupportCommentReply {
@@ -184,9 +185,13 @@ export interface CustomerSupportCommentResponse {
   created: boolean;
 }
 
+export const CUSTOMER_SUPPORT_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+
+export type CustomerSupportPhotoMimeType = (typeof CUSTOMER_SUPPORT_PHOTO_MIME_TYPES)[number];
+
 export interface CustomerSupportPhotoUpload {
   fileName: string;
-  mimeType: string;
+  mimeType: CustomerSupportPhotoMimeType;
   data: Uint8Array;
 }
 

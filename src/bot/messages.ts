@@ -10,7 +10,7 @@ const messages = {
       '📌 Iltimos, xavfsizlik uchun tugma orqali o‘zingizning telefon raqamingizni ulashing.',
     registering: '🔎 Ma’lumotlaringiz tekshirilmoqda...',
     registered:
-      '✅ {{name}}, mijoz profilingiz topildi.\n\nRol: Mijoz\nMenyudan buyurtmalaringiz va profil sozlamalarini boshqarishingiz mumkin.',
+      '✅ {{name}}, profilingiz topildi.\n\nMenyudan buyurtmalaringiz va profil sozlamalarini boshqarishingiz mumkin.',
     adminRegistered:
       '🛡 Xush kelibsiz, {{name}}.\n\nRol: Procare xodimi\nXodim menyusida xabar shablonlari va profil sozlamalari mavjud.',
     notFound:
@@ -97,7 +97,7 @@ const messages = {
     registerFirst: '📲 Avval /start buyrug‘i orqali telefon raqamingizni ulang.',
     help: '💬 Yordam kerakmi? Telefon raqamingizni ulashing yoki /start buyrug‘ini yuboring.',
     clientHelp:
-      'Mijoz menyusi: buyurtmalaringizni ko‘rishingiz va profil sozlamalarini yangilashingiz mumkin.',
+      'Menyudan buyurtmalaringizni ko‘rishingiz va profil sozlamalarini yangilashingiz mumkin.',
     employeeHelp:
       'Xodim menyusi: xabar shablonlarini boshqarishingiz va profil sozlamalarini yangilashingiz mumkin.',
     logoutSuccess: '👋 Siz tizimdan chiqdingiz. Qayta boshlash uchun /start buyrug‘ini yuboring.',
@@ -142,7 +142,7 @@ const messages = {
     phoneOnly: '📌 Пожалуйста, для безопасности отправьте свой номер телефона с помощью кнопки.',
     registering: '🔎 Проверяем ваши данные...',
     registered:
-      '✅ {{name}}, ваш клиентский профиль найден.\n\nРоль: клиент\nВ меню доступны ваши заказы и настройки профиля.',
+      '✅ {{name}}, ваш профиль найден.\n\nВ меню доступны ваши заказы и настройки профиля.',
     adminRegistered:
       '🛡 Добро пожаловать, {{name}}.\n\nРоль: сотрудник Procare\nВ меню сотрудника доступны шаблоны сообщений и настройки профиля.',
     notFound:
@@ -224,7 +224,7 @@ const messages = {
     supportOrderUnavailable: '🔄 Сначала откройте данные заказа заново.',
     registerFirst: '📲 Сначала отправьте номер телефона через команду /start.',
     help: '💬 Нужна помощь? Поделитесь номером телефона или отправьте команду /start.',
-    clientHelp: 'Меню клиента: можно смотреть свои заказы и обновлять настройки профиля.',
+    clientHelp: 'В меню можно смотреть свои заказы и обновлять настройки профиля.',
     employeeHelp:
       'Меню сотрудника: можно управлять шаблонами сообщений и обновлять настройки профиля.',
     logoutSuccess: '👋 Вы вышли из системы. Чтобы начать заново, отправьте /start.',

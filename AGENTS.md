@@ -245,10 +245,11 @@ contract changes.
 
 ## Database Rules
 
-The local database currently owns five application tables: `users`, `clients`, `employees`,
-`message_templates`, and `message_dispatch_logs`, plus Knex migration metadata.
+The local database currently owns six application tables: `users`, `clients`, `employees`,
+`message_templates`, `message_dispatch_logs`, and `support_messages`, plus Knex migration metadata.
 `users.telegram_id` is the unique Telegram identity used for upserts. `clients.user_id`,
-`employees.user_id`, and `message_dispatch_logs.user_id` reference `users.id`.
+`employees.user_id`, `message_dispatch_logs.user_id`, and `support_messages.user_id` reference
+`users.id`.
 
 The unknown-client store persists:
 
@@ -277,6 +278,12 @@ The template store persists:
 Template placeholder values must be escaped before being inserted into Telegram HTML output. The
 renderer intentionally preserves author-provided template markup and escapes placeholder values
 only.
+
+The support-message store persists Telegram-to-CRM support comment mappings:
+
+- CRM support comment ID and repair-order context;
+- Telegram account, chat ID, message ID, message date, and content type;
+- sender direction, text, photo count, and optional reply linkage for future threaded replies.
 
 ### Migration Policy
 
