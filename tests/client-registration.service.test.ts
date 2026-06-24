@@ -258,6 +258,30 @@ describe('HttpClientRegistrationService', () => {
     );
   });
 
+  it('rejects inactive admin profiles before creating an employee session', async () => {
+    const service = new HttpClientRegistrationService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () =>
+          Response.json({
+            account_type: 'admin',
+            is_admin: true,
+            admin: { ...adminProfile, is_active: false },
+          }),
+      },
+      logger,
+    );
+
+    await assert.rejects(
+      service.registerByPhone('+998901234567'),
+      (error: unknown) => error instanceof RegistrationError && error.code === 'invalid_response',
+    );
+  });
+
   it('emits sanitized extra diagnostics for registration traffic', async () => {
     const extraLogs: unknown[] = [];
     const service = new HttpClientRegistrationService(

@@ -15,7 +15,7 @@ export const registrationKeyboard = (locale: Locale): Keyboard =>
 export interface PersonalMenuUser {
   locale: Locale;
   client?: Pick<ClientProfile, 'account_type'> | null;
-  admin?: Pick<AdminProfile, 'id'> | null;
+  admin?: Pick<AdminProfile, 'id' | 'is_active'> | null;
 }
 
 const clientMenuKeyboard = (locale: Locale): Keyboard =>
@@ -25,8 +25,8 @@ const employeeMenuKeyboard = (locale: Locale): Keyboard =>
   new Keyboard().text(t(locale, 'adminTemplates')).row().text(t(locale, 'settings')).resized();
 
 export const personalMenuKeyboard = (user: PersonalMenuUser): Keyboard => {
+  if (user.admin?.is_active) return employeeMenuKeyboard(user.locale);
   if (user.client) return clientMenuKeyboard(user.locale);
-  if (user.admin) return employeeMenuKeyboard(user.locale);
   return languageKeyboard();
 };
 
@@ -143,14 +143,38 @@ export const repairOrdersKeyboard = (
 
 export const repairOrderDetailKeyboard = (
   locale: Locale,
-  options: { mapUrl?: string | null } = {},
+  options: {
+    supportEnabled?: boolean;
+    mapUrl?: string | null;
+    checklistUrl?: string | null;
+    warrantyDocumentUrl?: string | null;
+    offerUrl?: string | null;
+  } = {},
 ): InlineKeyboard => {
   const keyboard = new InlineKeyboard()
     .text(t(locale, 'orderRefresh'), 'ro:r')
     .text(t(locale, 'ordersBack'), 'ro:b');
-  if (options.mapUrl) keyboard.row().url(t(locale, 'orderMap'), options.mapUrl);
+  if (options.supportEnabled) keyboard.row().text(t(locale, 'orderSupport'), 'ro:s');
+
+  const externalActions = [
+    options.mapUrl ? { text: t(locale, 'orderMap'), url: options.mapUrl } : null,
+    options.checklistUrl ? { text: t(locale, 'orderChecklist'), url: options.checklistUrl } : null,
+    options.warrantyDocumentUrl
+      ? { text: t(locale, 'orderWarrantyDocument'), url: options.warrantyDocumentUrl }
+      : null,
+    options.offerUrl ? { text: t(locale, 'orderOffer'), url: options.offerUrl } : null,
+  ].filter((action): action is { text: string; url: string } => action !== null);
+
+  externalActions.forEach((action, index) => {
+    if (index % 2 === 0) keyboard.row();
+    keyboard.url(action.text, action.url);
+  });
+
   return keyboard;
 };
+
+export const supportCommentKeyboard = (locale: Locale): Keyboard =>
+  new Keyboard().text(t(locale, 'supportCancel')).resized().oneTime();
 
 export const adminTemplateListKeyboard = (
   templates: Pick<MessageTemplate, 'id' | 'title' | 'is_active'>[],

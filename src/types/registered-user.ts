@@ -36,3 +36,27 @@ export interface RegisteredUserMessageTarget {
   phone_number: string;
   is_blocked: boolean;
 }
+
+export interface UserRegistrationState {
+  user: {
+    telegram_id: string;
+    telegram_username: string | null;
+    first_name: string;
+    last_name: string | null;
+    phone_number: string;
+    locale: Locale;
+  };
+  client?: {
+    crm_client_id: string;
+    customer_code: string | null;
+    status: string;
+    is_active: boolean;
+  };
+  employee?: {
+    crm_admin_id: string;
+    status: string;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+}

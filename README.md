@@ -24,9 +24,10 @@ PostgreSQL, including separate client and employee role rows.
   cancel
 - database-backed transactional message templates with Uzbek/Russian rendering
 - Telegram notification dispatch logging and blocked-user tracking for template messages
-- admin-only template management inside the bot
+- employee-only template management inside the bot
 - API-triggered direct Telegram messages to registered users by phone number
 - localized rich repair-order cards with classic Telegram HTML fallback
+- customer support comments from repair-order detail cards to assigned employees or branch staff
 - Fastify `GET /health` endpoint
 - console and per-session file logging
 - automatic Knex migrations and graceful shutdown
@@ -43,8 +44,9 @@ PostgreSQL, including separate client and employee role rows.
        -> show profile confirmation
        -> fetch repair orders when "My orders" is opened
        -> open and explicitly refresh customer-safe order details
-  -> active CRM admin without a matching client profile
-       -> show admin-account confirmation
+       -> send a text or photo support comment from a selected order
+  -> active CRM employee
+       -> show employee-role confirmation
        -> manage transactional message templates
        -> do not offer client repair orders or unknown-client repair creation
   -> unknown client
@@ -62,10 +64,10 @@ their details into the local `users` table.
 `/logout` clears the in-memory bot session and deletes the current Telegram user's row from the
 local `users` table if it exists.
 
-Admins can open `Xabar shablonlari` / `Шаблоны сообщений` from their menu to list, create, edit,
-activate, deactivate, or delete Telegram message templates. Template text supports placeholders such
-as `{{ customer_name }}` and `{{ coupon_code }}`; rendered placeholder values are HTML-escaped, and
-coupon codes are wrapped in Telegram `<code>` tags for tap-to-copy behavior.
+Employees can open `Xabar shablonlari` / `Шаблоны сообщений` from their menu to list, create,
+edit, activate, deactivate, or delete Telegram message templates. Template text supports
+placeholders such as `{{ customer_name }}` and `{{ coupon_code }}`; rendered placeholder values are
+HTML-escaped, and coupon codes are wrapped in Telegram `<code>` tags for tap-to-copy behavior.
 
 ## Technology
 
@@ -312,6 +314,7 @@ Client repair tracking calls:
 ```http
 GET /api/v1/telegram/clients/{client_id}/repair-orders?limit=10&offset=0
 GET /api/v1/telegram/clients/{client_id}/repair-orders/{order_number}
+POST /api/v1/repair-orders/register-comment/{repair_order_id}
 Authorization: Basic ...
 ```
 
@@ -330,6 +333,8 @@ repair orders. Client registration treats any `is_admin=true` response as an emp
 other successful registration responses are client sessions. Public repair-order creation is
 intentionally attempted once because the upstream endpoint is not idempotent and a retry can create
 a duplicate order.
+Support comment submission is also attempted once by the bot. The CRM endpoint deduplicates
+identical successful submissions for a short window and returns `created=false` for duplicates.
 
 See:
 
@@ -403,7 +408,7 @@ Do not log bot tokens, passwords, authorization headers, or unnecessary personal
 - Sessions are in memory and disappear on restart.
 - Multiple replicas cannot share session state.
 - Registered client identity remains in the in-memory session; repair orders are fetched on demand.
-- Template management is available to CRM-recognized admins, but there is still no separate web
+- Template management is available to CRM-recognized employees, but there is still no separate web
   admin panel.
 - The bot uses long polling, not webhooks.
 - Private-chat operation is assumed by the data model but is not enforced by a global chat-type

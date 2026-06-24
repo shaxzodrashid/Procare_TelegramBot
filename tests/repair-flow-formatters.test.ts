@@ -151,6 +151,7 @@ describe('client repair-order presentation', () => {
     const formatted = formatClientRepairOrderDetail(
       {
         ...listOrder,
+        id: '11111111-1111-4111-8111-111111111111',
         updated_at: '2026-06-18T10:00:00.000Z',
         device: { ...listOrder.device, imei_last4: '5678' },
         status: {
@@ -190,15 +191,142 @@ describe('client repair-order presentation', () => {
         completed_at: null,
         picked_up_at: null,
         warranty: { period_months: 3, warranty_until: null },
+        documents: {
+          checklist_url: 'https://crm.test/documents/checklist/1024',
+          warranty_document_url: null,
+          offer_url: null,
+        },
         status_history: [],
       },
       'uz',
     );
 
     assert.match(formatted.fallbackHtml, /Qurilmangiz ta’mirlanmoqda/);
+    assert.match(formatted.fallbackHtml, /📱 Apple iPhone 14 Pro/);
+    assert.match(formatted.fallbackHtml, /── Ta’mirlash ──/);
     assert.match(formatted.fallbackHtml, /•••• 5678/);
     assert.match(formatted.fallbackHtml, /3 oy/);
     assert.match(formatted.fallbackHtml, /09:00–18:00/);
+    assert.match(formatted.fallbackHtml, /Ta’mirlash summasi:<\/b> 350[^\d]*000/);
+    assert.doesNotMatch(formatted.fallbackHtml, /To‘lov|To‘lanmagan|Taxminiy|To‘langan|Qoldiq/);
     assert.doesNotMatch(formatted.fallbackHtml, /\d{15}/);
+  });
+
+  it('does not render status history in order details', () => {
+    const formatted = formatClientRepairOrderDetail(
+      {
+        ...listOrder,
+        id: '11111111-1111-4111-8111-111111111111',
+        updated_at: '2026-06-18T10:00:00.000Z',
+        device: { ...listOrder.device, imei_last4: null },
+        status: {
+          ...status,
+          customer_message_uz: null,
+          customer_message_ru: null,
+          customer_message_en: null,
+        },
+        pricing: {
+          ...listOrder.pricing,
+          estimated_total: null,
+          paid_amount: '0',
+          remaining_amount: '350000.00',
+          payments: [],
+        },
+        branch: {
+          name_uz: 'Chilonzor filiali',
+          name_ru: 'Чиланзарский филиал',
+          name_en: 'Chilanzar branch',
+          address_uz: null,
+          address_ru: null,
+          address_en: null,
+          telephone: null,
+          working_hours: { start: null, end: null },
+          map_url: null,
+        },
+        completed_at: null,
+        picked_up_at: null,
+        warranty: { period_months: null, warranty_until: null },
+        documents: {
+          checklist_url: null,
+          warranty_document_url: null,
+          offer_url: null,
+        },
+        status_history: [
+          {
+            code: 'RECEIVED',
+            name_uz: 'Qabul qilindi',
+            name_ru: 'Принят',
+            name_en: 'Received',
+            progress_type: 'linear',
+            step: 1,
+            total_steps: 7,
+            changed_at: '2026-06-14T11:20:00.000Z',
+          },
+        ],
+      },
+      'uz',
+    );
+
+    assert.doesNotMatch(formatted.fallbackHtml, /Holatlar tarixi|RECEIVED/);
+    assert.doesNotMatch(formatted.richHtml, /Holatlar tarixi|RECEIVED/);
+  });
+
+  it('shows only the final repair total when payment rows are present', () => {
+    const formatted = formatClientRepairOrderDetail(
+      {
+        ...listOrder,
+        id: '11111111-1111-4111-8111-111111111111',
+        updated_at: '2026-06-18T10:00:00.000Z',
+        device: { ...listOrder.device, imei_last4: null },
+        status: {
+          ...status,
+          customer_message_uz: null,
+          customer_message_ru: null,
+          customer_message_en: null,
+        },
+        pricing: {
+          ...listOrder.pricing,
+          estimated_total: null,
+          paid_amount: '100000.00',
+          remaining_amount: '250000.00',
+          payments: [
+            {
+              amount: '100000.00',
+              currency: 'UZS',
+              method: 'card',
+              paid_at: '2026-06-18T09:00:00.000Z',
+            },
+          ],
+        },
+        branch: {
+          name_uz: 'Chilonzor filiali',
+          name_ru: 'Чиланзарский филиал',
+          name_en: 'Chilanzar branch',
+          address_uz: null,
+          address_ru: null,
+          address_en: null,
+          telephone: null,
+          working_hours: { start: null, end: null },
+          map_url: null,
+        },
+        completed_at: null,
+        picked_up_at: null,
+        warranty: { period_months: null, warranty_until: null },
+        documents: {
+          checklist_url: null,
+          warranty_document_url: null,
+          offer_url: null,
+        },
+        status_history: [],
+      },
+      'ru',
+    );
+
+    assert.match(formatted.fallbackHtml, /Стоимость ремонта:<\/b> 350[^\d]*000/);
+    assert.doesNotMatch(
+      formatted.fallbackHtml,
+      /Оплата|История платежей|Частично оплачено|Предварительно|Остаток|card/,
+    );
+    assert.doesNotMatch(formatted.fallbackHtml, /Неисправность: —/);
   });
 });

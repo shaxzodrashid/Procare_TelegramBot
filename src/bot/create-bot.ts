@@ -12,6 +12,7 @@ import type { RepairOrderGateway } from '../services/repair-order.service.js';
 import { RepairOrderError } from '../services/repair-order.service.js';
 import type { UnknownClientStore } from '../services/unknown-client.store.js';
 import type { AdminProfile, Locale, RegistrationResult } from '../types/client.js';
+import type { CustomerSupportPhotoUpload } from '../types/client-repair-order.js';
 import type {
   MessageTemplate,
   MessageTemplateDraft,
@@ -58,8 +59,9 @@ import {
   settingsKeyboard,
   settingsLanguageKeyboard,
   settingsPhoneKeyboard,
+  supportCommentKeyboard,
 } from './keyboards.js';
-import { t } from './messages.js';
+import { t, type MessageKey } from './messages.js';
 import { replySmart } from './rich-messages.js';
 
 export interface BotDependencies {
@@ -76,6 +78,8 @@ export interface BotDependencies {
 
 const CATEGORY_PAGE_SIZE = 10;
 const REPAIR_ORDERS_PAGE_SIZE = 10;
+const SUPPORT_COMMENT_MAX_LENGTH = 4_000;
+const SUPPORT_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 
 export type RegistrationAccountKind = 'client' | 'employee';
 
@@ -140,6 +144,14 @@ const summarizeSession = (sessionData: BotSession): Record<string, unknown> => (
         offset: sessionData.repairOrdersView.offset,
         orderNumbers: sessionData.repairOrdersView.orderNumbers,
         selectedOrderNumber: sessionData.repairOrdersView.selectedOrderNumber,
+        selectedRepairOrderId: sessionData.repairOrdersView.selectedRepairOrderId,
+      }
+    : undefined,
+  supportComment: sessionData.supportComment
+    ? {
+        repairOrderId: sessionData.supportComment.repairOrderId,
+        orderNumber: sessionData.supportComment.orderNumber,
+        submitting: sessionData.supportComment.submitting,
       }
     : undefined,
 });
@@ -345,6 +357,11 @@ const clearAdminTemplateFlow = (sessionData: BotSession): void => {
   if (sessionData.stage === 'admin_template_input') delete sessionData.stage;
 };
 
+const clearSupportFlow = (sessionData: BotSession): void => {
+  delete sessionData.supportComment;
+  if (sessionData.stage === 'support_comment_input') delete sessionData.stage;
+};
+
 const settingsStages = new Set<RegistrationStage>([
   'settings',
   'settings_awaiting_name',
@@ -362,6 +379,7 @@ const resetSession = (sessionData: BotSession, locale: Locale): void => {
   delete sessionData.repairOrdersView;
   clearUnknownFlow(sessionData);
   clearAdminTemplateFlow(sessionData);
+  clearSupportFlow(sessionData);
   clearSettingsFlow(sessionData);
   sessionData.locale = locale;
   sessionData.stage = 'choosing_language';
@@ -406,27 +424,36 @@ export const parseSettingsName = (value: string): SettingsName | null => {
   };
 };
 
+export const hasEmployeeMenuAccess = (sessionData: Pick<BotSession, 'admin'>): boolean =>
+  Boolean(sessionData.admin?.is_active);
+
 const hasRegisteredProfile = (sessionData: BotSession): boolean =>
-  Boolean(sessionData.client || sessionData.admin);
+  Boolean(sessionData.client || hasEmployeeMenuAccess(sessionData));
+
+const registeredHelpKey = (sessionData: BotSession): MessageKey =>
+  hasEmployeeMenuAccess(sessionData) ? 'employeeHelp' : sessionData.client ? 'clientHelp' : 'help';
 
 const currentReplyKeyboard = (sessionData: BotSession) =>
   sessionData.stage === 'settings'
     ? settingsKeyboard(sessionData.locale)
-    : sessionData.stage === 'settings_awaiting_name'
-      ? settingsBackKeyboard(sessionData.locale)
-      : sessionData.stage === 'settings_awaiting_phone'
-        ? settingsPhoneKeyboard(sessionData.locale)
-        : sessionData.stage === 'settings_choosing_language'
-          ? settingsLanguageKeyboard(sessionData.locale)
-          : sessionData.client || sessionData.admin
-            ? personalMenuKeyboard(sessionData)
-            : sessionData.stage === 'awaiting_phone'
-              ? registrationKeyboard(sessionData.locale)
-              : languageKeyboard();
+    : sessionData.stage === 'support_comment_input'
+      ? supportCommentKeyboard(sessionData.locale)
+      : sessionData.stage === 'settings_awaiting_name'
+        ? settingsBackKeyboard(sessionData.locale)
+        : sessionData.stage === 'settings_awaiting_phone'
+          ? settingsPhoneKeyboard(sessionData.locale)
+          : sessionData.stage === 'settings_choosing_language'
+            ? settingsLanguageKeyboard(sessionData.locale)
+            : hasRegisteredProfile(sessionData)
+              ? personalMenuKeyboard(sessionData)
+              : sessionData.stage === 'awaiting_phone'
+                ? registrationKeyboard(sessionData.locale)
+                : languageKeyboard();
 
 const showSettingsMenu = async (ctx: BotContext): Promise<void> => {
   clearUnknownFlow(ctx.session);
   clearAdminTemplateFlow(ctx.session);
+  clearSupportFlow(ctx.session);
   ctx.session.stage = 'settings';
   await ctx.reply(t(ctx.session.locale, 'settingsTitle'), {
     reply_markup: settingsKeyboard(ctx.session.locale),
@@ -457,6 +484,12 @@ const replyWithAdminRegistration = async (ctx: BotContext): Promise<void> => {
     }),
     { reply_markup: personalMenuKeyboard(ctx.session) },
   );
+};
+
+const registrationLocale = (registration: RegistrationResult): Locale | null => {
+  const language =
+    registration.account_type === 'client' ? registration.language : registration.admin.language;
+  return language === 'uz' || language === 'ru' ? language : null;
 };
 
 const categoryMessage = (draft: RepairRequestDraft, locale: Locale): string => {
@@ -580,7 +613,7 @@ const formatTemplateDetail = (template: MessageTemplate): string =>
   ].join('\n');
 
 const requireAdmin = async (ctx: BotContext): Promise<boolean> => {
-  if (ctx.session.admin) return true;
+  if (hasEmployeeMenuAccess(ctx.session)) return true;
   await ctx.reply(t(ctx.session.locale, 'staleAction'));
   return false;
 };
@@ -752,7 +785,6 @@ const saveUnknownClient = async (
 
 const registrationAdminProfile = (registration: RegistrationResult): AdminProfile | null =>
   registration.account_type === 'admin' ? registration.admin : registration.admin;
-
 const saveRegisteredUser = async (
   ctx: BotContext,
   store: RegisteredUserStore,
@@ -761,11 +793,18 @@ const saveRegisteredUser = async (
 ): Promise<void> => {
   if (!ctx.from) return;
 
+  const crmFirstName =
+    registration.account_type === 'client'
+      ? registration.first_name
+      : registration.admin.first_name;
+  const crmLastName =
+    registration.account_type === 'client' ? registration.last_name : registration.admin.last_name;
+
   const user = {
     telegram_id: String(ctx.from.id),
     telegram_username: ctx.from.username ?? null,
-    first_name: ctx.from.first_name,
-    last_name: ctx.from.last_name ?? null,
+    first_name: crmFirstName || ctx.from.first_name,
+    last_name: crmLastName || ctx.from.last_name || null,
     phone_number: phoneNumber,
     locale: ctx.session.locale,
   };
@@ -887,6 +926,9 @@ const registerByPhone = async (
   const pendingMessage = await ctx.reply(t(ctx.session.locale, 'registering'));
   try {
     const registration = await dependencies.registrationService.registerByPhone(normalizedPhone);
+
+    ctx.session.locale = registrationLocale(registration) ?? ctx.session.locale;
+
     await saveRegisteredUser(ctx, dependencies.registeredUserStore, registration, normalizedPhone);
     delete ctx.session.client;
     delete ctx.session.admin;
@@ -1052,11 +1094,16 @@ const showClientRepairOrderDetail = async (
     );
     ctx.session.repairOrdersView ??= { offset: 0, orderNumbers: [] };
     ctx.session.repairOrdersView.selectedOrderNumber = order.order_number;
+    ctx.session.repairOrdersView.selectedRepairOrderId = order.id;
     await replySmart(ctx, formatClientRepairOrderDetail(order, ctx.session.locale), {
       enabled: dependencies.richMessagesEnabled,
       logger: dependencies.logger,
       replyMarkup: repairOrderDetailKeyboard(ctx.session.locale, {
+        supportEnabled: true,
         mapUrl: safeHttpUrl(order.branch?.map_url),
+        checklistUrl: safeHttpUrl(order.documents.checklist_url),
+        warrantyDocumentUrl: safeHttpUrl(order.documents.warranty_document_url),
+        offerUrl: safeHttpUrl(order.documents.offer_url),
       }),
     });
   } catch (error) {
@@ -1067,6 +1114,117 @@ const showClientRepairOrderDetail = async (
     dependencies.logger.error('Failed to load client repair-order detail', error);
     await ctx.reply(t(ctx.session.locale, 'ordersUnavailable'));
   }
+};
+
+const startSupportComment = async (ctx: BotContext): Promise<void> => {
+  const repairOrderId = ctx.session.repairOrdersView?.selectedRepairOrderId;
+  const orderNumber = ctx.session.repairOrdersView?.selectedOrderNumber;
+  if (!ctx.session.client || !repairOrderId || !orderNumber) {
+    await ctx.reply(t(ctx.session.locale, 'supportOrderUnavailable'));
+    return;
+  }
+
+  clearAdminTemplateFlow(ctx.session);
+  clearSettingsFlow(ctx.session);
+  ctx.session.stage = 'support_comment_input';
+  ctx.session.supportComment = {
+    repairOrderId,
+    orderNumber,
+    submitting: false,
+  };
+  await ctx.reply(t(ctx.session.locale, 'supportPrompt', { number: orderNumber }), {
+    reply_markup: supportCommentKeyboard(ctx.session.locale),
+  });
+};
+
+const submitSupportComment = async (
+  ctx: BotContext,
+  dependencies: BotDependencies,
+  input: { text?: string; photos?: CustomerSupportPhotoUpload[] },
+): Promise<void> => {
+  const draft = ctx.session.supportComment;
+  if (ctx.session.stage !== 'support_comment_input' || !draft || !ctx.session.client) {
+    await ctx.reply(t(ctx.session.locale, 'staleAction'));
+    return;
+  }
+  if (draft.submitting) return;
+
+  const text = input.text?.trim();
+  const photos = input.photos ?? [];
+  if (!text && photos.length === 0) {
+    await ctx.reply(t(ctx.session.locale, 'supportEmpty'), {
+      reply_markup: supportCommentKeyboard(ctx.session.locale),
+    });
+    return;
+  }
+  if (text && text.length > SUPPORT_COMMENT_MAX_LENGTH) {
+    await ctx.reply(t(ctx.session.locale, 'supportTooLong'), {
+      reply_markup: supportCommentKeyboard(ctx.session.locale),
+    });
+    return;
+  }
+
+  draft.submitting = true;
+  const pendingMessage = ctx.chat ? await ctx.reply(t(ctx.session.locale, 'supportSending')) : null;
+  try {
+    const result = await dependencies.clientRepairOrderService.registerClientSupportComment(
+      draft.repairOrderId,
+      {
+        text,
+        photos,
+      },
+    );
+    if (pendingMessage && ctx.chat) {
+      await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
+    }
+    clearSupportFlow(ctx.session);
+    await ctx.reply(t(ctx.session.locale, result.created ? 'supportSent' : 'supportDuplicate'), {
+      reply_markup: personalMenuKeyboard(ctx.session),
+    });
+  } catch (error) {
+    draft.submitting = false;
+    if (pendingMessage && ctx.chat) {
+      await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
+    }
+    dependencies.logger.error('Failed to register client support comment', error);
+    const key =
+      error instanceof ClientRepairOrderError && error.code === 'not_found'
+        ? 'supportOrderUnavailable'
+        : 'supportUnavailable';
+    await ctx.reply(t(ctx.session.locale, key), {
+      reply_markup: supportCommentKeyboard(ctx.session.locale),
+    });
+  }
+};
+
+const downloadTelegramSupportPhoto = async (
+  ctx: BotContext,
+  botToken: string,
+): Promise<CustomerSupportPhotoUpload | null> => {
+  const photos = ctx.message && 'photo' in ctx.message ? ctx.message.photo : undefined;
+  if (!photos || photos.length === 0) return null;
+
+  const largest = photos.reduce((best, current) =>
+    (current.file_size ?? 0) > (best.file_size ?? 0) ? current : best,
+  );
+  if (largest.file_size && largest.file_size > SUPPORT_PHOTO_MAX_BYTES) {
+    throw new ClientRepairOrderError('invalid_request', 'support photo is too large');
+  }
+
+  const file = await ctx.api.getFile(largest.file_id);
+  if (!file.file_path) return null;
+  const response = await fetch(`https://api.telegram.org/file/bot${botToken}/${file.file_path}`, {
+    method: 'GET',
+  });
+  if (!response.ok) return null;
+  const buffer = new Uint8Array(await response.arrayBuffer());
+  if (buffer.byteLength > SUPPORT_PHOTO_MAX_BYTES) {
+    throw new ClientRepairOrderError('invalid_request', 'support photo is too large');
+  }
+
+  const mimeType = response.headers.get('content-type')?.split(';', 1)[0] || 'image/jpeg';
+  const fileName = `telegram-${largest.file_unique_id}.jpg`;
+  return { data: buffer, fileName, mimeType };
 };
 
 const showConfirmation = async (ctx: BotContext): Promise<void> => {
@@ -1112,12 +1270,75 @@ const acceptNote = async (ctx: BotContext, note: string): Promise<void> => {
   await showConfirmation(ctx);
 };
 
+export const createSessionRestorationMiddleware = (
+  dependencies: Pick<BotDependencies, 'registeredUserStore' | 'logger'>,
+) => {
+  return async (ctx: BotContext, next: () => Promise<void>) => {
+    if (ctx.from && !ctx.session.client && !ctx.session.admin) {
+      try {
+        const registrationState = await dependencies.registeredUserStore.findByTelegramId(
+          String(ctx.from.id),
+        );
+        if (registrationState) {
+          ctx.session.locale = registrationState.user.locale;
+
+          if (registrationState.employee && registrationState.employee.is_active) {
+            ctx.session.admin = {
+              id: registrationState.employee.crm_admin_id,
+              first_name: registrationState.user.first_name,
+              last_name: registrationState.user.last_name,
+              phone_number: registrationState.user.phone_number,
+              phone_verified: true,
+              language: registrationState.user.locale,
+              status: registrationState.employee.status,
+              is_active: registrationState.employee.is_active,
+              created_at: registrationState.employee.created_at,
+              updated_at: registrationState.employee.updated_at,
+            };
+            dependencies.logger.info(`Restored admin session for telegram_id: ${ctx.from.id}`);
+            if (
+              ctx.session.stage === 'choosing_language' ||
+              ctx.session.stage === 'awaiting_phone'
+            ) {
+              delete ctx.session.stage;
+            }
+          } else if (registrationState.client && registrationState.client.is_active) {
+            ctx.session.client = {
+              account_type: 'client',
+              client_id: registrationState.client.crm_client_id,
+              first_name: registrationState.user.first_name,
+              last_name: registrationState.user.last_name,
+              language: registrationState.user.locale,
+              has_repair_orders: true,
+              is_admin: false,
+              admin: null,
+            };
+            dependencies.logger.info(`Restored client session for telegram_id: ${ctx.from.id}`);
+            if (
+              ctx.session.stage === 'choosing_language' ||
+              ctx.session.stage === 'awaiting_phone'
+            ) {
+              delete ctx.session.stage;
+            }
+          }
+        }
+      } catch (error) {
+        dependencies.logger.error('Failed to restore user session from database', error);
+      }
+    }
+    await next();
+  };
+};
+
 export const createBot = (token: string, dependencies: BotDependencies): Bot<BotContext> => {
   const bot = new Bot<BotContext>(token);
 
   bot.api.config.use(createTelegramApiLoggingTransformer(dependencies.logger));
 
   bot.use(session({ initial: initialSession }));
+
+  bot.use(createSessionRestorationMiddleware(dependencies));
+
   bot.use(async (ctx, next) => {
     const startedAt = Date.now();
     dependencies.logger.debug(`Incoming Telegram update ${ctx.update.update_id}`);
@@ -1147,6 +1368,10 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
         );
     }
 
+    if (hasEmployeeMenuAccess(ctx.session)) {
+      await replyWithAdminRegistration(ctx);
+      return;
+    }
     if (ctx.session.client) {
       await ctx.reply(
         t(ctx.session.locale, 'registered', {
@@ -1154,10 +1379,6 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
         }),
         { reply_markup: personalMenuKeyboard(ctx.session) },
       );
-      return;
-    }
-    if (ctx.session.admin) {
-      await replyWithAdminRegistration(ctx);
       return;
     }
 
@@ -1169,7 +1390,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
   });
 
   bot.command('help', async (ctx) => {
-    await ctx.reply(t(ctx.session.locale, 'help'), {
+    await ctx.reply(t(ctx.session.locale, registeredHelpKey(ctx.session)), {
       reply_markup: currentReplyKeyboard(ctx.session),
     });
   });
@@ -1209,12 +1430,12 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
         await ctx.reply(
           wasChoosingSettingsLanguage
             ? t(ctx.session.locale, 'settingsLanguageUpdated')
-            : ctx.session.client
-              ? t(ctx.session.locale, 'registered', {
-                  name: ctx.session.client.first_name || ctx.from?.first_name || 'Procare',
-                })
-              : t(ctx.session.locale, 'adminRegistered', {
+            : hasEmployeeMenuAccess(ctx.session)
+              ? t(ctx.session.locale, 'adminRegistered', {
                   name: adminDisplayName(ctx),
+                })
+              : t(ctx.session.locale, 'registered', {
+                  name: ctx.session.client?.first_name || ctx.from?.first_name || 'Procare',
                 }),
           { reply_markup: personalMenuKeyboard(ctx.session) },
         );
@@ -1236,22 +1457,30 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
 
   bot.on('message:contact', async (ctx) => {
     const acceptsInitialPhone =
-      ctx.session.stage === 'awaiting_phone' && !ctx.session.client && !ctx.session.admin;
+      ctx.session.stage === 'awaiting_phone' &&
+      !ctx.session.client &&
+      !hasEmployeeMenuAccess(ctx.session);
     const acceptsSettingsPhone =
       ctx.session.stage === 'settings_awaiting_phone' && hasRegisteredProfile(ctx.session);
 
     if (!acceptsInitialPhone && !acceptsSettingsPhone) {
-      if (ctx.session.admin) {
+      if (hasEmployeeMenuAccess(ctx.session)) {
         await replyWithAdminRegistration(ctx);
         return;
       }
-      await ctx.reply(t(ctx.session.locale, ctx.session.client ? 'help' : 'chooseLanguage'), {
-        reply_markup: currentReplyKeyboard(ctx.session),
-      });
+      await ctx.reply(
+        t(
+          ctx.session.locale,
+          ctx.session.client ? registeredHelpKey(ctx.session) : 'chooseLanguage',
+        ),
+        {
+          reply_markup: currentReplyKeyboard(ctx.session),
+        },
+      );
       return;
     }
 
-    if (ctx.session.admin && !acceptsSettingsPhone) {
+    if (hasEmployeeMenuAccess(ctx.session) && !acceptsSettingsPhone) {
       await replyWithAdminRegistration(ctx);
       return;
     }
@@ -1626,7 +1855,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
     }
 
     clearSettingsFlow(ctx.session);
-    await ctx.reply(t(ctx.session.locale, 'help'), {
+    await ctx.reply(t(ctx.session.locale, registeredHelpKey(ctx.session)), {
       reply_markup: personalMenuKeyboard(ctx.session),
     });
   });
@@ -1675,7 +1904,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
 
   bot.hears([t('uz', 'orders'), t('ru', 'orders')], async (ctx) => {
     if (!ctx.session.client) {
-      if (ctx.session.admin) {
+      if (hasEmployeeMenuAccess(ctx.session)) {
         await replyWithAdminRegistration(ctx);
       } else {
         await ctx.reply(t(ctx.session.locale, 'registerFirst'), {
@@ -1684,6 +1913,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
       }
       return;
     }
+    clearSupportFlow(ctx.session);
     await showClientRepairOrders(ctx, dependencies, 0, true);
   });
 
@@ -1738,9 +1968,15 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
     await showClientRepairOrders(ctx, dependencies, ctx.session.repairOrdersView?.offset ?? 0);
   });
 
+  bot.callbackQuery('ro:s', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await startSupportComment(ctx);
+  });
+
   bot.hears([t('uz', 'adminTemplates'), t('ru', 'adminTemplates')], async (ctx) => {
     if (!(await requireAdmin(ctx))) return;
     try {
+      clearSupportFlow(ctx.session);
       clearAdminTemplateFlow(ctx.session);
       await showAdminTemplateList(ctx, dependencies.messageTemplateStore);
     } catch (error) {
@@ -1845,7 +2081,59 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
     }
   });
 
+  bot.on('message:photo', async (ctx) => {
+    if (ctx.session.stage !== 'support_comment_input') {
+      await ctx.reply(
+        t(
+          ctx.session.locale,
+          hasRegisteredProfile(ctx.session) ? registeredHelpKey(ctx.session) : 'phoneOnly',
+        ),
+        {
+          reply_markup: currentReplyKeyboard(ctx.session),
+        },
+      );
+      return;
+    }
+
+    try {
+      const photo = await downloadTelegramSupportPhoto(ctx, token);
+      if (!photo) {
+        await ctx.reply(t(ctx.session.locale, 'supportPhotoUnavailable'), {
+          reply_markup: supportCommentKeyboard(ctx.session.locale),
+        });
+        return;
+      }
+      await submitSupportComment(ctx, dependencies, {
+        text: ctx.message.caption,
+        photos: [photo],
+      });
+    } catch (error) {
+      if (error instanceof ClientRepairOrderError && error.code === 'invalid_request') {
+        await ctx.reply(t(ctx.session.locale, 'supportPhotoTooLarge'), {
+          reply_markup: supportCommentKeyboard(ctx.session.locale),
+        });
+        return;
+      }
+      dependencies.logger.error('Failed to prepare Telegram support photo', error);
+      await ctx.reply(t(ctx.session.locale, 'supportPhotoUnavailable'), {
+        reply_markup: supportCommentKeyboard(ctx.session.locale),
+      });
+    }
+  });
+
   bot.on('message:text', async (ctx) => {
+    if (ctx.session.stage === 'support_comment_input') {
+      if (ctx.message.text === t(ctx.session.locale, 'supportCancel')) {
+        clearSupportFlow(ctx.session);
+        await ctx.reply(t(ctx.session.locale, 'supportCancelled'), {
+          reply_markup: personalMenuKeyboard(ctx.session),
+        });
+        return;
+      }
+      await submitSupportComment(ctx, dependencies, { text: ctx.message.text });
+      return;
+    }
+
     if (ctx.session.stage === 'admin_template_input' && ctx.session.adminTemplateInput) {
       await handleAdminTemplateInput(
         ctx,
@@ -1889,7 +2177,10 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
     }
 
     await ctx.reply(
-      t(ctx.session.locale, ctx.session.client || ctx.session.admin ? 'help' : 'phoneOnly'),
+      t(
+        ctx.session.locale,
+        hasRegisteredProfile(ctx.session) ? registeredHelpKey(ctx.session) : 'phoneOnly',
+      ),
       {
         reply_markup: currentReplyKeyboard(ctx.session),
       },

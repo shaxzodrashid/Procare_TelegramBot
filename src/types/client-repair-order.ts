@@ -104,26 +104,95 @@ export interface CustomerRepairWarranty {
   warranty_until: string | null;
 }
 
+export interface CustomerRepairDocuments {
+  checklist_url: string | null;
+  warranty_document_url: string | null;
+  offer_url: string | null;
+}
+
 export interface CustomerRepairStatusHistoryItem extends LocalizedCustomerText {
-  code: CustomerRepairStatusCode;
-  progress_type: CustomerRepairProgressType;
+  code: string;
+  progress_type: string;
   step: number | null;
   total_steps: number | null;
   changed_at: string;
 }
 
 export interface CustomerRepairOrderDetail extends CustomerRepairOrderListItem {
+  id: string;
   updated_at: string;
   device: CustomerRepairDevice & {
     imei_last4: string | null;
   };
   status: Required<CustomerRepairStatus>;
-  problem_summary: LocalizedCustomerSummary;
-  service_summary: LocalizedCustomerSummary;
+  problem_summary?: LocalizedCustomerSummary;
+  service_summary?: LocalizedCustomerSummary;
   pricing: CustomerRepairPricingDetail;
   branch: CustomerRepairBranch;
   completed_at: string | null;
   picked_up_at: string | null;
   warranty: CustomerRepairWarranty;
+  documents: CustomerRepairDocuments;
   status_history: CustomerRepairStatusHistoryItem[];
+}
+
+export type CustomerSupportReplyTargetType = 'comment' | 'history' | 'audio';
+
+export interface CustomerSupportCommentAuthor {
+  id: string;
+  display_name: string | null;
+  username: string | null;
+}
+
+export interface CustomerSupportCommentReply {
+  target_type: CustomerSupportReplyTargetType;
+  target_id: string;
+  snapshot: Record<string, unknown>;
+}
+
+export interface CustomerSupportCommentPhoto {
+  id: string;
+  original_name: string;
+  mime_type: string;
+  urls: {
+    small: string;
+    medium: string;
+    large: string;
+  };
+}
+
+export interface CustomerSupportComment {
+  item_type: 'message';
+  id: string;
+  comment_type: 'support';
+  author_type: 'user';
+  direction: 'inbound';
+  text: string | null;
+  author: CustomerSupportCommentAuthor;
+  reply: CustomerSupportCommentReply | null;
+  photos: CustomerSupportCommentPhoto[];
+  is_editable: boolean;
+  is_deletable: boolean;
+  is_edited: boolean;
+  is_read: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerSupportCommentResponse {
+  comment: CustomerSupportComment;
+  created: boolean;
+}
+
+export interface CustomerSupportPhotoUpload {
+  fileName: string;
+  mimeType: string;
+  data: Uint8Array;
+}
+
+export interface CustomerSupportCommentRequest {
+  text?: string;
+  replyTargetType?: CustomerSupportReplyTargetType;
+  replyTargetId?: string;
+  photos?: CustomerSupportPhotoUpload[];
 }

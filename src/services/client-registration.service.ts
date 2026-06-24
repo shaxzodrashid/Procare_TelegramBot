@@ -52,7 +52,7 @@ const isAdminProfile = (value: unknown): value is AdminProfile => {
     typeof value.phone_verified === 'boolean' &&
     isNullableString(value.language) &&
     typeof value.status === 'string' &&
-    typeof value.is_active === 'boolean' &&
+    value.is_active === true &&
     typeof value.created_at === 'string' &&
     typeof value.updated_at === 'string'
   );

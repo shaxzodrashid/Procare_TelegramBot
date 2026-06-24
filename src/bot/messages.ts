@@ -9,9 +9,10 @@ const messages = {
     phoneOnly:
       '📌 Iltimos, xavfsizlik uchun tugma orqali o‘zingizning telefon raqamingizni ulashing.',
     registering: '🔎 Ma’lumotlaringiz tekshirilmoqda...',
-    registered: '✅ {{name}}, profilingiz topildi. Procare xizmatlari siz uchun tayyor.',
+    registered:
+      '✅ {{name}}, mijoz profilingiz topildi.\n\nRol: Mijoz\nMenyudan buyurtmalaringiz va profil sozlamalarini boshqarishingiz mumkin.',
     adminRegistered:
-      '🛡 Xush kelibsiz, {{name}}! Bu raqam faol admin hisobiga tegishli. Mijoz buyurtmalarini ko‘rish uchun /logout yuboring va mijoz telefon raqami bilan qayta kiring.',
+      '🛡 Xush kelibsiz, {{name}}.\n\nRol: Procare xodimi\nXodim menyusida xabar shablonlari va profil sozlamalari mavjud.',
     notFound:
       '🔎 Bu raqam bo‘yicha faol mijoz topilmadi. Yangi ta’mir arizasini hoziroq qoldiramizmi?',
     leaveRequest: '🛠 Ariza qoldirish',
@@ -72,10 +73,33 @@ const messages = {
     orderNotFound: '🔎 Bu buyurtma topilmadi yoki endi ko‘rish uchun mavjud emas.',
     ordersRefresh: '🔄 Yangilash',
     orderRefresh: '🔄 Yangilash',
-    ordersBack: '⬅️ Buyurtmalar',
-    orderMap: '📍 Xaritada ochish',
+    ordersBack: '◀️ Buyurtmalar',
+    orderMap: '📍 Xarita',
+    orderChecklist: '📋 Qabul akti',
+    orderWarrantyDocument: '🛡 Kafolat',
+    orderOffer: '📄 Ommaviy oferta',
+    orderSupport: '💬 Xodimga yozish',
+    supportPrompt:
+      '💬 #{{number}} buyurtma bo‘yicha xabaringizni yuboring. Matn yoki bitta rasm yuborishingiz mumkin.',
+    supportCancel: '✖️ Bekor qilish',
+    supportCancelled: '✅ Xabar yuborish bekor qilindi.',
+    supportEmpty: '⚠️ Xabar bo‘sh bo‘lmasligi kerak. Matn yoki rasm yuboring.',
+    supportTooLong: '⚠️ Xabar 4000 belgidan oshmasligi kerak. Qisqaroq matn yuboring.',
+    supportPhotoTooLarge: '⚠️ Rasm hajmi 5 MB dan oshmasligi kerak.',
+    supportPhotoUnavailable:
+      '⚠️ Rasmni hozir yuklab bo‘lmadi. Iltimos, qayta yuboring yoki matn yozing.',
+    supportSending: '📨 Xabaringiz yuborilmoqda...',
+    supportSent: '✅ Xabaringiz Procare xodimlariga yuborildi.',
+    supportDuplicate: '✅ Bu xabar allaqachon qabul qilingan.',
+    supportUnavailable:
+      '📡 Xabarni hozir yuborib bo‘lmadi. Iltimos, keyinroq qayta urinib ko‘ring.',
+    supportOrderUnavailable: '🔄 Avval buyurtma ma’lumotlarini qayta oching.',
     registerFirst: '📲 Avval /start buyrug‘i orqali telefon raqamingizni ulang.',
     help: '💬 Yordam kerakmi? Telefon raqamingizni ulashing yoki /start buyrug‘ini yuboring.',
+    clientHelp:
+      'Mijoz menyusi: buyurtmalaringizni ko‘rishingiz va profil sozlamalarini yangilashingiz mumkin.',
+    employeeHelp:
+      'Xodim menyusi: xabar shablonlarini boshqarishingiz va profil sozlamalarini yangilashingiz mumkin.',
     logoutSuccess: '👋 Siz tizimdan chiqdingiz. Qayta boshlash uchun /start buyrug‘ini yuboring.',
     logoutFailed: '⚠️ Hozir tizimdan chiqib bo‘lmadi. Iltimos, keyinroq urinib ko‘ring.',
     commandStart: '✨ Procare botini boshlash yoki qayta boshlash',
@@ -117,9 +141,10 @@ const messages = {
     sharePhone: '📱 Поделиться номером',
     phoneOnly: '📌 Пожалуйста, для безопасности отправьте свой номер телефона с помощью кнопки.',
     registering: '🔎 Проверяем ваши данные...',
-    registered: '✅ {{name}}, ваш профиль найден. Сервисы Procare готовы к работе.',
+    registered:
+      '✅ {{name}}, ваш клиентский профиль найден.\n\nРоль: клиент\nВ меню доступны ваши заказы и настройки профиля.',
     adminRegistered:
-      '🛡 Добро пожаловать, {{name}}! Этот номер относится к активному администратору. Чтобы посмотреть клиентские заказы, отправьте /logout и войдите с номером клиента.',
+      '🛡 Добро пожаловать, {{name}}.\n\nРоль: сотрудник Procare\nВ меню сотрудника доступны шаблоны сообщений и настройки профиля.',
     notFound:
       '🔎 Активный клиент с таким номером не найден. Оформим новую заявку на ремонт прямо сейчас?',
     leaveRequest: '🛠 Оставить заявку',
@@ -177,10 +202,31 @@ const messages = {
     orderNotFound: '🔎 Заказ не найден или больше недоступен для просмотра.',
     ordersRefresh: '🔄 Обновить',
     orderRefresh: '🔄 Обновить',
-    ordersBack: '⬅️ К заказам',
-    orderMap: '📍 Открыть на карте',
+    ordersBack: '◀️ Заказы',
+    orderMap: '📍 Карта',
+    orderChecklist: '📋 Акт приёма',
+    orderWarrantyDocument: '🛡 Гарантия',
+    orderOffer: '📄 Публичная оферта',
+    orderSupport: '💬 Написать сотруднику',
+    supportPrompt:
+      '💬 Отправьте сообщение по заказу #{{number}}. Можно отправить текст или одно фото.',
+    supportCancel: '✖️ Отмена',
+    supportCancelled: '✅ Отправка сообщения отменена.',
+    supportEmpty: '⚠️ Сообщение не должно быть пустым. Отправьте текст или фото.',
+    supportTooLong: '⚠️ Сообщение не должно превышать 4000 символов. Отправьте короче.',
+    supportPhotoTooLarge: '⚠️ Размер фото не должен превышать 5 МБ.',
+    supportPhotoUnavailable:
+      '⚠️ Сейчас не удалось загрузить фото. Отправьте его ещё раз или напишите текстом.',
+    supportSending: '📨 Отправляем сообщение...',
+    supportSent: '✅ Сообщение отправлено сотрудникам Procare.',
+    supportDuplicate: '✅ Это сообщение уже принято.',
+    supportUnavailable: '📡 Сейчас не удалось отправить сообщение. Попробуйте позже.',
+    supportOrderUnavailable: '🔄 Сначала откройте данные заказа заново.',
     registerFirst: '📲 Сначала отправьте номер телефона через команду /start.',
     help: '💬 Нужна помощь? Поделитесь номером телефона или отправьте команду /start.',
+    clientHelp: 'Меню клиента: можно смотреть свои заказы и обновлять настройки профиля.',
+    employeeHelp:
+      'Меню сотрудника: можно управлять шаблонами сообщений и обновлять настройки профиля.',
     logoutSuccess: '👋 Вы вышли из системы. Чтобы начать заново, отправьте /start.',
     logoutFailed: '⚠️ Сейчас не удалось выйти из системы. Попробуйте позже.',
     commandStart: '✨ Начать или перезапустить Procare',

@@ -1,6 +1,10 @@
 import {
   CUSTOMER_REPAIR_STATUS_CODES,
   type CustomerRepairBranch,
+  type CustomerRepairDocuments,
+  type CustomerSupportCommentRequest,
+  type CustomerSupportCommentResponse,
+  type CustomerSupportPhotoUpload,
   type CustomerRepairOrderDetail,
   type CustomerRepairOrderList,
   type CustomerRepairOrderListItem,
@@ -12,7 +16,11 @@ import {
   type LocalizedCustomerSummary,
   type PaymentStatus,
 } from '../types/client-repair-order.js';
-import { redactPhoneNumbersInText, summarizeUnknownPayload } from '../utils/log-redaction.js';
+import {
+  redactPhoneNumbersInText,
+  summarizeText,
+  summarizeUnknownPayload,
+} from '../utils/log-redaction.js';
 import type { Logger } from '../utils/logger.js';
 
 export type ClientRepairOrderFailureCode =
@@ -40,6 +48,10 @@ export interface ClientRepairOrderGateway {
     pagination?: { limit?: number; offset?: number },
   ): Promise<CustomerRepairOrderList>;
   getClientRepairOrder(clientId: string, orderNumber: string): Promise<CustomerRepairOrderDetail>;
+  registerClientSupportComment(
+    repairOrderId: string,
+    request: CustomerSupportCommentRequest,
+  ): Promise<CustomerSupportCommentResponse>;
 }
 
 interface ErrorEnvelope {
@@ -49,6 +61,7 @@ interface ErrorEnvelope {
 const PAYMENT_STATUSES = new Set<PaymentStatus>(['unpaid', 'partial', 'paid', 'overpaid']);
 const STATUS_CODES = new Set<string>(CUSTOMER_REPAIR_STATUS_CODES);
 const DECIMAL_PATTERN = /^-?\d+(?:\.\d+)?$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -61,6 +74,9 @@ const isIsoUtcTimestamp = (value: unknown): value is string =>
 
 const isNullableIsoUtcTimestamp = (value: unknown): value is string | null =>
   value === null || isIsoUtcTimestamp(value);
+
+const isUuid = (value: unknown): value is string =>
+  typeof value === 'string' && UUID_PATTERN.test(value);
 
 const isDecimalString = (value: unknown): value is string =>
   typeof value === 'string' && DECIMAL_PATTERN.test(value);
@@ -79,6 +95,11 @@ const isLocalizedSummary = (value: unknown): value is LocalizedCustomerSummary =
   isNullableString(value.uz) &&
   isNullableString(value.ru) &&
   isNullableString(value.en);
+
+const isOptionalLocalizedSummary = (
+  value: unknown,
+): value is LocalizedCustomerSummary | undefined =>
+  value === undefined || isLocalizedSummary(value);
 
 const hasValidProgress = (value: Record<string, unknown>): boolean => {
   if (value.progress_type === 'terminal') {
@@ -183,22 +204,40 @@ const isBranch = (value: unknown): value is CustomerRepairBranch =>
   isNullableString(value.working_hours.end) &&
   isNullableString(value.map_url);
 
+const isDocuments = (value: unknown): value is CustomerRepairDocuments =>
+  isRecord(value) &&
+  isNullableString(value.checklist_url) &&
+  isNullableString(value.warranty_document_url) &&
+  isNullableString(value.offer_url);
+
 const isStatusHistoryItem = (value: unknown): value is CustomerRepairStatusHistoryItem =>
   isRecord(value) &&
   isLocalizedText(value) &&
-  STATUS_CODES.has(String(value.code)) &&
-  hasValidProgress(value) &&
+  typeof value.code === 'string' &&
+  value.code.length > 0 &&
+  typeof value.progress_type === 'string' &&
+  value.progress_type.length > 0 &&
+  (value.step === null ||
+    (typeof value.step === 'number' && Number.isInteger(value.step) && value.step >= 1)) &&
+  (value.total_steps === null ||
+    (typeof value.total_steps === 'number' &&
+      Number.isInteger(value.total_steps) &&
+      value.total_steps >= 1)) &&
+  (typeof value.step !== 'number' ||
+    typeof value.total_steps !== 'number' ||
+    value.total_steps >= value.step) &&
   isIsoUtcTimestamp(value.changed_at);
 
 const isCustomerRepairOrderDetail = (value: unknown): value is CustomerRepairOrderDetail => {
   if (!isRecord(value) || !isListItem(value)) return false;
   return (
+    isUuid(value.id) &&
     isIsoUtcTimestamp(value.updated_at) &&
     isRecord(value.device) &&
     isNullableString(value.device.imei_last4) &&
     isCustomerStatus(value.status, true) &&
-    isLocalizedSummary(value.problem_summary) &&
-    isLocalizedSummary(value.service_summary) &&
+    isOptionalLocalizedSummary(value.problem_summary) &&
+    isOptionalLocalizedSummary(value.service_summary) &&
     isDetailPricing(value.pricing) &&
     isBranch(value.branch) &&
     isNullableIsoUtcTimestamp(value.completed_at) &&
@@ -209,10 +248,52 @@ const isCustomerRepairOrderDetail = (value: unknown): value is CustomerRepairOrd
         Number.isInteger(value.warranty.period_months) &&
         value.warranty.period_months >= 0)) &&
     isNullableIsoUtcTimestamp(value.warranty.warranty_until) &&
+    isDocuments(value.documents) &&
     Array.isArray(value.status_history) &&
     value.status_history.every(isStatusHistoryItem)
   );
 };
+
+const isSupportPhotoUrlSet = (
+  value: unknown,
+): value is CustomerSupportCommentResponse['comment']['photos'][number]['urls'] =>
+  isRecord(value) &&
+  typeof value.small === 'string' &&
+  typeof value.medium === 'string' &&
+  typeof value.large === 'string';
+
+const isSupportCommentPhoto = (
+  value: unknown,
+): value is CustomerSupportCommentResponse['comment']['photos'][number] =>
+  isRecord(value) &&
+  isUuid(value.id) &&
+  typeof value.original_name === 'string' &&
+  typeof value.mime_type === 'string' &&
+  isSupportPhotoUrlSet(value.urls);
+
+const isSupportCommentResponse = (value: unknown): value is CustomerSupportCommentResponse =>
+  isRecord(value) &&
+  typeof value.created === 'boolean' &&
+  isRecord(value.comment) &&
+  value.comment.item_type === 'message' &&
+  isUuid(value.comment.id) &&
+  value.comment.comment_type === 'support' &&
+  value.comment.author_type === 'user' &&
+  value.comment.direction === 'inbound' &&
+  isNullableString(value.comment.text) &&
+  isRecord(value.comment.author) &&
+  isUuid(value.comment.author.id) &&
+  isNullableString(value.comment.author.display_name) &&
+  isNullableString(value.comment.author.username) &&
+  (value.comment.reply === null || isRecord(value.comment.reply)) &&
+  Array.isArray(value.comment.photos) &&
+  value.comment.photos.every(isSupportCommentPhoto) &&
+  typeof value.comment.is_editable === 'boolean' &&
+  typeof value.comment.is_deletable === 'boolean' &&
+  typeof value.comment.is_edited === 'boolean' &&
+  typeof value.comment.is_read === 'boolean' &&
+  isIsoUtcTimestamp(value.comment.created_at) &&
+  isIsoUtcTimestamp(value.comment.updated_at);
 
 const summarizePayload = (payload: unknown): unknown => {
   if (isCustomerRepairOrderList(payload)) {
@@ -226,10 +307,20 @@ const summarizePayload = (payload: unknown): unknown => {
   if (isCustomerRepairOrderDetail(payload)) {
     return {
       type: 'repair_order_detail',
+      repair_order_id: payload.id,
       order_number: payload.order_number,
       status_code: payload.status.code,
       status_history_count: payload.status_history.length,
       payments_count: payload.pricing.payments.length,
+    };
+  }
+  if (isSupportCommentResponse(payload)) {
+    return {
+      type: 'support_comment',
+      comment_id: payload.comment.id,
+      created: payload.created,
+      photos_count: payload.comment.photos.length,
+      text: summarizeText(payload.comment.text ?? ''),
     };
   }
   if (isRecord(payload) && typeof payload.message === 'string') {
@@ -276,6 +367,47 @@ export class HttpClientRepairOrderService implements ClientRepairOrderGateway {
     return this.request(
       `/api/v1/telegram/clients/${encodeURIComponent(clientId)}/repair-orders/${encodeURIComponent(orderNumber)}`,
       isCustomerRepairOrderDetail,
+    );
+  }
+
+  async registerClientSupportComment(
+    repairOrderId: string,
+    request: CustomerSupportCommentRequest,
+  ): Promise<CustomerSupportCommentResponse> {
+    if (!isUuid(repairOrderId)) {
+      throw new ClientRepairOrderError('invalid_request', 'repairOrderId must be a UUID');
+    }
+
+    const text = request.text?.trim();
+    const photos = request.photos ?? [];
+    if (!text && photos.length === 0) {
+      throw new ClientRepairOrderError('invalid_request', 'text or at least one photo is required');
+    }
+    if (text && text.length > 4_000) {
+      throw new ClientRepairOrderError('invalid_request', 'support comment text is too long');
+    }
+    if (photos.length > 5) {
+      throw new ClientRepairOrderError('invalid_request', 'a maximum of 5 photos is allowed');
+    }
+    if (Boolean(request.replyTargetType) !== Boolean(request.replyTargetId)) {
+      throw new ClientRepairOrderError(
+        'invalid_request',
+        'replyTargetType and replyTargetId must be provided together',
+      );
+    }
+
+    const form = new FormData();
+    if (text) form.append('text', text);
+    if (request.replyTargetType && request.replyTargetId) {
+      form.append('reply_target_type', request.replyTargetType);
+      form.append('reply_target_id', request.replyTargetId);
+    }
+    photos.forEach((photo) => appendSupportPhoto(form, photo));
+
+    return this.postMultipart(
+      `/api/v1/repair-orders/register-comment/${encodeURIComponent(repairOrderId)}`,
+      form,
+      isSupportCommentResponse,
     );
   }
 
@@ -369,4 +501,83 @@ export class HttpClientRepairOrderService implements ClientRepairOrderGateway {
     }
     throw new ClientRepairOrderError('unavailable', message, response.status);
   }
+
+  private async postMultipart<T>(
+    path: string,
+    body: FormData,
+    validator: (value: unknown) => value is T,
+  ): Promise<T> {
+    const authorization = Buffer.from(
+      `${this.options.username}:${this.options.password}`,
+      'utf8',
+    ).toString('base64');
+    this.logger.extra('Client repair-order API request', {
+      method: 'POST',
+      path,
+      timeoutMs: this.options.timeoutMs,
+    });
+
+    let response: Response;
+    try {
+      response = await (this.options.fetchImpl ?? fetch)(`${this.options.baseUrl}${path}`, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          authorization: `Basic ${authorization}`,
+        },
+        body,
+        signal: AbortSignal.timeout(this.options.timeoutMs),
+      });
+    } catch (error) {
+      this.logger.error(`Client repair-order API network request failed for ${path}`, error);
+      throw new ClientRepairOrderError('unavailable', 'Client repair-order API is unavailable');
+    }
+
+    const payload = (await response.json().catch(() => null)) as ErrorEnvelope | T | null;
+    this.logger.extra('Client repair-order API response', {
+      method: 'POST',
+      path,
+      status: response.status,
+      ok: response.ok,
+      body: summarizePayload(payload),
+    });
+
+    if (response.ok) {
+      if (!validator(payload)) {
+        throw new ClientRepairOrderError(
+          'invalid_response',
+          'Client repair-order API returned invalid data',
+        );
+      }
+      return payload;
+    }
+
+    const message =
+      isRecord(payload) && typeof payload.message === 'string'
+        ? payload.message
+        : `Client repair-order API request failed with status ${response.status}`;
+    if (response.status === 400 || response.status === 422) {
+      throw new ClientRepairOrderError('invalid_request', message, response.status);
+    }
+    if (response.status === 401) {
+      throw new ClientRepairOrderError('unauthorized', message, response.status);
+    }
+    if (response.status === 404) {
+      throw new ClientRepairOrderError('not_found', message, response.status);
+    }
+    if (response.status === 503) {
+      throw new ClientRepairOrderError('maintenance', message, response.status);
+    }
+    throw new ClientRepairOrderError('unavailable', message, response.status);
+  }
 }
+
+const appendSupportPhoto = (form: FormData, photo: CustomerSupportPhotoUpload): void => {
+  const bytes = new Uint8Array(photo.data);
+  const arrayBuffer = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+  const blob = new Blob([arrayBuffer], { type: photo.mimeType });
+  form.append('photos', blob, photo.fileName);
+};

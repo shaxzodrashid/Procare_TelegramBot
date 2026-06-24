@@ -19,10 +19,10 @@ const localizedCustomerText = (
 ): string => value?.[locale === 'ru' ? 'name_ru' : 'name_uz'] ?? value?.name_en ?? fallback;
 
 const localizedCustomerSummary = (
-  value: LocalizedCustomerSummary,
+  value: LocalizedCustomerSummary | undefined,
   locale: Locale,
   fallback = '—',
-): string => value[locale === 'ru' ? 'ru' : 'uz'] ?? value.en ?? fallback;
+): string => value?.[locale === 'ru' ? 'ru' : 'uz'] ?? value?.en ?? fallback;
 
 const localizedStatusName = (
   status: CustomerRepairOrderListItem['status'],
@@ -159,19 +159,14 @@ export const formatClientRepairOrderDetail = (
     locale === 'ru'
       ? {
           order: 'Заказ',
-          status: 'Статус',
           accepted: 'Принят',
           updated: 'Обновлён',
           estimatedReady: 'Ориентировочно готов',
           problem: 'Неисправность',
+          repair: 'Ремонт',
           service: 'Работы',
-          payment: 'Оплата',
-          estimated: 'Предварительно',
-          total: 'Итого',
-          paid: 'Оплачено',
-          remaining: 'Остаток',
+          repairTotal: 'Стоимость ремонта',
           branch: 'Филиал',
-          address: 'Адрес',
           hours: 'Режим работы',
           imei: 'IMEI',
           warranty: 'Гарантия',
@@ -179,23 +174,17 @@ export const formatClientRepairOrderDetail = (
           until: 'до',
           completed: 'Завершён',
           pickedUp: 'Выдан',
-          history: 'История статусов',
         }
       : {
           order: 'Buyurtma',
-          status: 'Holat',
           accepted: 'Qabul qilindi',
           updated: 'Yangilandi',
           estimatedReady: 'Taxminiy tayyor',
           problem: 'Muammo',
-          service: 'Bajariladigan ish',
-          payment: 'To‘lov',
-          estimated: 'Taxminiy',
-          total: 'Jami',
-          paid: 'To‘langan',
-          remaining: 'Qoldiq',
+          repair: 'Ta’mirlash',
+          service: 'Xizmat',
+          repairTotal: 'Ta’mirlash summasi',
           branch: 'Filial',
-          address: 'Manzil',
           hours: 'Ish vaqti',
           imei: 'IMEI',
           warranty: 'Kafolat',
@@ -203,15 +192,18 @@ export const formatClientRepairOrderDetail = (
           until: 'gacha',
           completed: 'Yakunlandi',
           pickedUp: 'Topshirildi',
-          history: 'Holatlar tarixi',
         };
 
   const status = localizedStatusName(order.status, locale);
   const message =
     order.status[locale === 'ru' ? 'customer_message_ru' : 'customer_message_uz'] ??
     order.status.customer_message_en;
-  const problem = localizedCustomerSummary(order.problem_summary, locale);
-  const service = localizedCustomerSummary(order.service_summary, locale);
+  const problem = order.problem_summary
+    ? localizedCustomerSummary(order.problem_summary, locale)
+    : null;
+  const service = order.service_summary
+    ? localizedCustomerSummary(order.service_summary, locale)
+    : null;
   const branch = localizedCustomerText(order.branch, locale);
   const branchAddress =
     order.branch?.[locale === 'ru' ? 'address_ru' : 'address_uz'] ??
@@ -239,81 +231,66 @@ export const formatClientRepairOrderDetail = (
 
   const commonLines = [
     `${statusIcon(order.status.code)} <b>${escapeHtml(status)}</b>`,
-    message ? escapeHtml(message) : null,
+    message ? `<i>${escapeHtml(message)}</i>` : null,
     progress ? `<code>${escapeHtml(progress)}</code>` : null,
-    `📅 ${labels.accepted}: ${formatDate(order.created_at, locale)}`,
-    `🔄 ${labels.updated}: ${formatDateTime(order.status.updated_at, locale)}`,
+    `📅 <b>${labels.accepted}:</b> ${formatDate(order.created_at, locale)}`,
+    `🕒 <b>${labels.updated}:</b> ${formatDateTime(order.status.updated_at, locale)}`,
     order.estimated_ready_at
-      ? `⏱ ${labels.estimatedReady}: ${formatDate(order.estimated_ready_at, locale)}`
+      ? `⏱ <b>${labels.estimatedReady}:</b> ${formatDate(order.estimated_ready_at, locale)}`
       : null,
     order.device.imei_last4
-      ? `🔐 ${labels.imei}: •••• ${escapeHtml(order.device.imei_last4)}`
+      ? `🔐 <b>${labels.imei}:</b> •••• ${escapeHtml(order.device.imei_last4)}`
       : null,
   ].filter((line): line is string => Boolean(line));
 
   const repairLines = [
-    `${labels.problem}: ${escapeHtml(problem)}`,
-    `${labels.service}: ${escapeHtml(service)}`,
+    problem ? `🔧 <b>${labels.problem}:</b> ${escapeHtml(problem)}` : null,
+    service ? `🛠 <b>${labels.service}:</b> ${escapeHtml(service)}` : null,
     order.completed_at
-      ? `${labels.completed}: ${formatDateTime(order.completed_at, locale)}`
+      ? `✅ <b>${labels.completed}:</b> ${formatDateTime(order.completed_at, locale)}`
       : null,
-    order.picked_up_at ? `${labels.pickedUp}: ${formatDateTime(order.picked_up_at, locale)}` : null,
-    warranty ? `${labels.warranty}: ${escapeHtml(warranty)}` : null,
+    order.picked_up_at
+      ? `📦 <b>${labels.pickedUp}:</b> ${formatDateTime(order.picked_up_at, locale)}`
+      : null,
+    warranty ? `🛡 <b>${labels.warranty}:</b> ${escapeHtml(warranty)}` : null,
   ].filter((line): line is string => Boolean(line));
 
-  const pricingLines = [
-    `${labels.estimated}: ${escapeHtml(
-      formatMoney(order.pricing.estimated_total, order.pricing.currency, locale),
-    )}`,
-    `${labels.total}: ${escapeHtml(
-      formatMoney(order.pricing.final_total, order.pricing.currency, locale),
-    )}`,
-    `${labels.paid}: ${escapeHtml(
-      formatMoney(order.pricing.paid_amount, order.pricing.currency, locale),
-    )}`,
-    `${labels.remaining}: ${escapeHtml(
-      formatMoney(order.pricing.remaining_amount, order.pricing.currency, locale),
-    )}`,
-  ];
+  const repairTotal =
+    order.pricing.final_total !== null
+      ? `💰 <b>${labels.repairTotal}:</b> ${escapeHtml(
+          formatMoney(order.pricing.final_total, order.pricing.currency, locale),
+        )}`
+      : null;
 
   const branchLines = [
-    escapeHtml(branch),
-    branchAddress ? `${labels.address}: ${escapeHtml(branchAddress)}` : null,
+    `🏢 <b>${escapeHtml(branch)}</b>`,
+    branchAddress ? `📍 ${escapeHtml(branchAddress)}` : null,
     order.branch.telephone ? `☎️ ${escapeHtml(order.branch.telephone)}` : null,
-    workingHours ? `${labels.hours}: ${escapeHtml(workingHours)}` : null,
+    workingHours ? `🕘 <b>${labels.hours}:</b> ${escapeHtml(workingHours)}` : null,
   ].filter((line): line is string => Boolean(line));
 
-  const historyLines = order.status_history.map((item) => {
-    const historyName = localizedCustomerText(item, locale, item.code);
-    return `• ${formatDateTime(item.changed_at, locale)} — ${escapeHtml(historyName)}`;
-  });
-
   const fallbackSections = [
-    `<b>${escapeHtml(deviceName(order))}</b>\n🧾 ${labels.order}: <code>#${escapeHtml(
+    `<b>📱 ${escapeHtml(deviceName(order))}</b>\n<code>${labels.order} #${escapeHtml(
       order.order_number,
     )}</code>`,
     commonLines.join('\n'),
-    `<b>🛠 ${labels.service}</b>\n${repairLines.join('\n')}`,
-    `<b>💳 ${labels.payment}</b>\n${pricingLines.join('\n')}`,
+    repairLines.length > 0 ? `<b>── ${labels.repair} ──</b>\n${repairLines.join('\n')}` : null,
+    repairTotal,
     branchLines.length > 0 ? `<b>📍 ${labels.branch}</b>\n${branchLines.join('\n')}` : null,
-    historyLines.length > 0 ? `<b>🕘 ${labels.history}</b>\n${historyLines.join('\n')}` : null,
   ].filter((section): section is string => Boolean(section));
 
-  const historyDetails =
-    historyLines.length > 0
-      ? `<details><summary>🕘 ${labels.history}</summary><p>${historyLines.join('<br/>')}</p></details>`
-      : '';
   const branchSection =
     branchLines.length > 0 ? `<h2>📍 ${labels.branch}</h2><p>${branchLines.join('<br/>')}</p>` : '';
+  const repairSection =
+    repairLines.length > 0 ? `<h2>🛠 ${labels.repair}</h2><p>${repairLines.join('<br/>')}</p>` : '';
 
   return {
-    richHtml: `<h1>${escapeHtml(deviceName(order))}</h1>
-<p>🧾 ${labels.order}: <code>#${escapeHtml(order.order_number)}</code></p>
-<h2>${statusIcon(order.status.code)} ${labels.status}</h2>
+    richHtml: `<h1>📱 ${escapeHtml(deviceName(order))}</h1>
+<p><code>${labels.order} #${escapeHtml(order.order_number)}</code></p>
 <p>${commonLines.join('<br/>')}</p>
-<h2>🛠 ${labels.service}</h2><p>${repairLines.join('<br/>')}</p>
-<h2>💳 ${labels.payment}</h2><p>${pricingLines.join('<br/>')}</p>
-${branchSection}${historyDetails}`,
+${repairSection}
+${repairTotal ? `<p>${repairTotal}</p>` : ''}
+${branchSection}`,
     fallbackHtml: fallbackSections.join('\n\n'),
   };
 };

@@ -19,7 +19,8 @@ export type RegistrationStage =
   | 'settings_awaiting_name'
   | 'settings_awaiting_phone'
   | 'settings_choosing_language'
-  | 'admin_template_input';
+  | 'admin_template_input'
+  | 'support_comment_input';
 
 export interface UnknownClientSession {
   phoneNumber: string;
@@ -41,6 +42,12 @@ export interface RepairRequestDraft {
   submitting: boolean;
 }
 
+export interface SupportCommentDraft {
+  repairOrderId: string;
+  orderNumber: string;
+  submitting: boolean;
+}
+
 export interface BotSession {
   locale: Locale;
   client?: ClientProfile;
@@ -49,10 +56,12 @@ export interface BotSession {
     offset: number;
     orderNumbers: string[];
     selectedOrderNumber?: string;
+    selectedRepairOrderId?: string;
   };
   stage?: RegistrationStage;
   unknownClient?: UnknownClientSession;
   repairDraft?: RepairRequestDraft;
+  supportComment?: SupportCommentDraft;
   adminTemplateInput?: {
     mode: 'create' | 'edit';
     field: MessageTemplateField;

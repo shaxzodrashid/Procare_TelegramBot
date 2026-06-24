@@ -16,7 +16,7 @@ const keyboardLabels = (keyboard: ReturnType<typeof personalMenuKeyboard>): stri
   );
 
 describe('personal menu keyboard', () => {
-  it('shows repair orders and language options for clients', () => {
+  it('shows repair orders and settings sections for clients', () => {
     const keyboard = personalMenuKeyboard({
       locale: 'uz',
       client: { account_type: 'client' },
@@ -25,23 +25,32 @@ describe('personal menu keyboard', () => {
     assert.deepEqual(keyboardLabels(keyboard), [['🧾 Buyurtmalarim'], ['⚙️ Sozlamalar']]);
   });
 
-  it('shows the employee menu for admins', () => {
+  it('shows employee-only sections for employees', () => {
     const keyboard = personalMenuKeyboard({
       locale: 'ru',
-      admin: { id: 'admin-1' },
+      admin: { id: 'admin-1', is_active: true },
     });
 
     assert.deepEqual(keyboardLabels(keyboard), [['🧩 Шаблоны сообщений'], ['⚙️ Настройки']]);
   });
 
-  it('keeps client actions when client data is present with admin data', () => {
+  it('keeps employee actions when employee data is present with client data', () => {
     const keyboard = personalMenuKeyboard({
       locale: 'ru',
       client: { account_type: 'client' },
-      admin: { id: 'admin-1' },
+      admin: { id: 'admin-1', is_active: true },
     });
 
-    assert.deepEqual(keyboardLabels(keyboard), [['🧾 Мои заказы'], ['⚙️ Настройки']]);
+    assert.deepEqual(keyboardLabels(keyboard), [['🧩 Шаблоны сообщений'], ['⚙️ Настройки']]);
+  });
+
+  it('does not show employee sections for inactive employee data', () => {
+    const keyboard = personalMenuKeyboard({
+      locale: 'uz',
+      admin: { id: 'admin-1', is_active: false },
+    });
+
+    assert.deepEqual(keyboardLabels(keyboard), [['🇺🇿 O‘zbekcha', '🇷🇺 Русский']]);
   });
 
   it('shows professional settings sections', () => {
@@ -94,11 +103,37 @@ describe('personal menu keyboard', () => {
     );
   });
 
-  it('adds a safe map action to the detail controls', () => {
+  it('adds map and available document actions to the detail controls', () => {
     const keyboard = repairOrderDetailKeyboard('ru', {
+      supportEnabled: true,
       mapUrl: 'https://maps.example.test/branch',
+      checklistUrl: 'https://crm.test/checklist',
+      warrantyDocumentUrl: 'https://crm.test/warranty',
+      offerUrl: 'https://crm.test/offer',
     });
 
-    assert.equal(keyboard.inline_keyboard[1]?.[0]?.text, '📍 Открыть на карте');
+    assert.deepEqual(
+      keyboard.inline_keyboard.map((row) => row.map((button) => button.text)),
+      [
+        ['🔄 Обновить', '◀️ Заказы'],
+        ['💬 Написать сотруднику'],
+        ['📍 Карта', '📋 Акт приёма'],
+        ['🛡 Гарантия', '📄 Публичная оферта'],
+      ],
+    );
+  });
+
+  it('does not create document buttons for missing document URLs', () => {
+    const keyboard = repairOrderDetailKeyboard('uz', {
+      mapUrl: null,
+      checklistUrl: null,
+      warrantyDocumentUrl: null,
+      offerUrl: null,
+    });
+
+    assert.deepEqual(
+      keyboard.inline_keyboard.flat().map((button) => button.text),
+      ['🔄 Yangilash', '◀️ Buyurtmalar'],
+    );
   });
 });

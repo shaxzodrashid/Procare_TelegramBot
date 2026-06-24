@@ -42,6 +42,7 @@ const listItem = {
 
 const detail = {
   ...listItem,
+  id: '11111111-1111-4111-8111-111111111111',
   updated_at: '2026-06-18T10:00:00.000Z',
   device: { ...listItem.device, imei_last4: '5678' },
   status: {
@@ -49,16 +50,6 @@ const detail = {
     customer_message_uz: 'Qurilmangiz ta’mirlanmoqda',
     customer_message_ru: 'Ваше устройство ремонтируется',
     customer_message_en: 'Your device is being repaired',
-  },
-  problem_summary: {
-    uz: 'Displey shikastlangan',
-    ru: 'Повреждён дисплей',
-    en: 'Damaged display',
-  },
-  service_summary: {
-    uz: 'Displeyni almashtirish',
-    ru: 'Замена дисплея',
-    en: 'Display replacement',
   },
   pricing: {
     ...listItem.pricing,
@@ -88,6 +79,11 @@ const detail = {
   completed_at: null,
   picked_up_at: null,
   warranty: { period_months: 3, warranty_until: null },
+  documents: {
+    checklist_url: 'https://crm.test/documents/checklist/1024',
+    warranty_document_url: null,
+    offer_url: 'https://crm.test/documents/offer/1024',
+  },
   status_history: [
     {
       code: 'DIAGNOSIS',
@@ -159,9 +155,10 @@ describe('HttpClientRepairOrderService', () => {
       'http://crm.test/api/v1/telegram/clients/client-id/repair-orders/RO%2F1024',
     );
     assert.equal(result.device.imei_last4, '5678');
-    assert.equal(result.problem_summary.uz, 'Displey shikastlangan');
+    assert.equal(result.id, '11111111-1111-4111-8111-111111111111');
     assert.equal(result.branch.working_hours.start, '09:00');
     assert.equal(result.warranty.period_months, 3);
+    assert.equal(result.documents.checklist_url, 'https://crm.test/documents/checklist/1024');
     assert.equal(result.status_history[0]?.progress_type, 'linear');
   });
 
@@ -274,5 +271,123 @@ describe('HttpClientRepairOrderService', () => {
       (error: unknown) =>
         error instanceof ClientRepairOrderError && error.code === 'invalid_response',
     );
+  });
+
+  it('rejects malformed document metadata', async () => {
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () =>
+          Response.json({
+            ...detail,
+            documents: {
+              ...detail.documents,
+              checklist_url: 1024,
+            },
+          }),
+      },
+      logger,
+    );
+
+    await assert.rejects(
+      service.getClientRepairOrder('client-id', '1024'),
+      (error: unknown) =>
+        error instanceof ClientRepairOrderError && error.code === 'invalid_response',
+    );
+  });
+
+  it('posts a support comment as multipart form data without retrying', async () => {
+    let attempts = 0;
+    let requestedUrl = '';
+    let authorization = '';
+    let method = '';
+    let bodyIsForm = false;
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 2,
+        fetchImpl: async (input, init) => {
+          attempts += 1;
+          requestedUrl = String(input);
+          method = init?.method ?? '';
+          authorization = new Headers(init?.headers).get('authorization') ?? '';
+          bodyIsForm = init?.body instanceof FormData;
+          return Response.json({
+            comment: {
+              item_type: 'message',
+              id: '22222222-2222-4222-8222-222222222222',
+              comment_type: 'support',
+              author_type: 'user',
+              direction: 'inbound',
+              text: 'Salom',
+              author: {
+                id: '33333333-3333-4333-8333-333333333333',
+                display_name: 'Ali Valiyev',
+                username: null,
+              },
+              reply: null,
+              photos: [],
+              is_editable: false,
+              is_deletable: false,
+              is_edited: false,
+              is_read: false,
+              created_at: '2026-06-24T07:14:04.000Z',
+              updated_at: '2026-06-24T07:14:04.000Z',
+            },
+            created: true,
+          });
+        },
+      },
+      logger,
+    );
+
+    const result = await service.registerClientSupportComment(
+      '11111111-1111-4111-8111-111111111111',
+      { text: ' Salom ' },
+    );
+
+    assert.equal(attempts, 1);
+    assert.equal(
+      requestedUrl,
+      'http://crm.test/api/v1/repair-orders/register-comment/11111111-1111-4111-8111-111111111111',
+    );
+    assert.equal(method, 'POST');
+    assert.equal(authorization, `Basic ${Buffer.from('bot:secret').toString('base64')}`);
+    assert.equal(bodyIsForm, true);
+    assert.equal(result.created, true);
+    assert.equal(result.comment.id, '22222222-2222-4222-8222-222222222222');
+  });
+
+  it('does not retry failed support comment submissions', async () => {
+    let attempts = 0;
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 2,
+        fetchImpl: async () => {
+          attempts += 1;
+          return Response.json({ message: 'Maintenance' }, { status: 503 });
+        },
+      },
+      logger,
+    );
+
+    await assert.rejects(
+      service.registerClientSupportComment('11111111-1111-4111-8111-111111111111', {
+        text: 'Salom',
+      }),
+      (error: unknown) => error instanceof ClientRepairOrderError && error.code === 'maintenance',
+    );
+    assert.equal(attempts, 1);
   });
 });

@@ -199,4 +199,179 @@ describe('PostgresRegisteredUserStore', () => {
       { phone_number: '+998901234567' },
     );
   });
+
+  it('finds user registration state for client by telegram_id', async () => {
+    const database = ((table: string) => {
+      return {
+        where() {
+          return {
+            async first() {
+              if (table === 'users') {
+                return {
+                  id: 12,
+                  telegram_id: 1005,
+                  telegram_username: 'ali',
+                  first_name: 'Ali',
+                  last_name: 'Valiyev',
+                  phone_number: '+998901234567',
+                  language_code: 'uz',
+                };
+              }
+              if (table === 'clients') {
+                return {
+                  crm_client_id: 'client-12',
+                  customer_code: 'C-12',
+                  status: 'Open',
+                  is_active: 1,
+                };
+              }
+              return null;
+            },
+          };
+        },
+      };
+    }) as unknown as Knex;
+
+    const store = new PostgresRegisteredUserStore(database);
+    const result = await store.findByTelegramId('1005');
+    assert.deepEqual(result, {
+      user: {
+        telegram_id: '1005',
+        telegram_username: 'ali',
+        first_name: 'Ali',
+        last_name: 'Valiyev',
+        phone_number: '+998901234567',
+        locale: 'uz',
+      },
+      client: {
+        crm_client_id: 'client-12',
+        customer_code: 'C-12',
+        status: 'Open',
+        is_active: true,
+      },
+    });
+  });
+
+  it('finds user registration state for employee by telegram_id', async () => {
+    const database = ((table: string) => {
+      return {
+        where() {
+          return {
+            async first() {
+              if (table === 'users') {
+                return {
+                  id: 13,
+                  telegram_id: 1006,
+                  telegram_username: 'vali',
+                  first_name: 'Vali',
+                  last_name: null,
+                  phone_number: '+998901111111',
+                  language_code: 'ru',
+                };
+              }
+              if (table === 'clients') {
+                return null;
+              }
+              if (table === 'employees') {
+                return {
+                  crm_admin_id: 'admin-13',
+                  status: 'Open',
+                  is_active: 1,
+                  created_at: new Date('2026-06-17T10:00:00.000Z'),
+                  updated_at: new Date('2026-06-17T10:00:00.000Z'),
+                };
+              }
+              return null;
+            },
+          };
+        },
+      };
+    }) as unknown as Knex;
+
+    const store = new PostgresRegisteredUserStore(database);
+    const result = await store.findByTelegramId('1006');
+    assert.deepEqual(result, {
+      user: {
+        telegram_id: '1006',
+        telegram_username: 'vali',
+        first_name: 'Vali',
+        last_name: null,
+        phone_number: '+998901111111',
+        locale: 'ru',
+      },
+      employee: {
+        crm_admin_id: 'admin-13',
+        status: 'Open',
+        is_active: true,
+        created_at: '2026-06-17T10:00:00.000Z',
+        updated_at: '2026-06-17T10:00:00.000Z',
+      },
+    });
+  });
+
+  it('prefers employee registration state when both role rows exist', async () => {
+    const database = ((table: string) => {
+      return {
+        where() {
+          return {
+            async first() {
+              if (table === 'users') {
+                return {
+                  id: 14,
+                  telegram_id: 1007,
+                  telegram_username: 'employee',
+                  first_name: 'Employee',
+                  last_name: null,
+                  phone_number: '+998901222222',
+                  language_code: 'ru',
+                };
+              }
+              if (table === 'employees') {
+                return {
+                  crm_admin_id: 'admin-14',
+                  status: 'Open',
+                  is_active: 1,
+                  created_at: new Date('2026-06-17T10:00:00.000Z'),
+                  updated_at: new Date('2026-06-17T10:00:00.000Z'),
+                };
+              }
+              if (table === 'clients') {
+                return {
+                  crm_client_id: 'client-14',
+                  customer_code: null,
+                  status: 'Open',
+                  is_active: 1,
+                };
+              }
+              return null;
+            },
+          };
+        },
+      };
+    }) as unknown as Knex;
+
+    const store = new PostgresRegisteredUserStore(database);
+    const result = await store.findByTelegramId('1007');
+
+    assert.equal(result?.employee?.crm_admin_id, 'admin-14');
+    assert.equal(result?.client, undefined);
+  });
+
+  it('returns null when telegram_id is not registered', async () => {
+    const database = (() => {
+      return {
+        where() {
+          return {
+            async first() {
+              return null;
+            },
+          };
+        },
+      };
+    }) as unknown as Knex;
+
+    const store = new PostgresRegisteredUserStore(database);
+    const result = await store.findByTelegramId('9999');
+    assert.equal(result, null);
+  });
 });

@@ -96,14 +96,15 @@ GET /api/v1/telegram/clients/:client_id/repair-orders/:order_number
 
 The detail response adds:
 
+- Repair-order UUID as `id`, used by the support-comment endpoint
 - Customer-facing status messages
 - Last four IMEI digits
-- Localized problem and service summaries
 - Estimated, final, paid, and remaining totals
 - Customer-safe payment rows
 - Branch address, telephone, working hours, and map URL
 - Completion and pickup timestamps
 - Warranty period and expiry
+- Optional checklist, warranty-document, and offer URLs
 - Customer-visible status history
 
 Unavailable optional values are returned as `null`. Arrays are returned as empty arrays.
@@ -112,6 +113,7 @@ Example:
 
 ```json
 {
+  "id": "11111111-1111-4111-8111-111111111111",
   "order_number": "1024",
   "device": {
     "brand": "Apple",
@@ -134,16 +136,6 @@ Example:
   "created_at": "2026-06-14T11:20:00.000Z",
   "estimated_ready_at": null,
   "updated_at": "2026-06-18T10:00:00.000Z",
-  "problem_summary": {
-    "uz": "Displey shikastlangan",
-    "ru": "Повреждён дисплей",
-    "en": "Damaged display"
-  },
-  "service_summary": {
-    "uz": "Displeyni almashtirish",
-    "ru": "Замена дисплея",
-    "en": "Display replacement"
-  },
   "pricing": {
     "currency": "UZS",
     "estimated_total": null,
@@ -180,6 +172,11 @@ Example:
     "period_months": 3,
     "warranty_until": null
   },
+  "documents": {
+    "checklist_url": "https://crm.procare.uz/documents/checklist/1024",
+    "warranty_document_url": null,
+    "offer_url": "https://crm.procare.uz/documents/offer/1024"
+  },
   "status_history": [
     {
       "code": "DIAGNOSIS",
@@ -196,6 +193,57 @@ Example:
 ```
 
 `payment_status` is one of `unpaid`, `partial`, `paid`, or `overpaid`.
+
+## Register client support comment
+
+```http
+POST /api/v1/repair-orders/register-comment/:repair_order_id
+Content-Type: multipart/form-data
+```
+
+The trusted bot service uses the repair-order UUID from the detail response. Public order numbers
+must not be used as the path value.
+
+Multipart fields:
+
+- `text`: optional trimmed message, maximum 4000 characters
+- `photos`: optional, up to 5 JPEG, PNG, or WebP images, maximum 5 MB each
+- `reply_target_type`: optional, one of `comment`, `history`, or `audio`; must be sent with
+  `reply_target_id`
+- `reply_target_id`: optional UUID; must be sent with `reply_target_type`
+
+Either `text` or at least one photo is required. The bot must not automatically retry this POST.
+The backend deduplicates identical successful submissions within 60 seconds and returns
+`"created": false` for a duplicate request.
+
+Success response:
+
+```json
+{
+  "comment": {
+    "item_type": "message",
+    "id": "22222222-2222-4222-8222-222222222222",
+    "comment_type": "support",
+    "author_type": "user",
+    "direction": "inbound",
+    "text": "Support message text from client",
+    "author": {
+      "id": "33333333-3333-4333-8333-333333333333",
+      "display_name": "Ali Valiyev",
+      "username": "ali"
+    },
+    "reply": null,
+    "photos": [],
+    "is_editable": false,
+    "is_deletable": false,
+    "is_edited": false,
+    "is_read": false,
+    "created_at": "2026-06-24T07:14:04.000Z",
+    "updated_at": "2026-06-24T07:14:04.000Z"
+  },
+  "created": true
+}
+```
 
 ## Status behavior
 
@@ -250,6 +298,9 @@ Responses are built from a customer-safe allowlist. Full IMEI, internal notes, r
 employee data, call counts, cost prices, margins, and internal identifiers are not returned.
 
 Money values are strings. Timestamps are ISO 8601 UTC.
+
+The bot exposes each non-null document URL as a separate inline keyboard button. It does not create
+buttons for missing document URLs.
 
 ## Errors
 

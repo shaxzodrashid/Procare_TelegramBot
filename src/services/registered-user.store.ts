@@ -6,6 +6,7 @@ import type {
   RegisteredUserMessageTarget,
   RegisteredUserSettingsUpdate,
   RegisteredTelegramUserRecord,
+  UserRegistrationState,
 } from '../types/registered-user.js';
 
 export interface RegisteredUserStore {
@@ -13,6 +14,7 @@ export interface RegisteredUserStore {
   saveEmployee(record: RegisteredEmployeeRecord): Promise<void>;
   updateSettings(update: RegisteredUserSettingsUpdate): Promise<void>;
   findByPhoneNumber(phoneNumber: string): Promise<RegisteredUserMessageTarget | null>;
+  findByTelegramId(telegramId: string): Promise<UserRegistrationState | null>;
 }
 
 type ReturnedUserId = { id?: unknown } | string | number;
@@ -108,6 +110,57 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
       phone_number: row.phone_number,
       is_blocked: row.is_blocked,
     };
+  }
+
+  async findByTelegramId(telegramId: string): Promise<UserRegistrationState | null> {
+    const userRow = await this.database('users').where({ telegram_id: telegramId }).first();
+
+    if (!userRow) return null;
+
+    const locale = userRow.language_code === 'ru' ? 'ru' : 'uz';
+    const result: UserRegistrationState = {
+      user: {
+        telegram_id: String(userRow.telegram_id),
+        telegram_username: userRow.telegram_username,
+        first_name: userRow.first_name || '',
+        last_name: userRow.last_name,
+        phone_number: userRow.phone_number || '',
+        locale,
+      },
+    };
+
+    const employeeRow = await this.database('employees').where({ user_id: userRow.id }).first();
+
+    if (employeeRow) {
+      result.employee = {
+        crm_admin_id: employeeRow.crm_admin_id,
+        status: employeeRow.status,
+        is_active: Boolean(employeeRow.is_active),
+        created_at:
+          employeeRow.created_at instanceof Date
+            ? employeeRow.created_at.toISOString()
+            : String(employeeRow.created_at),
+        updated_at:
+          employeeRow.updated_at instanceof Date
+            ? employeeRow.updated_at.toISOString()
+            : String(employeeRow.updated_at),
+      };
+      return result;
+    }
+
+    const clientRow = await this.database('clients').where({ user_id: userRow.id }).first();
+
+    if (clientRow) {
+      result.client = {
+        crm_client_id: clientRow.crm_client_id,
+        customer_code: clientRow.customer_code,
+        status: clientRow.status,
+        is_active: Boolean(clientRow.is_active),
+      };
+      return result;
+    }
+
+    return result;
   }
 
   private async upsertUser(
