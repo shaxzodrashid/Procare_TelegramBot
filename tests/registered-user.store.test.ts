@@ -236,6 +236,7 @@ describe('PostgresRegisteredUserStore', () => {
     const result = await store.findByTelegramId('1005');
     assert.deepEqual(result, {
       user: {
+        id: '12',
         telegram_id: '1005',
         telegram_username: 'ali',
         first_name: 'Ali',
@@ -292,6 +293,7 @@ describe('PostgresRegisteredUserStore', () => {
     const result = await store.findByTelegramId('1006');
     assert.deepEqual(result, {
       user: {
+        id: '13',
         telegram_id: '1006',
         telegram_username: 'vali',
         first_name: 'Vali',
@@ -373,5 +375,99 @@ describe('PostgresRegisteredUserStore', () => {
     const store = new PostgresRegisteredUserStore(database);
     const result = await store.findByTelegramId('9999');
     assert.equal(result, null);
+  });
+
+  it('searches clients using name, username, or phone number', async () => {
+    let selectColumns: unknown;
+    let limitValue: number | undefined;
+    let filterQuery: string | undefined;
+
+    const database = ((table: string) => {
+      assert.equal(table, 'users');
+      return {
+        join(otherTable: string, leftCol: string, rightCol: string) {
+          assert.equal(otherTable, 'clients');
+          assert.equal(leftCol, 'users.id');
+          assert.equal(rightCol, 'clients.user_id');
+          return this;
+        },
+        select(columns: unknown) {
+          selectColumns = columns;
+          return this;
+        },
+        where(callback: (qb: any) => void) {
+          const qb = {
+            whereILike(col: string, val: string) {
+              if (col === 'users.first_name') filterQuery = val;
+              return this;
+            },
+            orWhereILike(col: string, val: string) {
+              return this;
+            },
+            orWhere(col: string, op: string, val: string) {
+              return this;
+            },
+          };
+          callback(qb);
+          return this;
+        },
+        limit(val: number) {
+          limitValue = val;
+          return Promise.resolve([
+            {
+              id: 101,
+              telegram_id: 2001,
+              telegram_username: 'search_username',
+              first_name: 'SearchName',
+              last_name: 'SearchLastName',
+              phone_number: '+998901234567',
+              language_code: 'ru',
+              crm_client_id: 'crm-101',
+              customer_code: 'CC-101',
+              client_status: 'Active',
+              client_is_active: 1,
+            },
+          ]);
+        },
+      };
+    }) as unknown as Knex;
+
+    const store = new PostgresRegisteredUserStore(database);
+    const results = await store.searchClients('SearchName');
+
+    assert.equal(limitValue, 50);
+    assert.equal(filterQuery, '%SearchName%');
+    assert.deepEqual(selectColumns, {
+      id: 'users.id',
+      telegram_id: 'users.telegram_id',
+      telegram_username: 'users.telegram_username',
+      first_name: 'users.first_name',
+      last_name: 'users.last_name',
+      phone_number: 'users.phone_number',
+      language_code: 'users.language_code',
+      crm_client_id: 'clients.crm_client_id',
+      customer_code: 'clients.customer_code',
+      client_status: 'clients.status',
+      client_is_active: 'clients.is_active',
+    });
+
+    assert.equal(results.length, 1);
+    assert.deepEqual(results[0], {
+      user: {
+        id: '101',
+        telegram_id: '2001',
+        telegram_username: 'search_username',
+        first_name: 'SearchName',
+        last_name: 'SearchLastName',
+        phone_number: '+998901234567',
+        locale: 'ru',
+      },
+      client: {
+        crm_client_id: 'crm-101',
+        customer_code: 'CC-101',
+        status: 'Active',
+        is_active: true,
+      },
+    });
   });
 });

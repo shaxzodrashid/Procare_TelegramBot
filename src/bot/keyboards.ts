@@ -2,6 +2,7 @@ import { InlineKeyboard, Keyboard } from 'grammy';
 
 import type { AdminProfile, ClientProfile, Locale } from '../types/client.js';
 import type { MessageTemplate } from '../types/message-template.js';
+import type { UserRegistrationState } from '../types/registered-user.js';
 import type { OsType, ProblemCategory } from '../types/repair-order.js';
 import { localizedCatalogName } from '../types/repair-order.js';
 import { t } from './messages.js';
@@ -22,7 +23,12 @@ const clientMenuKeyboard = (locale: Locale): Keyboard =>
   new Keyboard().text(t(locale, 'orders')).row().text(t(locale, 'settings')).resized();
 
 const employeeMenuKeyboard = (locale: Locale): Keyboard =>
-  new Keyboard().text(t(locale, 'adminTemplates')).row().text(t(locale, 'settings')).resized();
+  new Keyboard()
+    .text(t(locale, 'adminClients'))
+    .text(t(locale, 'adminTemplates'))
+    .row()
+    .text(t(locale, 'settings'))
+    .resized();
 
 export const personalMenuKeyboard = (user: PersonalMenuUser): Keyboard => {
   if (user.admin?.is_active) return employeeMenuKeyboard(user.locale);
@@ -215,3 +221,60 @@ export const adminTemplateDetailKeyboard = (
 
 export const adminTemplateCancelKeyboard = (locale: Locale): Keyboard =>
   new Keyboard().text(t(locale, 'adminTemplateCancel')).resized().oneTime();
+
+export const adminClientResultsKeyboard = (
+  clients: UserRegistrationState[],
+  locale: Locale,
+): InlineKeyboard => {
+  const keyboard = new InlineKeyboard();
+  clients.forEach((client) => {
+    const fullName = `${client.user.first_name}${client.user.last_name ? ` ${client.user.last_name}` : ''}`;
+    const label = `${fullName} (${client.user.phone_number})`;
+    keyboard.text(label, `ac:v:${client.user.telegram_id}`).row();
+  });
+  keyboard.text(t(locale, 'adminClientBack'), 'ac:search');
+  return keyboard;
+};
+
+export const adminClientCardKeyboard = (telegramId: string, locale: Locale): InlineKeyboard =>
+  new InlineKeyboard()
+    .text(t(locale, 'adminClientSendCustom'), `ac:msg:${telegramId}`)
+    .text(t(locale, 'adminClientSendTemplate'), `ac:tmpl:${telegramId}`)
+    .row()
+    .text(t(locale, 'adminClientBack'), 'ac:search');
+
+export const adminClientCustomConfirmKeyboard = (
+  telegramId: string,
+  locale: Locale,
+): InlineKeyboard =>
+  new InlineKeyboard()
+    .text(t(locale, 'adminClientSendConfirm'), `ac:custom_send:${telegramId}`)
+    .text(t(locale, 'adminClientSendCancel'), 'ac:cancel');
+
+export const adminClientTemplateConfirmKeyboard = (
+  telegramId: string,
+  templateId: string,
+  locale: Locale,
+): InlineKeyboard =>
+  new InlineKeyboard()
+    .text(t(locale, 'adminClientSendConfirm'), `ac:tmpl_send:${telegramId}:${templateId}`)
+    .text(t(locale, 'adminClientSendCancel'), 'ac:cancel');
+
+export const adminClientTemplateListKeyboard = (
+  templates: Pick<MessageTemplate, 'id' | 'title' | 'is_active'>[],
+  telegramId: string,
+  locale: Locale,
+): InlineKeyboard => {
+  const keyboard = new InlineKeyboard();
+  templates.forEach((template) => {
+    const title =
+      template.title.length > 34 ? `${template.title.slice(0, 31).trimEnd()}...` : template.title;
+    keyboard.text(title, `ac:tmpl_sel:${telegramId}:${template.id}`).row();
+  });
+  keyboard.text(t(locale, 'adminClientBack'), `ac:v:${telegramId}`);
+  return keyboard;
+};
+
+export const adminClientCancelKeyboard = (locale: Locale): Keyboard =>
+  new Keyboard().text(t(locale, 'adminClientCancel')).resized().oneTime();
+

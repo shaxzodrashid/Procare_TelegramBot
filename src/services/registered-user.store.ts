@@ -15,6 +15,7 @@ export interface RegisteredUserStore {
   updateSettings(update: RegisteredUserSettingsUpdate): Promise<void>;
   findByPhoneNumber(phoneNumber: string): Promise<RegisteredUserMessageTarget | null>;
   findByTelegramId(telegramId: string): Promise<UserRegistrationState | null>;
+  searchClients(query: string): Promise<UserRegistrationState[]>;
 }
 
 type ReturnedUserId = { id?: unknown } | string | number;
@@ -120,6 +121,7 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
     const locale = userRow.language_code === 'ru' ? 'ru' : 'uz';
     const result: UserRegistrationState = {
       user: {
+        id: String(userRow.id),
         telegram_id: String(userRow.telegram_id),
         telegram_username: userRow.telegram_username,
         first_name: userRow.first_name || '',
@@ -161,6 +163,55 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
     }
 
     return result;
+  }
+
+  async searchClients(query: string): Promise<UserRegistrationState[]> {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+
+    const userRows = await this.database('users')
+      .join('clients', 'users.id', 'clients.user_id')
+      .select({
+        id: 'users.id',
+        telegram_id: 'users.telegram_id',
+        telegram_username: 'users.telegram_username',
+        first_name: 'users.first_name',
+        last_name: 'users.last_name',
+        phone_number: 'users.phone_number',
+        language_code: 'users.language_code',
+        crm_client_id: 'clients.crm_client_id',
+        customer_code: 'clients.customer_code',
+        client_status: 'clients.status',
+        client_is_active: 'clients.is_active',
+      })
+      .where((qb) => {
+        qb.whereILike('users.first_name', `%${trimmed}%`)
+          .orWhereILike('users.last_name', `%${trimmed}%`)
+          .orWhereILike('users.telegram_username', `%${trimmed}%`)
+          .orWhere('users.phone_number', 'like', `%${trimmed}%`);
+      })
+      .limit(50);
+
+    return userRows.map((row) => {
+      const locale = row.language_code === 'ru' ? 'ru' : 'uz';
+      return {
+        user: {
+          id: String(row.id),
+          telegram_id: String(row.telegram_id),
+          telegram_username: row.telegram_username,
+          first_name: row.first_name || '',
+          last_name: row.last_name,
+          phone_number: row.phone_number || '',
+          locale,
+        },
+        client: {
+          crm_client_id: row.crm_client_id,
+          customer_code: row.customer_code,
+          status: row.client_status,
+          is_active: Boolean(row.client_is_active),
+        },
+      };
+    });
   }
 
   private async upsertUser(

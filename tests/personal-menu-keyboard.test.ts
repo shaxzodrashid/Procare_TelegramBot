@@ -31,7 +31,10 @@ describe('personal menu keyboard', () => {
       admin: { id: 'admin-1', is_active: true },
     });
 
-    assert.deepEqual(keyboardLabels(keyboard), [['🧩 Шаблоны сообщений'], ['⚙️ Настройки']]);
+    assert.deepEqual(keyboardLabels(keyboard), [
+      ['🔍 Поиск клиентов', '🧩 Шаблоны сообщений'],
+      ['⚙️ Настройки'],
+    ]);
   });
 
   it('keeps employee actions when employee data is present with client data', () => {
@@ -41,7 +44,10 @@ describe('personal menu keyboard', () => {
       admin: { id: 'admin-1', is_active: true },
     });
 
-    assert.deepEqual(keyboardLabels(keyboard), [['🧩 Шаблоны сообщений'], ['⚙️ Настройки']]);
+    assert.deepEqual(keyboardLabels(keyboard), [
+      ['🔍 Поиск клиентов', '🧩 Шаблоны сообщений'],
+      ['⚙️ Настройки'],
+    ]);
   });
 
   it('does not show employee sections for inactive employee data', () => {

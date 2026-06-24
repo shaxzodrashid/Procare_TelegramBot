@@ -2,6 +2,7 @@ import type { Context, SessionFlavor } from 'grammy';
 
 import type { AdminProfile, ClientProfile, Locale } from '../types/client.js';
 import type { MessageTemplateDraft, MessageTemplateField } from '../types/message-template.js';
+import type { UserRegistrationState } from '../types/registered-user.js';
 import type { OsType, PhoneCategory, ProblemCategory } from '../types/repair-order.js';
 
 export type RegistrationStage =
@@ -20,7 +21,10 @@ export type RegistrationStage =
   | 'settings_awaiting_phone'
   | 'settings_choosing_language'
   | 'admin_template_input'
-  | 'support_comment_input';
+  | 'support_comment_input'
+  | 'admin_client_search_input'
+  | 'admin_client_send_custom_message'
+  | 'admin_client_template_placeholder';
 
 export interface UnknownClientSession {
   phoneNumber: string;
@@ -67,6 +71,15 @@ export interface BotSession {
     field: MessageTemplateField;
     templateId?: string;
     draft?: MessageTemplateDraft;
+  };
+  adminClientFlow?: {
+    searchQuery?: string;
+    searchResults?: UserRegistrationState[];
+    selectedTelegramId?: string;
+    selectedTemplateId?: string;
+    placeholdersToPrompt?: string[];
+    promptedPlaceholders?: Record<string, string>;
+    customMessageText?: string;
   };
 }
 

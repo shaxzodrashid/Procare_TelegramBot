@@ -39,6 +39,7 @@ export interface RegisteredUserMessageTarget {
 
 export interface UserRegistrationState {
   user: {
+    id?: string;
     telegram_id: string;
     telegram_username: string | null;
     first_name: string;
