@@ -1,11 +1,12 @@
 import type { Bot } from 'grammy';
-import type { BotCommand } from 'grammy/types';
+import type { BotCommand, BotCommandScope } from 'grammy/types';
 import type { BotContext, BotSession } from './context.js';
 import type { Locale, RegistrationResult } from '../types/client.js';
 import { t, type MessageKey } from './messages.js';
 import {
   settingsKeyboard,
   supportCommentKeyboard,
+  adminExportCancelKeyboard,
   settingsBackKeyboard,
   settingsPhoneKeyboard,
   settingsLanguageKeyboard,
@@ -33,9 +34,20 @@ export const localizedBotCommands = (locale: Locale): BotCommand[] => [
 ];
 
 export const setLocalizedBotCommands = async (bot: Bot<BotContext>): Promise<void> => {
+  const defaultPrivateScope: BotCommandScope = { type: 'all_private_chats' };
+
   await bot.api.setMyCommands(localizedBotCommands('uz'));
   await bot.api.setMyCommands(localizedBotCommands('uz'), { language_code: 'uz' });
   await bot.api.setMyCommands(localizedBotCommands('ru'), { language_code: 'ru' });
+  await bot.api.setMyCommands(localizedBotCommands('uz'), { scope: defaultPrivateScope });
+  await bot.api.setMyCommands(localizedBotCommands('uz'), {
+    scope: defaultPrivateScope,
+    language_code: 'uz',
+  });
+  await bot.api.setMyCommands(localizedBotCommands('ru'), {
+    scope: defaultPrivateScope,
+    language_code: 'ru',
+  });
 };
 
 export const parseSettingsName = (value: string): SettingsName | null => {
@@ -99,17 +111,19 @@ export const currentReplyKeyboard = (sessionData: BotSession) =>
     ? settingsKeyboard(sessionData.locale)
     : sessionData.stage === 'support_comment_input'
       ? supportCommentKeyboard(sessionData.locale)
-      : sessionData.stage === 'settings_awaiting_name'
-        ? settingsBackKeyboard(sessionData.locale)
-        : sessionData.stage === 'settings_awaiting_phone'
-          ? settingsPhoneKeyboard(sessionData.locale)
-          : sessionData.stage === 'settings_choosing_language'
-            ? settingsLanguageKeyboard(sessionData.locale)
-            : sessionData.client || hasEmployeeMenuAccess(sessionData)
-              ? personalMenuKeyboard(sessionData)
-              : sessionData.stage === 'awaiting_phone'
-                ? registrationKeyboard(sessionData.locale)
-                : languageKeyboard();
+      : sessionData.stage === 'admin_export_period_input'
+        ? adminExportCancelKeyboard(sessionData.locale)
+        : sessionData.stage === 'settings_awaiting_name'
+          ? settingsBackKeyboard(sessionData.locale)
+          : sessionData.stage === 'settings_awaiting_phone'
+            ? settingsPhoneKeyboard(sessionData.locale)
+            : sessionData.stage === 'settings_choosing_language'
+              ? settingsLanguageKeyboard(sessionData.locale)
+              : sessionData.client || hasEmployeeMenuAccess(sessionData)
+                ? personalMenuKeyboard(sessionData)
+                : sessionData.stage === 'awaiting_phone'
+                  ? registrationKeyboard(sessionData.locale)
+                  : languageKeyboard();
 
 export const replyWithAdminRegistration = async (ctx: BotContext): Promise<void> => {
   await ctx.reply(

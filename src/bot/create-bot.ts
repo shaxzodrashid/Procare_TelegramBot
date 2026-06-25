@@ -1,6 +1,7 @@
 import { Bot, session, GrammyError, HttpError } from 'grammy';
 import type { ClientRegistrationGateway } from '../services/client-registration.service.js';
 import type { ClientRepairOrderGateway } from '../services/client-repair-order.service.js';
+import type { ActionExportService } from '../services/action-export.service.js';
 import type { MessageTemplateStore } from '../services/message-template.service.js';
 import type { RegisteredUserStore } from '../services/registered-user.store.js';
 import type { RepairOrderGateway } from '../services/repair-order.service.js';
@@ -9,11 +10,7 @@ import type { UnknownClientStore } from '../services/unknown-client.store.js';
 import type { Logger } from '../utils/logger.js';
 import type { BotContext } from './context.js';
 import { t } from './messages.js';
-import {
-  hasRegisteredProfile,
-  registeredHelpKey,
-  currentReplyKeyboard,
-} from './helpers.js';
+import { hasRegisteredProfile, registeredHelpKey, currentReplyKeyboard } from './helpers.js';
 import {
   initialSession,
   createTelegramApiLoggingTransformer,
@@ -31,6 +28,7 @@ import { registerSupportHandlers } from './handlers/support.js';
 import { registerUnknownFlowHandlers } from './handlers/unknown-flow.js';
 import { registerAdminClientsHandlers } from './handlers/admin-clients.js';
 import { registerAdminTemplatesHandlers } from './handlers/admin-templates.js';
+import { registerAdminExportHandlers } from './handlers/admin-export.js';
 
 export interface BotDependencies {
   registrationService: ClientRegistrationGateway;
@@ -40,6 +38,7 @@ export interface BotDependencies {
   registeredUserStore: RegisteredUserStore;
   messageTemplateStore: MessageTemplateStore;
   supportMessageStore: SupportMessageStore;
+  actionExportService?: ActionExportService;
   logger: Logger;
   allowManualPhoneEntry: boolean;
   richMessagesEnabled: boolean;
@@ -55,9 +54,7 @@ export {
   canRegisterWithManualPhone,
 } from './helpers.js';
 
-export {
-  createSessionRestorationMiddleware,
-} from './session.js';
+export { createSessionRestorationMiddleware } from './session.js';
 
 export const createBot = (token: string, dependencies: BotDependencies): Bot<BotContext> => {
   const bot = new Bot<BotContext>(token);
@@ -101,6 +98,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
   registerUnknownFlowHandlers(bot, dependencies);
   registerAdminClientsHandlers(bot, dependencies);
   registerAdminTemplatesHandlers(bot, dependencies);
+  registerAdminExportHandlers(bot, dependencies);
 
   // Fallback handlers for unhandled messages
   const sendHelpOrPhoneOnly = async (ctx: BotContext) => {

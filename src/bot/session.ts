@@ -283,6 +283,10 @@ export const clearAdminClientFlow = (sessionData: BotSession): void => {
   }
 };
 
+export const clearAdminExportFlow = (sessionData: BotSession): void => {
+  if (sessionData.stage === 'admin_export_period_input') delete sessionData.stage;
+};
+
 const settingsStages = new Set<RegistrationStage>([
   'settings',
   'settings_awaiting_name',
@@ -302,14 +306,16 @@ export const resetSession = (sessionData: BotSession, locale: Locale): void => {
   clearAdminTemplateFlow(sessionData);
   clearSupportFlow(sessionData);
   clearAdminClientFlow(sessionData);
+  clearAdminExportFlow(sessionData);
   clearSettingsFlow(sessionData);
   sessionData.locale = locale;
   sessionData.stage = 'choosing_language';
 };
 
-export const createSessionRestorationMiddleware = (
-  dependencies: { registeredUserStore: RegisteredUserStore; logger: Logger },
-) => {
+export const createSessionRestorationMiddleware = (dependencies: {
+  registeredUserStore: RegisteredUserStore;
+  logger: Logger;
+}) => {
   return async (ctx: BotContext, next: () => Promise<void>) => {
     if (ctx.from && !ctx.session.client && !ctx.session.admin) {
       try {

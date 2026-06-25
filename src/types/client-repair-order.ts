@@ -17,6 +17,12 @@ export const CUSTOMER_REPAIR_STATUS_CODES = [
 export type CustomerRepairStatusCode = (typeof CUSTOMER_REPAIR_STATUS_CODES)[number];
 export type CustomerRepairProgressType = 'linear' | 'terminal';
 export type PaymentStatus = 'unpaid' | 'partial' | 'paid' | 'overpaid';
+export type CustomerAssignedAdminRoleType =
+  | 'SuperAdmin'
+  | 'Operator'
+  | 'Specialist'
+  | 'Master'
+  | 'Courier';
 
 export interface LocalizedCustomerText {
   name_uz: string | null;
@@ -118,9 +124,24 @@ export interface CustomerRepairStatusHistoryItem extends LocalizedCustomerText {
   changed_at: string;
 }
 
+export interface CustomerAssignedAdminRole {
+  id: string;
+  name: string;
+  type: CustomerAssignedAdminRoleType | null;
+}
+
+export interface CustomerAssignedAdmin {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  phone_number: string | null;
+  roles: CustomerAssignedAdminRole[];
+}
+
 export interface CustomerRepairOrderDetail extends CustomerRepairOrderListItem {
   id: string;
   updated_at: string;
+  assigned_admins: CustomerAssignedAdmin[];
   device: CustomerRepairDevice & {
     imei_last4: string | null;
   };

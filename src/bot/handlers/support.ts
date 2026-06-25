@@ -8,18 +8,14 @@ import {
 } from '../../types/client-repair-order.js';
 import type { SupportMessageContentType } from '../../types/support-message.js';
 import { ClientRepairOrderError } from '../../services/client-repair-order.service.js';
-import {
-  clearAdminTemplateFlow,
-  clearSettingsFlow,
-  clearSupportFlow,
-} from '../session.js';
-import {
-  personalMenuKeyboard,
-  supportCommentKeyboard,
-} from '../keyboards.js';
+import { isTelegramBlockedError } from '../../services/bot-notification.service.js';
+import { escapeHtml } from '../../utils/html.js';
+import { clearAdminTemplateFlow, clearSettingsFlow, clearSupportFlow } from '../session.js';
+import { personalMenuKeyboard, supportCommentKeyboard } from '../keyboards.js';
 const SUPPORT_COMMENT_MAX_LENGTH = 4_000;
 const SUPPORT_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 const SUPPORT_PHOTO_MIME_TYPES = new Set<string>(CUSTOMER_SUPPORT_PHOTO_MIME_TYPES);
+const SUPPORT_ADMIN_NOTIFICATION_DISPATCH_TYPE = 'support_comment_admin_notification';
 
 const startSupportComment = async (ctx: BotContext): Promise<void> => {
   const repairOrderId = ctx.session.repairOrdersView?.selectedRepairOrderId;
@@ -35,11 +31,71 @@ const startSupportComment = async (ctx: BotContext): Promise<void> => {
   ctx.session.supportComment = {
     repairOrderId,
     orderNumber,
+    assignedAdminIds: ctx.session.repairOrdersView?.selectedAssignedAdminIds ?? [],
     submitting: false,
   };
   await ctx.reply(t(ctx.session.locale, 'supportPrompt', { number: orderNumber }), {
     reply_markup: supportCommentKeyboard(ctx.session.locale),
   });
+};
+
+const notifyAssignedAdmins = async (
+  ctx: BotContext,
+  dependencies: BotDependencies,
+  draft: {
+    repairOrderId: string;
+    orderNumber: string;
+    assignedAdminIds: string[];
+  },
+): Promise<void> => {
+  if (draft.assignedAdminIds.length === 0) return;
+
+  const targets = await dependencies.registeredUserStore.findActiveEmployeesByCrmAdminIds(
+    draft.assignedAdminIds,
+  );
+
+  await Promise.all(
+    targets.map(async (target) => {
+      if (target.is_blocked) {
+        await dependencies.messageTemplateStore.logDispatch({
+          user_id: target.id,
+          template_id: null,
+          dispatch_type: SUPPORT_ADMIN_NOTIFICATION_DISPATCH_TYPE,
+          status: 'failed',
+          error_message: 'Telegram user is marked as blocked',
+        });
+        return;
+      }
+
+      const text = t(target.locale, 'supportAdminNotification', {
+        number: escapeHtml(draft.orderNumber),
+        id: escapeHtml(draft.repairOrderId),
+      });
+
+      try {
+        await ctx.api.sendMessage(target.telegram_id, text, { parse_mode: 'HTML' });
+        await dependencies.messageTemplateStore.setUserBlocked(target.telegram_id, false);
+        await dependencies.messageTemplateStore.logDispatch({
+          user_id: target.id,
+          template_id: null,
+          dispatch_type: SUPPORT_ADMIN_NOTIFICATION_DISPATCH_TYPE,
+          status: 'sent',
+          error_message: null,
+        });
+      } catch (error) {
+        if (isTelegramBlockedError(error)) {
+          await dependencies.messageTemplateStore.setUserBlocked(target.telegram_id, true);
+        }
+        await dependencies.messageTemplateStore.logDispatch({
+          user_id: target.id,
+          template_id: null,
+          dispatch_type: SUPPORT_ADMIN_NOTIFICATION_DISPATCH_TYPE,
+          status: 'failed',
+          error_message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }),
+  );
 };
 
 const submitSupportComment = async (
@@ -111,6 +167,20 @@ const submitSupportComment = async (
           repair_order_id: draft.repairOrderId,
           telegram_message_id: input.telegramMessage.messageId,
         });
+      }
+    }
+    if (result.created) {
+      try {
+        await notifyAssignedAdmins(ctx, dependencies, draft);
+      } catch (notificationError) {
+        dependencies.logger.error(
+          'Failed to notify assigned admins about support message',
+          notificationError,
+          {
+            repair_order_id: draft.repairOrderId,
+            order_number: draft.orderNumber,
+          },
+        );
       }
     }
     if (pendingMessage && ctx.chat) {

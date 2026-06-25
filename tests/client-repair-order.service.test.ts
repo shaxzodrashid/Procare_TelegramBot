@@ -44,6 +44,21 @@ const detail = {
   ...listItem,
   id: '11111111-1111-4111-8111-111111111111',
   updated_at: '2026-06-18T10:00:00.000Z',
+  assigned_admins: [
+    {
+      id: '33333333-3333-4333-8333-333333333333',
+      first_name: 'John',
+      last_name: 'Doe',
+      phone_number: '+998901234567',
+      roles: [
+        {
+          id: '44444444-4444-4444-8444-444444444444',
+          name: 'Master',
+          type: 'Master',
+        },
+      ],
+    },
+  ],
   device: { ...listItem.device, imei_last4: '5678' },
   status: {
     ...status,
@@ -159,6 +174,7 @@ describe('HttpClientRepairOrderService', () => {
     assert.equal(result.branch.working_hours.start, '09:00');
     assert.equal(result.warranty.period_months, 3);
     assert.equal(result.documents.checklist_url, 'https://crm.test/documents/checklist/1024');
+    assert.equal(result.assigned_admins[0]?.roles[0]?.type, 'Master');
     assert.equal(result.status_history[0]?.progress_type, 'linear');
   });
 
@@ -288,6 +304,35 @@ describe('HttpClientRepairOrderService', () => {
               ...detail.documents,
               checklist_url: 1024,
             },
+          }),
+      },
+      logger,
+    );
+
+    await assert.rejects(
+      service.getClientRepairOrder('client-id', '1024'),
+      (error: unknown) =>
+        error instanceof ClientRepairOrderError && error.code === 'invalid_response',
+    );
+  });
+
+  it('rejects malformed assigned-admin role metadata', async () => {
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () =>
+          Response.json({
+            ...detail,
+            assigned_admins: [
+              {
+                ...detail.assigned_admins[0],
+                roles: [{ id: '44444444-4444-4444-8444-444444444444', name: '', type: 'Master' }],
+              },
+            ],
           }),
       },
       logger,

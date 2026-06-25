@@ -37,6 +37,14 @@ export interface RegisteredUserMessageTarget {
   is_blocked: boolean;
 }
 
+export interface RegisteredEmployeeMessageTarget {
+  id: string;
+  telegram_id: string;
+  crm_admin_id: string;
+  locale: Locale;
+  is_blocked: boolean;
+}
+
 export interface UserRegistrationState {
   user: {
     id?: string;

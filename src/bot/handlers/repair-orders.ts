@@ -2,17 +2,10 @@ import type { Bot } from 'grammy';
 import type { BotContext } from '../context.js';
 import type { BotDependencies } from '../create-bot.js';
 import { t } from '../messages.js';
-import {
-  hasEmployeeMenuAccess,
-  replyWithAdminRegistration,
-  safeHttpUrl,
-} from '../helpers.js';
+import { hasEmployeeMenuAccess, replyWithAdminRegistration, safeHttpUrl } from '../helpers.js';
 import { clearSupportFlow } from '../session.js';
 import { replySmart } from '../rich-messages.js';
-import {
-  formatClientRepairOrderDetail,
-  formatClientRepairOrderList,
-} from '../formatters.js';
+import { formatClientRepairOrderDetail, formatClientRepairOrderList } from '../formatters.js';
 import {
   languageKeyboard,
   personalMenuKeyboard,
@@ -101,6 +94,9 @@ export const showClientRepairOrderDetail = async (
     ctx.session.repairOrdersView ??= { offset: 0, orderNumbers: [] };
     ctx.session.repairOrdersView.selectedOrderNumber = order.order_number;
     ctx.session.repairOrdersView.selectedRepairOrderId = order.id;
+    ctx.session.repairOrdersView.selectedAssignedAdminIds = order.assigned_admins.map(
+      (admin) => admin.id,
+    );
     await replySmart(ctx, formatClientRepairOrderDetail(order, ctx.session.locale), {
       enabled: dependencies.richMessagesEnabled,
       logger: dependencies.logger,

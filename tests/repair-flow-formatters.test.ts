@@ -153,6 +153,7 @@ describe('client repair-order presentation', () => {
         ...listOrder,
         id: '11111111-1111-4111-8111-111111111111',
         updated_at: '2026-06-18T10:00:00.000Z',
+        assigned_admins: [],
         device: { ...listOrder.device, imei_last4: '5678' },
         status: {
           ...status,
@@ -218,6 +219,7 @@ describe('client repair-order presentation', () => {
         ...listOrder,
         id: '11111111-1111-4111-8111-111111111111',
         updated_at: '2026-06-18T10:00:00.000Z',
+        assigned_admins: [],
         device: { ...listOrder.device, imei_last4: null },
         status: {
           ...status,
@@ -277,6 +279,7 @@ describe('client repair-order presentation', () => {
         ...listOrder,
         id: '11111111-1111-4111-8111-111111111111',
         updated_at: '2026-06-18T10:00:00.000Z',
+        assigned_admins: [],
         device: { ...listOrder.device, imei_last4: null },
         status: {
           ...status,

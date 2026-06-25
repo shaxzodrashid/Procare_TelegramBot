@@ -6,6 +6,7 @@ import { createBot, setLocalizedBotCommands } from '../bot/create-bot.js';
 import type { BotContext } from '../bot/context.js';
 import type { AppConfig } from '../config/index.js';
 import { createDatabase, migrateDatabase } from '../database/database.js';
+import { PostgresActionExportService } from '../services/action-export.service.js';
 import { BotDirectMessageService } from '../services/bot-notification.service.js';
 import { HttpClientRepairOrderService } from '../services/client-repair-order.service.js';
 import { HttpClientRegistrationService } from '../services/client-registration.service.js';
@@ -68,6 +69,7 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
   const registeredUserStore = new PostgresRegisteredUserStore(database);
   const messageTemplateStore = new PostgresMessageTemplateStore(database);
   const supportMessageStore = new PostgresSupportMessageStore(database);
+  const actionExportService = new PostgresActionExportService(database);
 
   if (config.bot.enabled) {
     bot = createBot(config.bot.token!, {
@@ -78,6 +80,7 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       registeredUserStore,
       messageTemplateStore,
       supportMessageStore,
+      actionExportService,
       logger,
       allowManualPhoneEntry: config.nodeEnv === 'development',
       richMessagesEnabled: config.bot.richMessagesEnabled,

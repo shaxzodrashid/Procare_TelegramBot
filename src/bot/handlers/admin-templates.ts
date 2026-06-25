@@ -4,10 +4,7 @@ import type { BotDependencies } from '../create-bot.js';
 import type { Locale } from '../../types/client.js';
 import { t } from '../messages.js';
 import { escapeHtml } from '../../utils/html.js';
-import {
-  clearAdminTemplateFlow,
-  clearSupportFlow,
-} from '../session.js';
+import { clearAdminExportFlow, clearAdminTemplateFlow, clearSupportFlow } from '../session.js';
 import {
   personalMenuKeyboard,
   adminTemplateCancelKeyboard,
@@ -289,6 +286,7 @@ export const registerAdminTemplatesHandlers = (
     try {
       clearSupportFlow(ctx.session);
       clearAdminTemplateFlow(ctx.session);
+      clearAdminExportFlow(ctx.session);
       await showAdminTemplateList(ctx, dependencies.messageTemplateStore);
     } catch (error) {
       dependencies.logger.error('Failed to show admin template list', error);

@@ -24,7 +24,8 @@ export type RegistrationStage =
   | 'support_comment_input'
   | 'admin_client_search_input'
   | 'admin_client_send_custom_message'
-  | 'admin_client_template_placeholder';
+  | 'admin_client_template_placeholder'
+  | 'admin_export_period_input';
 
 export interface UnknownClientSession {
   phoneNumber: string;
@@ -49,6 +50,7 @@ export interface RepairRequestDraft {
 export interface SupportCommentDraft {
   repairOrderId: string;
   orderNumber: string;
+  assignedAdminIds: string[];
   submitting: boolean;
 }
 
@@ -61,6 +63,7 @@ export interface BotSession {
     orderNumbers: string[];
     selectedOrderNumber?: string;
     selectedRepairOrderId?: string;
+    selectedAssignedAdminIds?: string[];
   };
   stage?: RegistrationStage;
   unknownClient?: UnknownClientSession;

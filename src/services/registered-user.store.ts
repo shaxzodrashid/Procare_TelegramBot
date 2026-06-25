@@ -2,6 +2,7 @@ import type { Knex } from 'knex';
 
 import type {
   RegisteredClientRecord,
+  RegisteredEmployeeMessageTarget,
   RegisteredEmployeeRecord,
   RegisteredUserMessageTarget,
   RegisteredUserSettingsUpdate,
@@ -14,6 +15,9 @@ export interface RegisteredUserStore {
   saveEmployee(record: RegisteredEmployeeRecord): Promise<void>;
   updateSettings(update: RegisteredUserSettingsUpdate): Promise<void>;
   findByPhoneNumber(phoneNumber: string): Promise<RegisteredUserMessageTarget | null>;
+  findActiveEmployeesByCrmAdminIds(
+    crmAdminIds: string[],
+  ): Promise<RegisteredEmployeeMessageTarget[]>;
   findByTelegramId(telegramId: string): Promise<UserRegistrationState | null>;
   searchClients(query: string): Promise<UserRegistrationState[]>;
 }
@@ -23,6 +27,13 @@ type UserMessageTargetRow = {
   id: string | number;
   telegram_id: string | number;
   phone_number: string;
+  is_blocked: boolean;
+};
+type EmployeeMessageTargetRow = {
+  id: string | number;
+  telegram_id: string | number;
+  crm_admin_id: string;
+  language_code: string;
   is_blocked: boolean;
 };
 
@@ -111,6 +122,33 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
       phone_number: row.phone_number,
       is_blocked: row.is_blocked,
     };
+  }
+
+  async findActiveEmployeesByCrmAdminIds(
+    crmAdminIds: string[],
+  ): Promise<RegisteredEmployeeMessageTarget[]> {
+    const uniqueIds = [...new Set(crmAdminIds.map((id) => id.trim()).filter(Boolean))];
+    if (uniqueIds.length === 0) return [];
+
+    const rows = (await this.database('employees')
+      .join('users', 'employees.user_id', 'users.id')
+      .select({
+        id: 'users.id',
+        telegram_id: 'users.telegram_id',
+        crm_admin_id: 'employees.crm_admin_id',
+        language_code: 'users.language_code',
+        is_blocked: 'users.is_blocked',
+      })
+      .whereIn('employees.crm_admin_id', uniqueIds)
+      .andWhere('employees.is_active', true)) as EmployeeMessageTargetRow[];
+
+    return rows.map((row) => ({
+      id: String(row.id),
+      telegram_id: String(row.telegram_id),
+      crm_admin_id: row.crm_admin_id,
+      locale: row.language_code === 'ru' ? 'ru' : 'uz',
+      is_blocked: Boolean(row.is_blocked),
+    }));
   }
 
   async findByTelegramId(telegramId: string): Promise<UserRegistrationState | null> {

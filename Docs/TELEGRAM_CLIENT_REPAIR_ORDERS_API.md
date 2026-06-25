@@ -97,6 +97,7 @@ GET /api/v1/telegram/clients/:client_id/repair-orders/:order_number
 The detail response adds:
 
 - Repair-order UUID as `id`, used by the support-comment endpoint
+- Active assigned admins with active role specs
 - Customer-facing status messages
 - Last four IMEI digits
 - Estimated, final, paid, and remaining totals
@@ -115,6 +116,21 @@ Example:
 {
   "id": "11111111-1111-4111-8111-111111111111",
   "order_number": "1024",
+  "assigned_admins": [
+    {
+      "id": "33333333-3333-4333-8333-333333333333",
+      "first_name": "John",
+      "last_name": "Doe",
+      "phone_number": "+998901234567",
+      "roles": [
+        {
+          "id": "44444444-4444-4444-8444-444444444444",
+          "name": "Master",
+          "type": "Master"
+        }
+      ]
+    }
+  ],
   "device": {
     "brand": "Apple",
     "model": "iPhone 14 Pro",
@@ -193,6 +209,10 @@ Example:
 ```
 
 `payment_status` is one of `unpaid`, `partial`, `paid`, or `overpaid`.
+
+`assigned_admins` includes only active, open admins assigned to the repair order. Each admin includes
+active, open role specs as `roles[]` with `id`, `name`, and `type`. `type` is one of `SuperAdmin`,
+`Operator`, `Specialist`, `Master`, `Courier`, or `null` for a custom role without a canonical type.
 
 ## Register client support comment
 
@@ -295,7 +315,8 @@ The list endpoint applies the same visibility rules and does not include those o
 `pagination.total`.
 
 Responses are built from a customer-safe allowlist. Full IMEI, internal notes, raw descriptions,
-employee data, call counts, cost prices, margins, and internal identifiers are not returned.
+unassigned employee data, call counts, cost prices, margins, and unrelated internal identifiers are
+not returned.
 
 Money values are strings. Timestamps are ISO 8601 UTC.
 

@@ -10,12 +10,11 @@ import {
 import { MessageTemplateRenderer } from '../../services/message-template.service.js';
 import {
   clearAdminClientFlow,
+  clearAdminExportFlow,
   clearAdminTemplateFlow,
   clearSupportFlow,
 } from '../session.js';
-import {
-  hasEmployeeMenuAccess,
-} from '../helpers.js';
+import { hasEmployeeMenuAccess } from '../helpers.js';
 import {
   adminClientCancelKeyboard,
   adminClientCardKeyboard,
@@ -252,7 +251,11 @@ const startAdminClientTemplateMessage = async (
     const templates = await dependencies.messageTemplateStore.listTemplates();
     const activeTemplates = templates.filter((t) => t.is_active);
     await ctx.reply(t(ctx.session.locale, 'adminClientTemplateSelectPrompt'), {
-      reply_markup: adminClientTemplateListKeyboard(activeTemplates, telegramId, ctx.session.locale),
+      reply_markup: adminClientTemplateListKeyboard(
+        activeTemplates,
+        telegramId,
+        ctx.session.locale,
+      ),
     });
   } catch (error) {
     dependencies.logger.error('Failed to list templates for admin client', error);
@@ -277,7 +280,8 @@ const handleAdminClientTemplateSelect = async (
       (c) => c.user.telegram_id === telegramId,
     );
     if (!clientState) {
-      clientState = (await dependencies.registeredUserStore.findByTelegramId(telegramId)) ?? undefined;
+      clientState =
+        (await dependencies.registeredUserStore.findByTelegramId(telegramId)) ?? undefined;
     }
 
     if (!clientState) {
@@ -326,10 +330,13 @@ const promptTemplatePlaceholder = async (ctx: BotContext): Promise<void> => {
   if (!flow || !flow.placeholdersToPrompt || flow.placeholdersToPrompt.length === 0) return;
 
   const currentKey = flow.placeholdersToPrompt[0] as string;
-  await ctx.reply(t(ctx.session.locale, 'adminClientTemplatePlaceholderPrompt', { key: currentKey }), {
-    parse_mode: 'HTML',
-    reply_markup: adminClientCancelKeyboard(ctx.session.locale),
-  });
+  await ctx.reply(
+    t(ctx.session.locale, 'adminClientTemplatePlaceholderPrompt', { key: currentKey }),
+    {
+      parse_mode: 'HTML',
+      reply_markup: adminClientCancelKeyboard(ctx.session.locale),
+    },
+  );
 };
 
 const handleAdminClientTemplatePlaceholderInput = async (
@@ -365,7 +372,9 @@ const showAdminClientTemplatePreview = async (
     return;
   }
 
-  const template = await dependencies.messageTemplateStore.findTemplateById(flow.selectedTemplateId);
+  const template = await dependencies.messageTemplateStore.findTemplateById(
+    flow.selectedTemplateId,
+  );
   if (!template) {
     await ctx.reply(t(ctx.session.locale, 'adminTemplateNotFound'));
     return;
@@ -373,18 +382,28 @@ const showAdminClientTemplatePreview = async (
 
   let clientState = flow.searchResults?.find((c) => c.user.telegram_id === flow.selectedTelegramId);
   if (!clientState) {
-    clientState = (await dependencies.registeredUserStore.findByTelegramId(flow.selectedTelegramId)) ?? undefined;
+    clientState =
+      (await dependencies.registeredUserStore.findByTelegramId(flow.selectedTelegramId)) ??
+      undefined;
   }
 
   const locale = clientState?.user.locale || 'uz';
-  const rendered = MessageTemplateRenderer.render(template, locale, flow.promptedPlaceholders || {});
+  const rendered = MessageTemplateRenderer.render(
+    template,
+    locale,
+    flow.promptedPlaceholders || {},
+  );
 
   const preview = `${t(ctx.session.locale, 'adminClientTemplatePreview')}\n\n${rendered}`;
   ctx.session.stage = 'settings';
 
   await ctx.reply(preview, {
     parse_mode: 'HTML',
-    reply_markup: adminClientTemplateConfirmKeyboard(flow.selectedTelegramId, template.id, ctx.session.locale),
+    reply_markup: adminClientTemplateConfirmKeyboard(
+      flow.selectedTelegramId,
+      template.id,
+      ctx.session.locale,
+    ),
   });
 };
 
@@ -402,7 +421,8 @@ const sendAdminClientTemplateMessage = async (
 
   let clientState = flow.searchResults?.find((c) => c.user.telegram_id === telegramId);
   if (!clientState) {
-    clientState = (await dependencies.registeredUserStore.findByTelegramId(telegramId)) ?? undefined;
+    clientState =
+      (await dependencies.registeredUserStore.findByTelegramId(telegramId)) ?? undefined;
   }
 
   if (!clientState) {
@@ -455,6 +475,7 @@ export const registerAdminClientsHandlers = (
     if (!(await requireAdmin(ctx))) return;
     clearSupportFlow(ctx.session);
     clearAdminTemplateFlow(ctx.session);
+    clearAdminExportFlow(ctx.session);
     clearAdminClientFlow(ctx.session);
     await startAdminClientSearch(ctx);
   });
@@ -558,7 +579,11 @@ export const registerAdminClientsHandlers = (
     if (ctx.session.stage === 'admin_client_send_custom_message') {
       if (ctx.message.text === t(ctx.session.locale, 'adminClientCancel')) {
         ctx.session.stage = 'settings';
-        await showAdminClientCard(ctx, dependencies, ctx.session.adminClientFlow?.selectedTelegramId ?? '');
+        await showAdminClientCard(
+          ctx,
+          dependencies,
+          ctx.session.adminClientFlow?.selectedTelegramId ?? '',
+        );
         return;
       }
       await handleAdminClientCustomMessageInput(ctx, dependencies, ctx.message.text);
@@ -568,7 +593,11 @@ export const registerAdminClientsHandlers = (
     if (ctx.session.stage === 'admin_client_template_placeholder') {
       if (ctx.message.text === t(ctx.session.locale, 'adminClientCancel')) {
         ctx.session.stage = 'settings';
-        await showAdminClientCard(ctx, dependencies, ctx.session.adminClientFlow?.selectedTelegramId ?? '');
+        await showAdminClientCard(
+          ctx,
+          dependencies,
+          ctx.session.adminClientFlow?.selectedTelegramId ?? '',
+        );
         return;
       }
       await handleAdminClientTemplatePlaceholderInput(ctx, dependencies, ctx.message.text);

@@ -378,6 +378,74 @@ describe('PostgresRegisteredUserStore', () => {
     assert.equal(result, null);
   });
 
+  it('finds active employee Telegram targets by CRM admin IDs', async () => {
+    let selectedTable = '';
+    let joinArgs: unknown[] = [];
+    let selectColumns: unknown;
+    let whereInArgs: unknown[] = [];
+    let andWhereArgs: unknown[] = [];
+
+    const rows = [
+      {
+        id: 301,
+        telegram_id: 800301,
+        crm_admin_id: 'admin-301',
+        language_code: 'ru',
+        is_blocked: false,
+      },
+    ];
+    const database = ((table: string) => {
+      selectedTable = table;
+      return {
+        join(...args: unknown[]) {
+          joinArgs = args;
+          return this;
+        },
+        select(columns: unknown) {
+          selectColumns = columns;
+          return this;
+        },
+        whereIn(...args: unknown[]) {
+          whereInArgs = args;
+          return this;
+        },
+        andWhere(...args: unknown[]) {
+          andWhereArgs = args;
+          return Promise.resolve(rows);
+        },
+      };
+    }) as unknown as Knex;
+
+    const store = new PostgresRegisteredUserStore(database);
+    const targets = await store.findActiveEmployeesByCrmAdminIds([
+      'admin-301',
+      'admin-301',
+      '',
+      ' admin-302 ',
+    ]);
+
+    assert.equal(selectedTable, 'employees');
+    assert.deepEqual(joinArgs, ['users', 'employees.user_id', 'users.id']);
+    assert.deepEqual(selectColumns, {
+      id: 'users.id',
+      telegram_id: 'users.telegram_id',
+      crm_admin_id: 'employees.crm_admin_id',
+      language_code: 'users.language_code',
+      is_blocked: 'users.is_blocked',
+    });
+    assert.deepEqual(whereInArgs, ['employees.crm_admin_id', ['admin-301', 'admin-302']]);
+    assert.deepEqual(andWhereArgs, ['employees.is_active', true]);
+    assert.deepEqual(targets, [
+      {
+        id: '301',
+        telegram_id: '800301',
+        crm_admin_id: 'admin-301',
+        locale: 'ru',
+        is_blocked: false,
+      },
+    ]);
+  });
+
   it('searches clients using name, username, or phone number', async () => {
     let selectColumns: unknown;
     let limitValue: number | undefined;

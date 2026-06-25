@@ -27,6 +27,8 @@ const employeeMenuKeyboard = (locale: Locale): Keyboard =>
     .text(t(locale, 'adminClients'))
     .text(t(locale, 'adminTemplates'))
     .row()
+    .text(t(locale, 'adminExport'))
+    .row()
     .text(t(locale, 'settings'))
     .resized();
 
@@ -278,3 +280,5 @@ export const adminClientTemplateListKeyboard = (
 export const adminClientCancelKeyboard = (locale: Locale): Keyboard =>
   new Keyboard().text(t(locale, 'adminClientCancel')).resized().oneTime();
 
+export const adminExportCancelKeyboard = (locale: Locale): Keyboard =>
+  new Keyboard().text(t(locale, 'adminExportCancel')).resized().oneTime();

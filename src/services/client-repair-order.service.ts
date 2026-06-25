@@ -1,6 +1,8 @@
 import {
   CUSTOMER_SUPPORT_PHOTO_MIME_TYPES,
   CUSTOMER_REPAIR_STATUS_CODES,
+  type CustomerAssignedAdmin,
+  type CustomerAssignedAdminRole,
   type CustomerRepairBranch,
   type CustomerRepairDocuments,
   type CustomerSupportCommentRequest,
@@ -61,6 +63,13 @@ interface ErrorEnvelope {
 
 const PAYMENT_STATUSES = new Set<PaymentStatus>(['unpaid', 'partial', 'paid', 'overpaid']);
 const STATUS_CODES = new Set<string>(CUSTOMER_REPAIR_STATUS_CODES);
+const ASSIGNED_ADMIN_ROLE_TYPES = new Set<string>([
+  'SuperAdmin',
+  'Operator',
+  'Specialist',
+  'Master',
+  'Courier',
+]);
 const SUPPORT_PHOTO_MIME_TYPES = new Set<string>(CUSTOMER_SUPPORT_PHOTO_MIME_TYPES);
 const DECIMAL_PATTERN = /^-?\d+(?:\.\d+)?$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -230,11 +239,29 @@ const isStatusHistoryItem = (value: unknown): value is CustomerRepairStatusHisto
     value.total_steps >= value.step) &&
   isIsoUtcTimestamp(value.changed_at);
 
+const isAssignedAdminRole = (value: unknown): value is CustomerAssignedAdminRole =>
+  isRecord(value) &&
+  isUuid(value.id) &&
+  typeof value.name === 'string' &&
+  value.name.length > 0 &&
+  (value.type === null || ASSIGNED_ADMIN_ROLE_TYPES.has(String(value.type)));
+
+const isAssignedAdmin = (value: unknown): value is CustomerAssignedAdmin =>
+  isRecord(value) &&
+  isUuid(value.id) &&
+  isNullableString(value.first_name) &&
+  isNullableString(value.last_name) &&
+  isNullableString(value.phone_number) &&
+  Array.isArray(value.roles) &&
+  value.roles.every(isAssignedAdminRole);
+
 const isCustomerRepairOrderDetail = (value: unknown): value is CustomerRepairOrderDetail => {
   if (!isRecord(value) || !isListItem(value)) return false;
   return (
     isUuid(value.id) &&
     isIsoUtcTimestamp(value.updated_at) &&
+    Array.isArray(value.assigned_admins) &&
+    value.assigned_admins.every(isAssignedAdmin) &&
     isRecord(value.device) &&
     isNullableString(value.device.imei_last4) &&
     isCustomerStatus(value.status, true) &&
@@ -317,6 +344,7 @@ const summarizePayload = (payload: unknown): unknown => {
       type: 'repair_order_detail',
       repair_order_id: payload.id,
       order_number: payload.order_number,
+      assigned_admins_count: payload.assigned_admins.length,
       status_code: payload.status.code,
       status_history_count: payload.status_history.length,
       payments_count: payload.pricing.payments.length,

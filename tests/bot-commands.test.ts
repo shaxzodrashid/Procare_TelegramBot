@@ -8,10 +8,12 @@ import {
   parseSettingsName,
   registrationAccountKind,
   createSessionRestorationMiddleware,
+  setLocalizedBotCommands,
 } from '../src/bot/create-bot.js';
 import type { BotContext, BotSession } from '../src/bot/context.js';
 import type { Logger } from '../src/utils/logger.js';
 import type { RegisteredUserStore } from '../src/services/registered-user.store.js';
+import type { Bot } from 'grammy';
 
 describe('bot command metadata', () => {
   it('builds localized Telegram menu commands', () => {
@@ -20,8 +22,55 @@ describe('bot command metadata', () => {
       ['start', 'help', 'logout'],
     );
     assert.deepEqual(
+      localizedBotCommands('uz').map((command) => command.description),
+      ['Procare botini boshlash yoki qayta boshlash', 'Yordam olish', 'Tizimdan chiqish'],
+    );
+    assert.deepEqual(
       localizedBotCommands('ru').map((command) => command.description),
-      ['✨ Начать или перезапустить Procare', '💬 Получить помощь', '👋 Выйти из системы'],
+      ['Начать или перезапустить Procare', 'Получить помощь', 'Выйти из системы'],
+    );
+  });
+
+  it('publishes commands to default and private-chat scopes', async () => {
+    const calls: Array<{
+      commands: ReturnType<typeof localizedBotCommands>;
+      options: unknown;
+    }> = [];
+    const bot = {
+      api: {
+        setMyCommands: async (
+          commands: ReturnType<typeof localizedBotCommands>,
+          options?: unknown,
+        ) => {
+          calls.push({ commands, options });
+        },
+      },
+    } as unknown as Bot<BotContext>;
+
+    await setLocalizedBotCommands(bot);
+
+    assert.equal(calls.length, 6);
+    assert.deepEqual(
+      calls.map((call) => call.commands.map((command) => command.command)),
+      [
+        ['start', 'help', 'logout'],
+        ['start', 'help', 'logout'],
+        ['start', 'help', 'logout'],
+        ['start', 'help', 'logout'],
+        ['start', 'help', 'logout'],
+        ['start', 'help', 'logout'],
+      ],
+    );
+    assert.deepEqual(
+      calls.map((call) => call.options),
+      [
+        undefined,
+        { language_code: 'uz' },
+        { language_code: 'ru' },
+        { scope: { type: 'all_private_chats' } },
+        { scope: { type: 'all_private_chats' }, language_code: 'uz' },
+        { scope: { type: 'all_private_chats' }, language_code: 'ru' },
+      ],
     );
   });
 });
