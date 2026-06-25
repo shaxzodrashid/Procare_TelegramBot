@@ -4,6 +4,7 @@ services:
     environment:
       POSTGRES_DB: ${DB_NAME:-probox_bot_db}
       POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_HOST_AUTH_METHOD: trust
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-probox_bot_db}']
       interval: 5s
