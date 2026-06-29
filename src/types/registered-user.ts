@@ -33,7 +33,11 @@ export interface RegisteredUserSettingsUpdate {
 export interface RegisteredUserMessageTarget {
   id: string;
   telegram_id: string;
+  telegram_username: string | null;
+  first_name: string;
+  last_name: string | null;
   phone_number: string;
+  locale: Locale;
   is_blocked: boolean;
 }
 

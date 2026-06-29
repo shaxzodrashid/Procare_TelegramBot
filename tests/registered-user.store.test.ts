@@ -178,7 +178,11 @@ describe('PostgresRegisteredUserStore', () => {
     const { database, calls } = createDatabaseDouble('44', now, {
       id: 45,
       telegram_id: 1004,
+      telegram_username: 'ali',
+      first_name: 'Ali',
+      last_name: 'Valiyev',
       phone_number: '+998901234567',
+      language_code: 'ru',
       is_blocked: false,
     });
     const store = new PostgresRegisteredUserStore(database);
@@ -188,12 +192,25 @@ describe('PostgresRegisteredUserStore', () => {
     assert.deepEqual(user, {
       id: '45',
       telegram_id: '1004',
+      telegram_username: 'ali',
+      first_name: 'Ali',
+      last_name: 'Valiyev',
       phone_number: '+998901234567',
+      locale: 'ru',
       is_blocked: false,
     });
     assert.deepEqual(
       calls.find((call) => call.table === 'users' && call.action === 'select')?.payload,
-      ['id', 'telegram_id', 'phone_number', 'is_blocked'],
+      [
+        'id',
+        'telegram_id',
+        'telegram_username',
+        'first_name',
+        'last_name',
+        'phone_number',
+        'language_code',
+        'is_blocked',
+      ],
     );
     assert.deepEqual(
       calls.find((call) => call.table === 'users' && call.action === 'where')?.payload,

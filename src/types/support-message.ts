@@ -19,3 +19,10 @@ export interface SupportMessageRecord {
   photo_count: number;
   reply_to_support_message_id?: string | null;
 }
+
+export interface SupportMessageReplyTarget {
+  id: string;
+  telegram_id: string;
+  telegram_chat_id: string;
+  telegram_message_id: number;
+}

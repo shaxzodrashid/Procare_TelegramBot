@@ -26,7 +26,11 @@ type ReturnedUserId = { id?: unknown } | string | number;
 type UserMessageTargetRow = {
   id: string | number;
   telegram_id: string | number;
+  telegram_username: string | null;
+  first_name: string | null;
+  last_name: string | null;
   phone_number: string;
+  language_code: string | null;
   is_blocked: boolean;
 };
 type EmployeeMessageTargetRow = {
@@ -110,7 +114,16 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
 
   async findByPhoneNumber(phoneNumber: string): Promise<RegisteredUserMessageTarget | null> {
     const row = (await this.database('users')
-      .select('id', 'telegram_id', 'phone_number', 'is_blocked')
+      .select(
+        'id',
+        'telegram_id',
+        'telegram_username',
+        'first_name',
+        'last_name',
+        'phone_number',
+        'language_code',
+        'is_blocked',
+      )
       .where({ phone_number: phoneNumber })
       .first()) as UserMessageTargetRow | undefined;
 
@@ -119,7 +132,11 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
     return {
       id: String(row.id),
       telegram_id: String(row.telegram_id),
+      telegram_username: row.telegram_username,
+      first_name: row.first_name ?? '',
+      last_name: row.last_name,
       phone_number: row.phone_number,
+      locale: row.language_code === 'ru' ? 'ru' : 'uz',
       is_blocked: row.is_blocked,
     };
   }

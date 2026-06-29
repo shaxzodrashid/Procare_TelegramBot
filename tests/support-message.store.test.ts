@@ -6,6 +6,56 @@ import type { Knex } from 'knex';
 import { PostgresSupportMessageStore } from '../src/services/support-message.store.js';
 
 describe('PostgresSupportMessageStore', () => {
+  it('finds reply targets by CRM comment ID and Telegram user', async () => {
+    let selectedColumns: string[] | undefined;
+    let wherePayload: Record<string, unknown> | undefined;
+
+    const database = ((table: string) => {
+      assert.equal(table, 'support_messages');
+      return {
+        select(...columns: string[]) {
+          selectedColumns = columns;
+          return this;
+        },
+        where(payload: Record<string, unknown>) {
+          wherePayload = payload;
+          return this;
+        },
+        first() {
+          return Promise.resolve({
+            id: '42',
+            telegram_id: '777',
+            telegram_chat_id: '777',
+            telegram_message_id: 123,
+          });
+        },
+      };
+    }) as unknown as Knex;
+    const store = new PostgresSupportMessageStore(database);
+
+    const result = await store.findReplyTargetByCrmCommentId(
+      '22222222-2222-4222-8222-222222222222',
+      '777',
+    );
+
+    assert.deepEqual(selectedColumns, [
+      'id',
+      'telegram_id',
+      'telegram_chat_id',
+      'telegram_message_id',
+    ]);
+    assert.deepEqual(wherePayload, {
+      crm_comment_id: '22222222-2222-4222-8222-222222222222',
+      telegram_id: '777',
+    });
+    assert.deepEqual(result, {
+      id: '42',
+      telegram_id: '777',
+      telegram_chat_id: '777',
+      telegram_message_id: 123,
+    });
+  });
+
   it('stores support message mappings by Telegram chat and message ID', async () => {
     const now = new Date('2026-06-24T10:02:00.000Z');
     let selectedUserTable: string | undefined;

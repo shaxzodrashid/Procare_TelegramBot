@@ -65,6 +65,14 @@ export interface BotSession {
     selectedRepairOrderId?: string;
     selectedAssignedAdminIds?: string[];
   };
+  directMessageViews?: Record<
+    string,
+    {
+      text: string;
+      repairOrderUuid: string;
+      buttonText?: string;
+    }
+  >;
   stage?: RegistrationStage;
   unknownClient?: UnknownClientSession;
   repairDraft?: RepairRequestDraft;

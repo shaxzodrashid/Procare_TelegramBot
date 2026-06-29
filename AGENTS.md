@@ -322,6 +322,7 @@ with `AppConfig` and `loadConfig`.
 | `API_ENABLED`                      | `true`                    | Strict lowercase boolean                                  |
 | `API_HOST`                         | `0.0.0.0`                 | Fastify listen host                                       |
 | `API_PORT`                         | `3000`                    | Integer from 1 through 65535                              |
+| `API_MESSAGE_SEND_TOKEN`           | Required when API enabled | Bearer token for `POST /messages/send`; secret            |
 | `CRM_BASE_URL`                     | Required                  | Trailing slashes are removed                              |
 | `TELEGRAM_BOT_BASIC_AUTH_USER`     | Required                  | CRM service credential                                    |
 | `TELEGRAM_BOT_BASIC_AUTH_PASSWORD` | Required                  | CRM service secret                                        |

@@ -148,6 +148,7 @@ The direct message endpoint is:
 
 ```http
 POST http://localhost:3000/messages/send
+Authorization: Bearer <API_MESSAGE_SEND_TOKEN>
 Content-Type: application/json
 ```
 
@@ -156,14 +157,66 @@ Request:
 ```json
 {
   "phone_number": "+998901234567",
-  "message": "Salom"
+  "message": "Salom {{first_name}}. Qurilma: {{phone_category}}",
+  "variables": {
+    "phone_category": "iPhone 15 Pro"
+  },
+  "support_reply": {
+    "target_crm_comment_id": "22222222-2222-4222-8222-222222222222"
+  },
+  "inline_keyboard": {
+    "rows": [
+      [
+        {
+          "type": "repair_order",
+          "text": "Buyurtmani ko‘rish",
+          "repair_order_uuid": "11111111-1111-4111-8111-111111111111"
+        }
+      ],
+      [
+        {
+          "type": "url",
+          "text": "CRM",
+          "url": "https://crm.procare.uz/orders/1024"
+        }
+      ]
+    ]
+  }
 }
 ```
 
-The API normalizes Uzbek phone numbers, finds the local `users` row by `phone_number`, and sends a
-plain Telegram message to that user's `telegram_id`. It returns `404` when no local user matches,
-`409` when the user is already marked as blocked, `502` when Telegram delivery fails, and `503` when
-the Telegram bot is disabled so delivery is unavailable.
+The API normalizes Uzbek phone numbers, finds the local `users` row by `phone_number`, renders
+message variables, and sends a plain Telegram message to that user's `telegram_id`.
+
+Built-in variables come from the registered user and cannot be overridden by request variables:
+`first_name`, `last_name`, `full_name`, `phone_number`, `telegram_username`, and `locale`. External
+platforms may pass additional string, number, boolean, or `null` values through `variables`; for
+example, `phone_category` or `repair_order_number`.
+
+For CRM support replies, pass `support_reply.target_crm_comment_id` with the CRM comment ID of the
+client message being answered. If the bot has a stored Telegram mapping for that CRM comment and the
+same phone number, it sends the message as a Telegram reply to the original support message. If the
+mapping is missing or Telegram no longer accepts the reply target, delivery falls back to a normal
+message.
+
+The optional `inline_keyboard` supports row-based button layouts. Supported button types are:
+`url`, for `http` or `https` links, and `repair_order`, for a Procare repair-order UUID. A
+`repair_order` button edits the Telegram message to show the repair-order details; the edited view
+includes Refresh and Back buttons so the user can return to the original API message. A shorthand
+single repair-order keyboard is also accepted:
+
+```json
+{
+  "inline_keyboard": {
+    "type": "repair_order",
+    "repair_order_uuid": "11111111-1111-4111-8111-111111111111"
+  }
+}
+```
+
+It returns `400` for invalid payloads or unresolved variables, `401` for a missing or invalid bearer
+token, `404` when no local user matches, `409` when the user is already marked as blocked, `502` when
+Telegram delivery fails, and `503` when the Telegram bot is disabled so delivery is unavailable.
 
 ## Docker Compose
 
@@ -208,6 +261,7 @@ All supported variables are listed in `.env.example`.
 | `API_ENABLED`                      | `true`          | Enable the Fastify health API              |
 | `API_HOST`                         | `0.0.0.0`       | API listen host                            |
 | `API_PORT`                         | `3000`          | API listen port                            |
+| `API_MESSAGE_SEND_TOKEN`           | Required        | Bearer token for `POST /messages/send`     |
 | `CRM_BASE_URL`                     | none            | Required CRM/API base URL                  |
 | `TELEGRAM_BOT_BASIC_AUTH_USER`     | none            | Required CRM service username              |
 | `TELEGRAM_BOT_BASIC_AUTH_PASSWORD` | none            | Required CRM service password              |
@@ -361,9 +415,9 @@ blocked when Telegram returns a blocked-bot error and clears that flag after suc
 when a known user is saved again.
 
 `support_messages` stores each client support message accepted by CRM with the returned CRM comment
-ID, repair-order context, Telegram chat/message IDs, content type, text, and photo count. This table
-is the durable mapping needed for future employee replies from CRM to appear as threaded Telegram
-replies.
+ID, repair-order context, Telegram chat/message IDs, content type, text, and photo count. The direct
+message API can use this durable mapping to send CRM employee responses as threaded Telegram replies
+when `support_reply.target_crm_comment_id` is provided.
 
 While this project is pre-production and has no real user data, edit an existing table's original
 migration instead of creating follow-up alteration migrations. Add a new migration file only when

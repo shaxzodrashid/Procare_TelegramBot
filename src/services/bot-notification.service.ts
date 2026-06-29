@@ -1,9 +1,11 @@
-import { InputFile } from 'grammy';
+import { InlineKeyboard, InputFile } from 'grammy';
 import type { Api } from 'grammy';
 
 import type { TemplateRecipient, MessageTemplateType } from '../types/message-template.js';
+import type { SupportMessageReplyTarget } from '../types/support-message.js';
 import type { RegisteredUserStore } from './registered-user.store.js';
 import { MessageTemplateRenderer, type MessageTemplateStore } from './message-template.service.js';
+import type { SupportMessageStore } from './support-message.store.js';
 
 export interface TemplatePhoto {
   buffer: Buffer | Uint8Array;
@@ -25,10 +27,14 @@ export interface TemplateMessageDeliveryResult {
 export interface SendDirectMessageParams {
   phoneNumber: string;
   message: string;
+  variables?: DirectMessageVariables;
+  inlineKeyboard?: DirectMessageInlineKeyboard;
+  supportReply?: DirectMessageSupportReply;
 }
 
 export interface DirectMessageDeliveryResult {
-  status: 'sent' | 'failed' | 'not_found' | 'blocked';
+  status: 'sent' | 'failed' | 'not_found' | 'blocked' | 'invalid_message';
+  message?: string;
 }
 
 type TelegramTemplateApi = Pick<Api, 'sendMessage' | 'sendPhoto'>;
@@ -37,6 +43,32 @@ type TelegramDirectMessageApi = Pick<Api, 'sendMessage'>;
 const TELEGRAM_CAPTION_LIMIT = 1024;
 export const TELEGRAM_TEXT_LIMIT = 4096;
 const DIRECT_MESSAGE_DISPATCH_TYPE = 'api_direct_message';
+const DIRECT_MESSAGE_PLACEHOLDER_PATTERN = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+
+export type DirectMessageVariableValue = string | number | boolean | null | undefined;
+export type DirectMessageVariables = Record<string, DirectMessageVariableValue>;
+
+export interface DirectMessageUrlButton {
+  type: 'url';
+  text: string;
+  url: string;
+}
+
+export interface DirectMessageRepairOrderButton {
+  type: 'repair_order';
+  text?: string;
+  repairOrderUuid: string;
+}
+
+export type DirectMessageInlineButton = DirectMessageUrlButton | DirectMessageRepairOrderButton;
+
+export interface DirectMessageInlineKeyboard {
+  rows: DirectMessageInlineButton[][];
+}
+
+export interface DirectMessageSupportReply {
+  targetCrmCommentId: string;
+}
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -57,6 +89,41 @@ export const isTelegramBlockedError = (error: unknown): boolean => {
     description.toLowerCase().includes('bot was blocked') ||
     description.toLowerCase().includes('forbidden')
   );
+};
+
+const isTelegramReplyTargetError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+  const record = error as Record<string, unknown>;
+  const errorCode = record.error_code;
+  const description =
+    typeof record.description === 'string'
+      ? record.description
+      : typeof record.message === 'string'
+        ? record.message
+        : '';
+  const normalized = description.toLowerCase();
+
+  return (
+    errorCode === 400 &&
+    (normalized.includes('reply') ||
+      normalized.includes('replied') ||
+      normalized.includes('message to be replied'))
+  );
+};
+
+const directMessageOptions = (
+  replyMarkup: InlineKeyboard | undefined,
+  replyTarget: SupportMessageReplyTarget | null,
+): Parameters<TelegramDirectMessageApi['sendMessage']>[2] | undefined => {
+  const options: NonNullable<Parameters<TelegramDirectMessageApi['sendMessage']>[2]> = {};
+  if (replyMarkup) options.reply_markup = replyMarkup;
+  if (replyTarget) {
+    options.reply_parameters = {
+      message_id: replyTarget.telegram_message_id,
+      allow_sending_without_reply: true,
+    };
+  }
+  return Object.keys(options).length > 0 ? options : undefined;
 };
 
 export class BotNotificationService {
@@ -142,6 +209,7 @@ export class BotDirectMessageService {
     private readonly users: Pick<RegisteredUserStore, 'findByPhoneNumber'>,
     private readonly templates: Pick<MessageTemplateStore, 'logDispatch' | 'setUserBlocked'>,
     private readonly telegram: TelegramDirectMessageApi,
+    private readonly supportMessages?: Pick<SupportMessageStore, 'findReplyTargetByCrmCommentId'>,
   ) {}
 
   async sendDirectMessage(params: SendDirectMessageParams): Promise<DirectMessageDeliveryResult> {
@@ -159,8 +227,39 @@ export class BotDirectMessageService {
       return { status: 'blocked' };
     }
 
+    const rendered = renderDirectMessage(params.message, {
+      ...params.variables,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      full_name: [user.first_name, user.last_name].filter(Boolean).join(' '),
+      phone_number: user.phone_number,
+      telegram_username: user.telegram_username,
+      locale: user.locale,
+    });
+    if (!rendered.ok) return { status: 'invalid_message', message: rendered.message };
+
     try {
-      await this.telegram.sendMessage(user.telegram_id, params.message);
+      const replyMarkup = buildDirectMessageInlineKeyboard(params.inlineKeyboard, user.locale);
+      const replyTarget = params.supportReply
+        ? await this.supportMessages?.findReplyTargetByCrmCommentId(
+            params.supportReply.targetCrmCommentId,
+            user.telegram_id,
+          )
+        : null;
+      try {
+        await this.telegram.sendMessage(
+          replyTarget?.telegram_chat_id ?? user.telegram_id,
+          rendered.message,
+          directMessageOptions(replyMarkup, replyTarget ?? null),
+        );
+      } catch (error) {
+        if (!replyTarget || !isTelegramReplyTargetError(error)) throw error;
+        await this.telegram.sendMessage(
+          user.telegram_id,
+          rendered.message,
+          directMessageOptions(replyMarkup, null),
+        );
+      }
       await this.templates.setUserBlocked(user.telegram_id, false);
       await this.templates.logDispatch({
         user_id: user.id,
@@ -185,3 +284,64 @@ export class BotDirectMessageService {
     }
   }
 }
+
+export const renderDirectMessage = (
+  message: string,
+  variables: DirectMessageVariables,
+): { ok: true; message: string } | { ok: false; message: string } => {
+  const missingVariables = new Set<string>();
+  const rendered = message.replace(DIRECT_MESSAGE_PLACEHOLDER_PATTERN, (match, key: string) => {
+    if (!Object.hasOwn(variables, key)) {
+      missingVariables.add(key);
+      return match;
+    }
+
+    const value = variables[key];
+    if (value === null || value === undefined || value === '') return '';
+    return String(value);
+  });
+
+  if (missingVariables.size > 0) {
+    return {
+      ok: false,
+      message: `Missing message variables: ${Array.from(missingVariables).sort().join(', ')}`,
+    };
+  }
+
+  if (!rendered.trim()) return { ok: false, message: 'message must not be empty after rendering' };
+  if (rendered.length > TELEGRAM_TEXT_LIMIT) {
+    return {
+      ok: false,
+      message: `message must be ${TELEGRAM_TEXT_LIMIT} characters or fewer after rendering`,
+    };
+  }
+
+  return { ok: true, message: rendered };
+};
+
+const defaultRepairOrderButtonText = (locale: string): string =>
+  locale === 'ru' ? '🧾 Детали заказа' : '🧾 Buyurtmani ko‘rish';
+
+export const buildDirectMessageInlineKeyboard = (
+  keyboard: DirectMessageInlineKeyboard | undefined,
+  locale: string,
+): InlineKeyboard | undefined => {
+  if (!keyboard) return undefined;
+
+  const markup = new InlineKeyboard();
+  keyboard.rows.forEach((row, rowIndex) => {
+    if (rowIndex > 0) markup.row();
+    row.forEach((button) => {
+      if (button.type === 'url') {
+        markup.url(button.text, button.url);
+        return;
+      }
+
+      markup.text(
+        button.text?.trim() || defaultRepairOrderButtonText(locale),
+        `dm:ro:o:${button.repairOrderUuid}`,
+      );
+    });
+  });
+  return markup;
+};

@@ -15,6 +15,7 @@ export interface AppConfig {
     enabled: boolean;
     host: string;
     port: number;
+    messageSendToken: string;
   };
   crm: {
     baseUrl: string;
@@ -148,6 +149,9 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
     issues.push('TELEGRAM_BOT_BASIC_AUTH_PASSWORD is required');
   }
   if (!env.DB_PASS) issues.push('DB_PASS is required');
+  if (apiEnabled && !env.API_MESSAGE_SEND_TOKEN?.trim()) {
+    issues.push('API_MESSAGE_SEND_TOKEN is required when API_ENABLED=true');
+  }
   if (databasePoolMin > databasePoolMax) {
     issues.push('DB_POOL_MIN must be less than or equal to DB_POOL_MAX');
   }
@@ -167,6 +171,7 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
       enabled: apiEnabled,
       host: env.API_HOST?.trim() || '0.0.0.0',
       port: apiPort,
+      messageSendToken: env.API_MESSAGE_SEND_TOKEN?.trim() ?? '',
     },
     crm: {
       baseUrl: env.CRM_BASE_URL!.trim().replace(/\/+$/, ''),

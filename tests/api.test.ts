@@ -19,7 +19,7 @@ const config: AppConfig = {
   nodeEnv: 'test',
   logLevel: 'info',
   bot: { enabled: false, richMessagesEnabled: false },
-  api: { enabled: true, host: '127.0.0.1', port: 3000 },
+  api: { enabled: true, host: '127.0.0.1', port: 3000, messageSendToken: 'message-token' },
   crm: {
     baseUrl: 'http://crm.test',
     username: 'bot',
@@ -40,6 +40,8 @@ const config: AppConfig = {
   },
 };
 
+const authHeaders = { authorization: 'Bearer message-token' };
+
 describe('health API', () => {
   it('reports service status without opening a network port', async () => {
     const app = createApiServer(config, logger);
@@ -59,7 +61,13 @@ describe('health API', () => {
 
 describe('direct message API', () => {
   it('normalizes the phone number and sends the trimmed message', async () => {
-    const calls: Array<{ phoneNumber: string; message: string }> = [];
+    const calls: Array<{
+      phoneNumber: string;
+      message: string;
+      variables: unknown;
+      inlineKeyboard?: unknown;
+      supportReply?: unknown;
+    }> = [];
     const app = createApiServer(config, logger, {
       directMessageSender: {
         async sendDirectMessage(params) {
@@ -72,13 +80,124 @@ describe('direct message API', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/messages/send',
-      payload: { phone_number: '90 123 45 67', message: '  Salom  ' },
+      headers: authHeaders,
+      payload: {
+        phone_number: '90 123 45 67',
+        message: '  Salom {{ first_name }}  ',
+        variables: { phone_category: 'iPhone 15' },
+        inline_keyboard: {
+          rows: [
+            [
+              {
+                type: 'url',
+                text: 'CRM',
+                url: 'https://crm.procare.uz/orders/1',
+              },
+            ],
+            [
+              {
+                type: 'repair_order',
+                text: 'Buyurtmani ko‘rish',
+                repair_order_uuid: '11111111-1111-4111-8111-111111111111',
+              },
+            ],
+          ],
+        },
+        support_reply: {
+          target_crm_comment_id: '22222222-2222-4222-8222-222222222222',
+        },
+      },
     });
     await app.close();
 
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.json(), { status: 'sent' });
-    assert.deepEqual(calls, [{ phoneNumber: '+998901234567', message: 'Salom' }]);
+    assert.deepEqual(calls, [
+      {
+        phoneNumber: '+998901234567',
+        message: 'Salom {{ first_name }}',
+        variables: { phone_category: 'iPhone 15' },
+        inlineKeyboard: {
+          rows: [
+            [{ type: 'url', text: 'CRM', url: 'https://crm.procare.uz/orders/1' }],
+            [
+              {
+                type: 'repair_order',
+                text: 'Buyurtmani ko‘rish',
+                repairOrderUuid: '11111111-1111-4111-8111-111111111111',
+              },
+            ],
+          ],
+        },
+        supportReply: {
+          targetCrmCommentId: '22222222-2222-4222-8222-222222222222',
+        },
+      },
+    ]);
+  });
+
+  it('accepts repair-order keyboard shorthand', async () => {
+    const calls: Array<{ inlineKeyboard: unknown }> = [];
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(params) {
+          calls.push({ inlineKeyboard: params.inlineKeyboard });
+          return { status: 'sent' };
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Salom',
+        inline_keyboard: {
+          type: 'repair_order',
+          repair_order_uuid: '11111111-1111-4111-8111-111111111111',
+        },
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(calls, [
+      {
+        inlineKeyboard: {
+          rows: [
+            [
+              {
+                type: 'repair_order',
+                text: undefined,
+                repairOrderUuid: '11111111-1111-4111-8111-111111111111',
+              },
+            ],
+          ],
+        },
+      },
+    ]);
+  });
+
+  it('requires a valid bearer token for message delivery', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(): Promise<DirectMessageDeliveryResult> {
+          throw new Error('should not send');
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      payload: { phone_number: '+998901234567', message: 'Salom' },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 401);
+    assert.equal(response.json<{ error: string }>().error, 'Unauthorized');
   });
 
   it('rejects invalid request payloads before sending', async () => {
@@ -93,12 +212,126 @@ describe('direct message API', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/messages/send',
+      headers: authHeaders,
       payload: { phone_number: '123', message: '' },
     });
     await app.close();
 
     assert.equal(response.statusCode, 400);
     assert.equal(response.json<{ error: string }>().error, 'BadRequest');
+  });
+
+  it('rejects invalid variable payloads before sending', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(): Promise<DirectMessageDeliveryResult> {
+          throw new Error('should not send');
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Salom {{ phone_category }}',
+        variables: { phone_category: { name: 'iPhone' } },
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(
+      response.json<{ message: string }>().message,
+      'variable values must be strings, numbers, booleans, or null',
+    );
+  });
+
+  it('rejects invalid inline keyboard payloads before sending', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(): Promise<DirectMessageDeliveryResult> {
+          throw new Error('should not send');
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Salom',
+        inline_keyboard: {
+          rows: [[{ type: 'repair_order', repair_order_uuid: 'not-a-uuid' }]],
+        },
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(
+      response.json<{ message: string }>().message,
+      'repair_order buttons require a valid repair_order_uuid',
+    );
+  });
+
+  it('rejects invalid support reply payloads before sending', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(): Promise<DirectMessageDeliveryResult> {
+          throw new Error('should not send');
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Salom',
+        support_reply: { target_crm_comment_id: 'not-a-uuid' },
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(
+      response.json<{ message: string }>().message,
+      'support_reply.target_crm_comment_id must be a valid CRM comment UUID',
+    );
+  });
+
+  it('maps rendered message validation failures to bad request', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage() {
+          return {
+            status: 'invalid_message',
+            message: 'Missing message variables: phone_category',
+          };
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: { phone_number: '+998901234567', message: 'Salom {{ phone_category }}' },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(
+      response.json<{ message: string }>().message,
+      'Missing message variables: phone_category',
+    );
   });
 
   it('returns not found when no registered user matches the phone number', async () => {
@@ -113,6 +346,7 @@ describe('direct message API', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/messages/send',
+      headers: authHeaders,
       payload: { phone_number: '+998901234567', message: 'Salom' },
     });
     await app.close();
@@ -127,6 +361,7 @@ describe('direct message API', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/messages/send',
+      headers: authHeaders,
       payload: { phone_number: '+998901234567', message: 'Salom' },
     });
     await app.close();

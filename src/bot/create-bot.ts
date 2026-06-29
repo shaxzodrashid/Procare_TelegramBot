@@ -29,6 +29,7 @@ import { registerUnknownFlowHandlers } from './handlers/unknown-flow.js';
 import { registerAdminClientsHandlers } from './handlers/admin-clients.js';
 import { registerAdminTemplatesHandlers } from './handlers/admin-templates.js';
 import { registerAdminExportHandlers } from './handlers/admin-export.js';
+import { registerDirectMessageHandlers } from './handlers/direct-messages.js';
 
 export interface BotDependencies {
   registrationService: ClientRegistrationGateway;
@@ -95,6 +96,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
   registerSettingsHandlers(bot, dependencies);
   registerRepairOrdersHandlers(bot, dependencies);
   registerSupportHandlers(bot, token, dependencies);
+  registerDirectMessageHandlers(bot, dependencies);
   registerUnknownFlowHandlers(bot, dependencies);
   registerAdminClientsHandlers(bot, dependencies);
   registerAdminTemplatesHandlers(bot, dependencies);

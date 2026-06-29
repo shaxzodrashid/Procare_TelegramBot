@@ -91,6 +91,7 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       registeredUserStore,
       messageTemplateStore,
       bot.api,
+      supportMessageStore,
     );
     logger.info(`Telegram bot @${bot.botInfo.username} authenticated`);
   }
