@@ -1,7 +1,7 @@
 import { InlineKeyboard, Keyboard } from 'grammy';
 
 import type { AdminProfile, ClientProfile, Locale } from '../types/client.js';
-import type { MessageTemplate } from '../types/message-template.js';
+import { MESSAGE_TEMPLATE_TYPES, type MessageTemplate } from '../types/message-template.js';
 import type { UserRegistrationState } from '../types/registered-user.js';
 import type { OsType, ProblemCategory } from '../types/repair-order.js';
 import { localizedCatalogName } from '../types/repair-order.js';
@@ -190,12 +190,15 @@ export const adminTemplateListKeyboard = (
 ): InlineKeyboard => {
   const keyboard = new InlineKeyboard();
   templates.forEach((template) => {
-    const status = template.is_active ? '●' : '○';
+    const status = template.is_active ? '🟢' : '⚫';
     const title =
       template.title.length > 34 ? `${template.title.slice(0, 31).trimEnd()}...` : template.title;
-    keyboard.text(`${status} ${title}`, `tmpl:v:${template.id}`).row();
+    keyboard.text(`${status} ${title}`, `atpd:${template.id}`).row();
   });
-  keyboard.text(t(locale, 'adminTemplateCreate'), 'tmpl:c');
+  keyboard
+    .text(t(locale, 'adminTemplateCreate'), 'admin_template_create')
+    .row()
+    .text(t(locale, 'adminTemplateBackToMenu'), 'admin:menu');
   return keyboard;
 };
 
@@ -204,25 +207,35 @@ export const adminTemplateDetailKeyboard = (
   locale: Locale,
 ): InlineKeyboard =>
   new InlineKeyboard()
-    .text(t(locale, 'adminTemplateEditKey'), `tmpl:e:${template.id}:k`)
-    .text(t(locale, 'adminTemplateEditType'), `tmpl:e:${template.id}:tp`)
+    .text(t(locale, 'adminTemplateEditKey'), `ate:${template.id}:template_key`)
+    .text(t(locale, 'adminTemplateEditType'), `ate:${template.id}:template_type`)
     .row()
-    .text(t(locale, 'adminTemplateEditTitle'), `tmpl:e:${template.id}:ti`)
+    .text(t(locale, 'adminTemplateEditTitle'), `ate:${template.id}:title`)
     .row()
-    .text(t(locale, 'adminTemplateEditUz'), `tmpl:e:${template.id}:uz`)
-    .text(t(locale, 'adminTemplateEditRu'), `tmpl:e:${template.id}:ru`)
+    .text(t(locale, 'adminTemplateEditUz'), `ate:${template.id}:content_uz`)
+    .text(t(locale, 'adminTemplateEditRu'), `ate:${template.id}:content_ru`)
     .row()
     .text(
       t(locale, template.is_active ? 'adminTemplateDeactivate' : 'adminTemplateActivate'),
-      `tmpl:t:${template.id}`,
+      `att:${template.id}`,
     )
     .row()
-    .text(t(locale, 'adminTemplateDelete'), `tmpl:d:${template.id}`)
+    .text(t(locale, 'adminTemplateDelete'), `atdl:${template.id}`)
     .row()
-    .text(t(locale, 'adminTemplateBack'), 'tmpl:l');
+    .text(t(locale, 'adminTemplateBack'), 'admin_templates_back');
 
 export const adminTemplateCancelKeyboard = (locale: Locale): Keyboard =>
   new Keyboard().text(t(locale, 'adminTemplateCancel')).resized().oneTime();
+
+export const adminTemplateTypeKeyboard = (locale: Locale): InlineKeyboard => {
+  const keyboard = new InlineKeyboard();
+  MESSAGE_TEMPLATE_TYPES.forEach((type, index) => {
+    keyboard.text(type, `atts:${type}`);
+    if (index % 2 === 1) keyboard.row();
+  });
+  keyboard.row().text(t(locale, 'adminTemplateCancel'), 'atts:cancel');
+  return keyboard;
+};
 
 export const adminClientResultsKeyboard = (
   clients: UserRegistrationState[],

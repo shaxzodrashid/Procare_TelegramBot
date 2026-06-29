@@ -10,6 +10,7 @@ import {
   adminTemplateCancelKeyboard,
   adminTemplateDetailKeyboard,
   adminTemplateListKeyboard,
+  adminTemplateTypeKeyboard,
 } from '../keyboards.js';
 import { requireAdmin } from './admin-clients.js';
 import type {
@@ -18,21 +19,29 @@ import type {
   MessageTemplateField,
   MessageTemplateType,
 } from '../../types/message-template.js';
-import { isMessageTemplateType, MESSAGE_TEMPLATE_TYPES } from '../../types/message-template.js';
+import { isMessageTemplateType } from '../../types/message-template.js';
 import type { MessageTemplateStore } from '../../services/message-template.service.js';
 import type { Logger } from '../../utils/logger.js';
+
+type TemplateWindowOptions = NonNullable<Parameters<BotContext['reply']>[1]> &
+  NonNullable<Parameters<BotContext['editMessageText']>[1]>;
 
 const templateFieldByCode = (code: string): MessageTemplateField | null => {
   switch (code) {
     case 'k':
+    case 'template_key':
       return 'template_key';
     case 'tp':
+    case 'template_type':
       return 'template_type';
     case 'ti':
+    case 'title':
       return 'title';
     case 'uz':
+    case 'content_uz':
       return 'content_uz';
     case 'ru':
+    case 'content_ru':
       return 'content_ru';
     default:
       return null;
@@ -44,9 +53,7 @@ const adminTemplatePrompt = (locale: Locale, field: MessageTemplateField): strin
     case 'template_key':
       return t(locale, 'adminTemplatePromptKey');
     case 'template_type':
-      return t(locale, 'adminTemplatePromptType', {
-        types: MESSAGE_TEMPLATE_TYPES.join(', '),
-      });
+      return t(locale, 'adminTemplatePromptType');
     case 'title':
       return t(locale, 'adminTemplatePromptTitle');
     case 'content_uz':
@@ -75,9 +82,9 @@ const validateTemplateField = (
 };
 
 const nextCreateTemplateField = (draft: MessageTemplateDraft): MessageTemplateField | null => {
+  if (!draft.title) return 'title';
   if (!draft.template_key) return 'template_key';
   if (!draft.template_type) return 'template_type';
-  if (!draft.title) return 'title';
   if (!draft.content_uz) return 'content_uz';
   if (!draft.content_ru) return 'content_ru';
   return null;
@@ -132,21 +139,58 @@ const formatTemplateDetail = (template: MessageTemplate): string =>
     escapeHtml(template.content_ru),
   ].join('\n');
 
+const isMessageNotModifiedError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+  const description =
+    'description' in error && typeof error.description === 'string'
+      ? error.description
+      : 'message' in error && typeof error.message === 'string'
+        ? error.message
+        : '';
+  return description.toLowerCase().includes('message is not modified');
+};
+
+const replyOrEditTemplateWindow = async (
+  ctx: BotContext,
+  text: string,
+  options: TemplateWindowOptions,
+  preferEdit: boolean,
+): Promise<void> => {
+  if (!preferEdit || !ctx.callbackQuery?.message) {
+    await ctx.reply(text, options);
+    return;
+  }
+
+  try {
+    await ctx.editMessageText(text, options);
+  } catch (error) {
+    if (isMessageNotModifiedError(error)) return;
+    await ctx.reply(text, options);
+  }
+};
+
 const showAdminTemplateList = async (
   ctx: BotContext,
   store: MessageTemplateStore,
+  options: { preferEdit?: boolean } = {},
 ): Promise<void> => {
   const templates = await store.listTemplates();
-  await ctx.reply(formatTemplateList(templates, ctx.session.locale), {
-    parse_mode: 'HTML',
-    reply_markup: adminTemplateListKeyboard(templates, ctx.session.locale),
-  });
+  await replyOrEditTemplateWindow(
+    ctx,
+    formatTemplateList(templates, ctx.session.locale),
+    {
+      parse_mode: 'HTML',
+      reply_markup: adminTemplateListKeyboard(templates, ctx.session.locale),
+    },
+    options.preferEdit ?? false,
+  );
 };
 
 const showAdminTemplateDetail = async (
   ctx: BotContext,
   store: MessageTemplateStore,
   templateId: string,
+  options: { preferEdit?: boolean } = {},
 ): Promise<void> => {
   const template = await store.findTemplateById(templateId);
   if (!template) {
@@ -154,25 +198,41 @@ const showAdminTemplateDetail = async (
     return;
   }
 
-  await ctx.reply(formatTemplateDetail(template), {
-    parse_mode: 'HTML',
-    reply_markup: adminTemplateDetailKeyboard(template, ctx.session.locale),
-  });
+  await replyOrEditTemplateWindow(
+    ctx,
+    formatTemplateDetail(template),
+    {
+      parse_mode: 'HTML',
+      reply_markup: adminTemplateDetailKeyboard(template, ctx.session.locale),
+    },
+    options.preferEdit ?? false,
+  );
 };
 
 const promptTemplateInput = async (ctx: BotContext): Promise<void> => {
   const input = ctx.session.adminTemplateInput;
   if (!input) return;
 
+  if (input.field === 'template_type') {
+    await ctx.reply(adminTemplatePrompt(ctx.session.locale, input.field), {
+      reply_markup: adminTemplateTypeKeyboard(ctx.session.locale),
+    });
+    return;
+  }
+
   await ctx.reply(adminTemplatePrompt(ctx.session.locale, input.field), {
+    parse_mode: 'HTML',
     reply_markup: adminTemplateCancelKeyboard(ctx.session.locale),
   });
 };
 
 const startTemplateCreate = async (ctx: BotContext): Promise<void> => {
+  await ctx.reply(t(ctx.session.locale, 'adminTemplateGuidance'), {
+    parse_mode: 'HTML',
+  });
   ctx.session.adminTemplateInput = {
     mode: 'create',
-    field: 'template_key',
+    field: 'title',
     draft: {},
   };
   ctx.session.stage = 'admin_template_input';
@@ -271,10 +331,20 @@ const handleAdminTemplateInput = async (
     await showAdminTemplateDetail(ctx, store, created.id);
   } catch (error) {
     logger.error('Failed to process admin template input', error);
+    clearAdminTemplateFlow(ctx.session);
     await ctx.reply(t(ctx.session.locale, 'adminTemplateUnavailable'), {
       reply_markup: personalMenuKeyboard(ctx.session),
     });
   }
+};
+
+const handleAdminTemplateTypeSelection = async (
+  ctx: BotContext,
+  store: MessageTemplateStore,
+  logger: Logger,
+  value: MessageTemplateType,
+): Promise<void> => {
+  await handleAdminTemplateInput(ctx, store, logger, value);
 };
 
 export const registerAdminTemplatesHandlers = (
@@ -296,34 +366,45 @@ export const registerAdminTemplatesHandlers = (
     }
   });
 
-  bot.callbackQuery('tmpl:l', async (ctx) => {
+  bot.callbackQuery(['admin_templates_back', 'tmpl:l'], async (ctx) => {
     await ctx.answerCallbackQuery();
     if (!(await requireAdmin(ctx))) return;
     try {
       clearAdminTemplateFlow(ctx.session);
-      await showAdminTemplateList(ctx, dependencies.messageTemplateStore);
+      await showAdminTemplateList(ctx, dependencies.messageTemplateStore, { preferEdit: true });
     } catch (error) {
       dependencies.logger.error('Failed to show admin template list', error);
       await ctx.reply(t(ctx.session.locale, 'adminTemplateUnavailable'));
     }
   });
 
-  bot.callbackQuery('tmpl:c', async (ctx) => {
+  bot.callbackQuery(['admin_template_create', 'tmpl:c'], async (ctx) => {
     await ctx.answerCallbackQuery();
     if (!(await requireAdmin(ctx))) return;
     await startTemplateCreate(ctx);
   });
 
-  bot.callbackQuery(/^tmpl:v:(\d+)$/, async (ctx) => {
+  bot.callbackQuery('admin:menu', async (ctx) => {
     await ctx.answerCallbackQuery();
     if (!(await requireAdmin(ctx))) return;
-    const match = /^tmpl:v:(\d+)$/.exec(ctx.callbackQuery.data);
+    clearAdminTemplateFlow(ctx.session);
+    await ctx.reply(t(ctx.session.locale, 'employeeHelp'), {
+      reply_markup: personalMenuKeyboard(ctx.session),
+    });
+  });
+
+  bot.callbackQuery(/^(?:atpd|tmpl:v):(\d+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (!(await requireAdmin(ctx))) return;
+    const match = /^(?:atpd|tmpl:v):(\d+)$/.exec(ctx.callbackQuery.data);
     if (!match?.[1]) {
       await ctx.reply(t(ctx.session.locale, 'staleAction'));
       return;
     }
     try {
-      await showAdminTemplateDetail(ctx, dependencies.messageTemplateStore, match[1]);
+      await showAdminTemplateDetail(ctx, dependencies.messageTemplateStore, match[1], {
+        preferEdit: true,
+      });
     } catch (error) {
       dependencies.logger.error('Failed to show admin template detail', error);
       await ctx.reply(t(ctx.session.locale, 'adminTemplateUnavailable'));
@@ -342,10 +423,58 @@ export const registerAdminTemplatesHandlers = (
     await startTemplateEdit(ctx, match[1], field);
   });
 
-  bot.callbackQuery(/^tmpl:t:(\d+)$/, async (ctx) => {
+  bot.callbackQuery(
+    /^ate:(\d+):(template_key|template_type|title|content_uz|content_ru)$/,
+    async (ctx) => {
+      await ctx.answerCallbackQuery();
+      if (!(await requireAdmin(ctx))) return;
+      const match = /^ate:(\d+):(template_key|template_type|title|content_uz|content_ru)$/.exec(
+        ctx.callbackQuery.data,
+      );
+      const field = match?.[2] ? templateFieldByCode(match[2]) : null;
+      if (!match?.[1] || !field) {
+        await ctx.reply(t(ctx.session.locale, 'staleAction'));
+        return;
+      }
+      await startTemplateEdit(ctx, match[1], field);
+    },
+  );
+
+  bot.callbackQuery(/^atts:([a-z0-9_]+|cancel)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
     if (!(await requireAdmin(ctx))) return;
-    const match = /^tmpl:t:(\d+)$/.exec(ctx.callbackQuery.data);
+    const match = /^atts:([a-z0-9_]+|cancel)$/.exec(ctx.callbackQuery.data);
+    const selected = match?.[1];
+    if (selected === 'cancel') {
+      clearAdminTemplateFlow(ctx.session);
+      await ctx.reply(t(ctx.session.locale, 'adminTemplateCancelled'), {
+        reply_markup: personalMenuKeyboard(ctx.session),
+      });
+      return;
+    }
+    if (!selected || !isMessageTemplateType(selected)) {
+      await ctx.reply(t(ctx.session.locale, 'staleAction'));
+      return;
+    }
+    if (
+      ctx.session.stage !== 'admin_template_input' ||
+      ctx.session.adminTemplateInput?.field !== 'template_type'
+    ) {
+      await ctx.reply(t(ctx.session.locale, 'staleAction'));
+      return;
+    }
+    await handleAdminTemplateTypeSelection(
+      ctx,
+      dependencies.messageTemplateStore,
+      dependencies.logger,
+      selected,
+    );
+  });
+
+  bot.callbackQuery(/^(?:att|tmpl:t):(\d+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (!(await requireAdmin(ctx))) return;
+    const match = /^(?:att|tmpl:t):(\d+)$/.exec(ctx.callbackQuery.data);
     if (!match?.[1]) {
       await ctx.reply(t(ctx.session.locale, 'staleAction'));
       return;
@@ -363,27 +492,30 @@ export const registerAdminTemplatesHandlers = (
         await ctx.reply(t(ctx.session.locale, 'adminTemplateNotFound'));
         return;
       }
-      await showAdminTemplateDetail(ctx, dependencies.messageTemplateStore, updated.id);
+      await showAdminTemplateDetail(ctx, dependencies.messageTemplateStore, updated.id, {
+        preferEdit: true,
+      });
     } catch (error) {
       dependencies.logger.error('Failed to toggle admin template', error);
       await ctx.reply(t(ctx.session.locale, 'adminTemplateUnavailable'));
     }
   });
 
-  bot.callbackQuery(/^tmpl:d:(\d+)$/, async (ctx) => {
+  bot.callbackQuery(/^(?:atdl|tmpl:d):(\d+)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
     if (!(await requireAdmin(ctx))) return;
-    const match = /^tmpl:d:(\d+)$/.exec(ctx.callbackQuery.data);
+    const match = /^(?:atdl|tmpl:d):(\d+)$/.exec(ctx.callbackQuery.data);
     if (!match?.[1]) {
       await ctx.reply(t(ctx.session.locale, 'staleAction'));
       return;
     }
     try {
       const deleted = await dependencies.messageTemplateStore.deleteTemplate(match[1]);
-      await ctx.reply(
-        t(ctx.session.locale, deleted ? 'adminTemplateDeleted' : 'adminTemplateNotFound'),
-      );
-      await showAdminTemplateList(ctx, dependencies.messageTemplateStore);
+      if (!deleted) {
+        await ctx.reply(t(ctx.session.locale, 'adminTemplateNotFound'));
+        return;
+      }
+      await showAdminTemplateList(ctx, dependencies.messageTemplateStore, { preferEdit: true });
     } catch (error) {
       dependencies.logger.error('Failed to delete admin template', error);
       await ctx.reply(t(ctx.session.locale, 'adminTemplateUnavailable'));
