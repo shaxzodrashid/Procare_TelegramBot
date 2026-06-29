@@ -369,4 +369,185 @@ describe('direct message API', () => {
     assert.equal(response.statusCode, 503);
     assert.equal(response.json<{ error: string }>().error, 'ServiceUnavailable');
   });
+
+  describe('send file API', () => {
+    it('normalizes the phone number and sends the file payload', async () => {
+      const calls: Array<{
+        phoneNumber: string;
+        fileType: string;
+        fileUrl: string;
+        fileName?: string;
+        variables?: unknown;
+        caption?: string;
+      }> = [];
+      const app = createApiServer(config, logger, {
+        directFileSender: {
+          async sendDirectFile(params) {
+            calls.push(params);
+            return { status: 'sent' };
+          },
+        },
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/messages/send-file',
+        headers: authHeaders,
+        payload: {
+          phone_number: '90 123 45 67',
+          file_type: 'warranty',
+          file_url: 'https://minio.test/warranty.pdf',
+          file_name: 'test_warranty.pdf',
+          variables: { order_id: '123' },
+          caption: 'My caption',
+        },
+      });
+      await app.close();
+
+      assert.equal(response.statusCode, 200);
+      assert.deepEqual(response.json(), { status: 'sent' });
+      assert.deepEqual(calls, [
+        {
+          phoneNumber: '+998901234567',
+          fileType: 'warranty',
+          fileUrl: 'https://minio.test/warranty.pdf',
+          fileName: 'test_warranty.pdf',
+          variables: { order_id: '123' },
+          caption: 'My caption',
+        },
+      ]);
+    });
+
+    it('rejects requests with missing or invalid fields', async () => {
+      const app = createApiServer(config, logger, {
+        directFileSender: {
+          async sendDirectFile() {
+            return { status: 'sent' };
+          },
+        },
+      });
+
+      // Missing phone_number
+      let response = await app.inject({
+        method: 'POST',
+        url: '/messages/send-file',
+        headers: authHeaders,
+        payload: { file_type: 'warranty', file_url: 'https://minio.test/a.pdf' },
+      });
+      assert.equal(response.statusCode, 400);
+
+      // Invalid file_type
+      response = await app.inject({
+        method: 'POST',
+        url: '/messages/send-file',
+        headers: authHeaders,
+        payload: { phone_number: '+998901234567', file_type: 'invalid', file_url: 'https://minio.test/a.pdf' },
+      });
+      assert.equal(response.statusCode, 400);
+
+      // Invalid file_url
+      response = await app.inject({
+        method: 'POST',
+        url: '/messages/send-file',
+        headers: authHeaders,
+        payload: { phone_number: '+998901234567', file_type: 'warranty', file_url: 'not-a-url' },
+      });
+      assert.equal(response.statusCode, 400);
+
+      // Invalid file_name extension
+      response = await app.inject({
+        method: 'POST',
+        url: '/messages/send-file',
+        headers: authHeaders,
+        payload: {
+          phone_number: '+998901234567',
+          file_type: 'warranty',
+          file_url: 'https://minio.test/a.pdf',
+          file_name: 'test.docx',
+        },
+      });
+      assert.equal(response.statusCode, 400);
+
+      await app.close();
+    });
+
+    it('requires a valid bearer token for file delivery', async () => {
+      const app = createApiServer(config, logger, {
+        directFileSender: {
+          async sendDirectFile() {
+            return { status: 'sent' };
+          },
+        },
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/messages/send-file',
+        payload: { phone_number: '+998901234567', file_type: 'warranty', file_url: 'https://minio.test/a.pdf' },
+      });
+      await app.close();
+
+      assert.equal(response.statusCode, 401);
+    });
+
+    it('returns 404 when user is not found', async () => {
+      const app = createApiServer(config, logger, {
+        directFileSender: {
+          async sendDirectFile() {
+            return { status: 'not_found' };
+          },
+        },
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/messages/send-file',
+        headers: authHeaders,
+        payload: { phone_number: '+998901234567', file_type: 'warranty', file_url: 'https://minio.test/a.pdf' },
+      });
+      await app.close();
+
+      assert.equal(response.statusCode, 404);
+    });
+
+    it('returns 409 when user is blocked', async () => {
+      const app = createApiServer(config, logger, {
+        directFileSender: {
+          async sendDirectFile() {
+            return { status: 'blocked' };
+          },
+        },
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/messages/send-file',
+        headers: authHeaders,
+        payload: { phone_number: '+998901234567', file_type: 'warranty', file_url: 'https://minio.test/a.pdf' },
+      });
+      await app.close();
+
+      assert.equal(response.statusCode, 409);
+    });
+
+    it('returns 502 when file delivery fails', async () => {
+      const app = createApiServer(config, logger, {
+        directFileSender: {
+          async sendDirectFile() {
+            return { status: 'failed' };
+          },
+        },
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/messages/send-file',
+        headers: authHeaders,
+        payload: { phone_number: '+998901234567', file_type: 'warranty', file_url: 'https://minio.test/a.pdf' },
+      });
+      await app.close();
+
+      assert.equal(response.statusCode, 502);
+    });
+  });
 });

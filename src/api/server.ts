@@ -8,6 +8,7 @@ import {
   type DirectMessageSupportReply,
   type DirectMessageVariables,
   type DirectMessageDeliveryResult,
+  type DirectFileDeliveryResult,
 } from '../services/bot-notification.service.js';
 import type { Logger } from '../utils/logger.js';
 import { normalizeUzPhone } from '../utils/phone.js';
@@ -22,8 +23,20 @@ export interface DirectMessageSender {
   }): Promise<DirectMessageDeliveryResult>;
 }
 
+export interface DirectFileSender {
+  sendDirectFile(params: {
+    phoneNumber: string;
+    fileType: 'warranty' | 'offerta' | 'checklist';
+    fileUrl: string;
+    fileName?: string;
+    variables?: DirectMessageVariables;
+    caption?: string;
+  }): Promise<DirectFileDeliveryResult>;
+}
+
 export interface ApiServerDependencies {
   directMessageSender?: DirectMessageSender;
+  directFileSender?: DirectFileSender;
 }
 
 interface SendMessageRequestBody {
@@ -32,6 +45,15 @@ interface SendMessageRequestBody {
   variables?: unknown;
   inline_keyboard?: unknown;
   support_reply?: unknown;
+}
+
+interface SendFileRequestBody {
+  phone_number?: unknown;
+  file_type?: unknown;
+  file_url?: unknown;
+  file_name?: unknown;
+  variables?: unknown;
+  caption?: unknown;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -279,6 +301,88 @@ const parseSendMessageBody = (
   };
 };
 
+const parseSendFileBody = (
+  body: unknown,
+):
+  | {
+      ok: true;
+      phoneNumber: string;
+      fileType: 'warranty' | 'offerta' | 'checklist';
+      fileUrl: string;
+      fileName?: string;
+      variables?: DirectMessageVariables;
+      caption?: string;
+    }
+  | { ok: false; message: string } => {
+  if (!isRecord(body)) return { ok: false, message: 'Request body must be a JSON object' };
+
+  const {
+    phone_number: rawPhoneNumber,
+    file_type: rawFileType,
+    file_url: rawFileUrl,
+    file_name: rawFileName,
+    variables: rawVariables,
+    caption: rawCaption,
+  } = body as SendFileRequestBody;
+
+  if (typeof rawPhoneNumber !== 'string') {
+    return { ok: false, message: 'phone_number must be a string' };
+  }
+  const phoneNumber = normalizeUzPhone(rawPhoneNumber);
+  if (!phoneNumber) {
+    return { ok: false, message: 'phone_number must be a valid Uzbek phone number' };
+  }
+
+  if (typeof rawFileType !== 'string') {
+    return { ok: false, message: 'file_type must be a string' };
+  }
+  if (rawFileType !== 'warranty' && rawFileType !== 'offerta' && rawFileType !== 'checklist') {
+    return { ok: false, message: "file_type must be one of 'warranty', 'offerta', or 'checklist'" };
+  }
+
+  if (typeof rawFileUrl !== 'string') {
+    return { ok: false, message: 'file_url must be a string' };
+  }
+  if (!isHttpUrl(rawFileUrl)) {
+    return { ok: false, message: 'file_url must be a valid HTTP or HTTPS URL' };
+  }
+
+  let fileName: string | undefined;
+  if (rawFileName !== undefined) {
+    if (typeof rawFileName !== 'string' || rawFileName.trim().length === 0) {
+      return { ok: false, message: 'file_name must be a non-empty string' };
+    }
+    if (!rawFileName.toLowerCase().endsWith('.pdf')) {
+      return { ok: false, message: 'file_name must end with a .pdf extension' };
+    }
+    fileName = rawFileName.trim();
+  }
+
+  let caption: string | undefined;
+  if (rawCaption !== undefined) {
+    if (typeof rawCaption !== 'string') {
+      return { ok: false, message: 'caption must be a string' };
+    }
+    if (rawCaption.length > 1024) {
+      return { ok: false, message: 'caption must be 1024 characters or fewer' };
+    }
+    caption = rawCaption.trim();
+  }
+
+  const parsedVariables = parseVariables(rawVariables);
+  if (!parsedVariables.ok) return parsedVariables;
+
+  return {
+    ok: true,
+    phoneNumber,
+    fileType: rawFileType,
+    fileUrl: rawFileUrl,
+    fileName,
+    variables: parsedVariables.variables,
+    caption,
+  };
+};
+
 export const createApiServer = (
   config: AppConfig,
   logger: Logger,
@@ -354,6 +458,71 @@ export const createApiServer = (
       statusCode: 502,
       error: 'BadGateway',
       message: 'Telegram message delivery failed',
+    });
+  });
+
+  app.post('/messages/send-file', async (request, reply) => {
+    if (!isAuthorized(request.headers.authorization, config.api.messageSendToken)) {
+      return reply.status(401).send({
+        statusCode: 401,
+        error: 'Unauthorized',
+        message: 'A valid Bearer token is required',
+      });
+    }
+
+    if (!dependencies.directFileSender) {
+      return reply.status(503).send({
+        statusCode: 503,
+        error: 'ServiceUnavailable',
+        message: 'Telegram file delivery is not available',
+      });
+    }
+
+    const parsed = parseSendFileBody(request.body);
+    if (!parsed.ok) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: 'BadRequest',
+        message: parsed.message,
+      });
+    }
+
+    const result = await dependencies.directFileSender.sendDirectFile({
+      phoneNumber: parsed.phoneNumber,
+      fileType: parsed.fileType,
+      fileUrl: parsed.fileUrl,
+      fileName: parsed.fileName,
+      variables: parsed.variables,
+      caption: parsed.caption,
+    });
+
+    if (result.status === 'sent') return reply.send({ status: 'sent' });
+    if (result.status === 'invalid_file') {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: 'BadRequest',
+        message: result.message,
+      });
+    }
+    if (result.status === 'not_found') {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: 'NotFound',
+        message: 'No registered Telegram user was found for this phone number',
+      });
+    }
+    if (result.status === 'blocked') {
+      return reply.status(409).send({
+        statusCode: 409,
+        error: 'Conflict',
+        message: 'Telegram user is marked as blocked',
+      });
+    }
+
+    return reply.status(502).send({
+      statusCode: 502,
+      error: 'BadGateway',
+      message: 'Telegram file delivery failed',
     });
   });
 

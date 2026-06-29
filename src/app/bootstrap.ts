@@ -97,7 +97,10 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
   }
 
   if (config.api.enabled) {
-    api = createApiServer(config, logger, { directMessageSender: directMessageService });
+    api = createApiServer(config, logger, {
+      directMessageSender: directMessageService,
+      directFileSender: directMessageService,
+    });
     await api.listen({ host: config.api.host, port: config.api.port });
     logger.info(`Health API listening on ${config.api.host}:${config.api.port}`);
   }

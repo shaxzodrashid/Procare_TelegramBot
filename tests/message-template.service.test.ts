@@ -104,7 +104,13 @@ const createTelegramDouble = (sendMessageError?: unknown | unknown[]) => {
       calls.push({ method: 'sendPhoto', options });
       return {};
     },
-  } as Pick<Api, 'sendMessage' | 'sendPhoto'>;
+    async sendDocument(chatId: string | number, document: unknown, options?: unknown) {
+      calls.push({ method: 'sendDocument', chatId, text: (document as any).filename, options });
+      const error = sendMessageErrors.shift();
+      if (error) throw error;
+      return {};
+    },
+  } as any;
 
   return { telegram, calls };
 };
@@ -475,6 +481,166 @@ describe('BotDirectMessageService', () => {
     assert.deepEqual(result, { status: 'failed' });
     assert.deepEqual(store.blockedUpdates, [{ telegramId: '1001', isBlocked: true }]);
     assert.equal(store.logs[0]?.status, 'failed');
+  });
+
+  describe('sendDirectFile', () => {
+    const mockFetch = (ok = true, status = 200, statusText = 'OK') => {
+      return async () => {
+        if (!ok) {
+          return {
+            ok,
+            status,
+            statusText,
+            async arrayBuffer() {
+              throw new Error('Not available');
+            },
+          } as unknown as Response;
+        }
+        return {
+          ok,
+          status,
+          statusText,
+          async arrayBuffer() {
+            return new ArrayBuffer(8);
+          },
+        } as unknown as Response;
+      };
+    };
+
+    it('sends the PDF document using custom filename and downloaded buffer', async () => {
+      const store = new MemoryTemplateStore(null);
+      const users = new MemoryRegisteredUserLookup(directMessageUser());
+      const { telegram, calls } = createTelegramDouble();
+      const service = new BotDirectMessageService(users, store, telegram, undefined, {
+        fetchImpl: mockFetch(),
+      });
+
+      const result = await service.sendDirectFile({
+        phoneNumber: '+998901234567',
+        fileType: 'warranty',
+        fileUrl: 'https://minio.test/warranty.pdf',
+        fileName: 'my_warranty.pdf',
+        caption: 'Here is your warranty',
+      });
+
+      assert.deepEqual(result, { status: 'sent' });
+      assert.deepEqual(calls, [
+        {
+          method: 'sendDocument',
+          chatId: '1001',
+          text: 'my_warranty.pdf',
+          options: { caption: 'Here is your warranty', parse_mode: 'HTML' },
+        },
+      ]);
+      assert.deepEqual(store.blockedUpdates, [{ telegramId: '1001', isBlocked: false }]);
+      assert.equal(store.logs[0]?.dispatch_type, 'api_direct_file_warranty');
+      assert.equal(store.logs[0]?.status, 'sent');
+    });
+
+    it('uses rendered template as caption if active template exists', async () => {
+      const store = new MemoryTemplateStore(
+        template({
+          template_type: 'offerta',
+          content_uz: 'Salom {{ first_name }}. Offerta: {{ details }}',
+        }),
+      );
+      const users = new MemoryRegisteredUserLookup(directMessageUser());
+      const { telegram, calls } = createTelegramDouble();
+      const service = new BotDirectMessageService(users, store, telegram, undefined, {
+        fetchImpl: mockFetch(),
+      });
+
+      const result = await service.sendDirectFile({
+        phoneNumber: '+998901234567',
+        fileType: 'offerta',
+        fileUrl: 'https://minio.test/offerta.pdf',
+        variables: { details: 'Toshkent Procare' },
+      });
+
+      assert.deepEqual(result, { status: 'sent' });
+      assert.equal(calls[0]?.method, 'sendDocument');
+      assert.equal(calls[0]?.text, 'offerta.pdf'); // defaults to offerta.pdf
+      assert.deepEqual(calls[0]?.options, {
+        caption: 'Salom Ali. Offerta: Toshkent Procare',
+        parse_mode: 'HTML',
+      });
+      assert.equal(store.logs[0]?.dispatch_type, 'api_direct_file_offerta');
+      assert.equal(store.logs[0]?.status, 'sent');
+    });
+
+    it('splits document and message if caption is longer than 1024 characters', async () => {
+      const longCaption = 'x'.repeat(1100);
+      const store = new MemoryTemplateStore(null);
+      const users = new MemoryRegisteredUserLookup(directMessageUser());
+      const { telegram, calls } = createTelegramDouble();
+      const service = new BotDirectMessageService(users, store, telegram, undefined, {
+        fetchImpl: mockFetch(),
+      });
+
+      const result = await service.sendDirectFile({
+        phoneNumber: '+998901234567',
+        fileType: 'checklist',
+        fileUrl: 'https://minio.test/checklist.pdf',
+        caption: longCaption,
+      });
+
+      assert.deepEqual(result, { status: 'sent' });
+      assert.deepEqual(calls, [
+        {
+          method: 'sendDocument',
+          chatId: '1001',
+          text: 'checklist.pdf',
+          options: undefined,
+        },
+        {
+          method: 'sendMessage',
+          chatId: '1001',
+          text: longCaption,
+          options: { parse_mode: 'HTML' },
+        },
+      ]);
+    });
+
+    it('returns invalid_file if download fails', async () => {
+      const store = new MemoryTemplateStore(null);
+      const users = new MemoryRegisteredUserLookup(directMessageUser());
+      const { telegram, calls } = createTelegramDouble();
+      const service = new BotDirectMessageService(users, store, telegram, undefined, {
+        fetchImpl: mockFetch(false, 404, 'Not Found'),
+      });
+
+      const result = await service.sendDirectFile({
+        phoneNumber: '+998901234567',
+        fileType: 'warranty',
+        fileUrl: 'https://minio.test/missing.pdf',
+      });
+
+      assert.equal(result.status, 'invalid_file');
+      assert.equal(calls.length, 0);
+      assert.equal(store.logs[0]?.status, 'failed');
+      assert.ok(store.logs[0]?.error_message?.includes('File download failed'));
+    });
+
+    it('flags user as blocked when direct Telegram delivery is forbidden', async () => {
+      const store = new MemoryTemplateStore(null);
+      const users = new MemoryRegisteredUserLookup(directMessageUser());
+      const { telegram } = createTelegramDouble({
+        error_code: 403,
+        description: 'Forbidden: bot was blocked by the user',
+      });
+      const service = new BotDirectMessageService(users, store, telegram, undefined, {
+        fetchImpl: mockFetch(),
+      });
+
+      const result = await service.sendDirectFile({
+        phoneNumber: '+998901234567',
+        fileType: 'checklist',
+        fileUrl: 'https://minio.test/checklist.pdf',
+      });
+
+      assert.deepEqual(result, { status: 'failed' });
+      assert.deepEqual(store.blockedUpdates, [{ telegramId: '1001', isBlocked: true }]);
+    });
   });
 });
 

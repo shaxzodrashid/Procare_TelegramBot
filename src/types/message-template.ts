@@ -11,6 +11,9 @@ export const MESSAGE_TEMPLATE_TYPES = [
   'payment_overdue',
   'payment_paid_late',
   'winner_notification',
+  'warranty',
+  'offerta',
+  'checklist',
 ] as const;
 
 export type MessageTemplateType = (typeof MESSAGE_TEMPLATE_TYPES)[number];

@@ -37,8 +37,22 @@ export interface DirectMessageDeliveryResult {
   message?: string;
 }
 
+export interface SendDirectFileParams {
+  phoneNumber: string;
+  fileType: 'warranty' | 'offerta' | 'checklist';
+  fileUrl: string;
+  fileName?: string;
+  variables?: DirectMessageVariables;
+  caption?: string;
+}
+
+export interface DirectFileDeliveryResult {
+  status: 'sent' | 'failed' | 'not_found' | 'blocked' | 'invalid_file';
+  message?: string;
+}
+
 type TelegramTemplateApi = Pick<Api, 'sendMessage' | 'sendPhoto'>;
-type TelegramDirectMessageApi = Pick<Api, 'sendMessage'>;
+type TelegramDirectMessageApi = Pick<Api, 'sendMessage' | 'sendDocument'>;
 
 const TELEGRAM_CAPTION_LIMIT = 1024;
 export const TELEGRAM_TEXT_LIMIT = 4096;
@@ -205,12 +219,116 @@ export class BotNotificationService {
 }
 
 export class BotDirectMessageService {
+  private readonly fetchImpl: typeof fetch;
+
   constructor(
     private readonly users: Pick<RegisteredUserStore, 'findByPhoneNumber'>,
-    private readonly templates: Pick<MessageTemplateStore, 'logDispatch' | 'setUserBlocked'>,
+    private readonly templates: Pick<MessageTemplateStore, 'logDispatch' | 'setUserBlocked' | 'findActiveTemplateByType'>,
     private readonly telegram: TelegramDirectMessageApi,
     private readonly supportMessages?: Pick<SupportMessageStore, 'findReplyTargetByCrmCommentId'>,
-  ) {}
+    options?: { fetchImpl?: typeof fetch },
+  ) {
+    this.fetchImpl = options?.fetchImpl ?? fetch;
+  }
+
+  async sendDirectFile(params: SendDirectFileParams): Promise<DirectFileDeliveryResult> {
+    const user = await this.users.findByPhoneNumber(params.phoneNumber);
+    if (!user) return { status: 'not_found' };
+
+    const dispatchType = `api_direct_file_${params.fileType}`;
+
+    if (user.is_blocked) {
+      await this.templates.logDispatch({
+        user_id: user.id,
+        template_id: null,
+        dispatch_type: dispatchType,
+        status: 'failed',
+        error_message: 'Telegram user is marked as blocked',
+      });
+      return { status: 'blocked' };
+    }
+
+    const template = await this.templates.findActiveTemplateByType(params.fileType);
+    let finalCaption: string | undefined;
+
+    if (template) {
+      const placeholders = {
+        ...params.variables,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        full_name: [user.first_name, user.last_name].filter(Boolean).join(' '),
+        phone_number: user.phone_number,
+        telegram_username: user.telegram_username,
+        locale: user.locale,
+      };
+      finalCaption = MessageTemplateRenderer.render(template, user.locale ?? 'uz', placeholders);
+    } else {
+      finalCaption = params.caption;
+    }
+
+    let buffer: Buffer;
+    try {
+      const response = await this.fetchImpl(params.fileUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file from URL: ${response.statusText} (Status: ${response.status})`);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      buffer = Buffer.from(arrayBuffer);
+    } catch (error) {
+      await this.templates.logDispatch({
+        user_id: user.id,
+        template_id: template?.id ?? null,
+        dispatch_type: dispatchType,
+        status: 'failed',
+        error_message: `File download failed: ${errorMessage(error)}`,
+      });
+      return { status: 'invalid_file', message: `Failed to download file from URL: ${errorMessage(error)}` };
+    }
+
+    const defaultFileName = `${params.fileType}.pdf`;
+    const fileName = params.fileName || defaultFileName;
+    const document = new InputFile(buffer, fileName);
+
+    try {
+      if (finalCaption) {
+        if (finalCaption.length <= 1024) {
+          await this.telegram.sendDocument(user.telegram_id, document, {
+            caption: finalCaption,
+            parse_mode: 'HTML',
+          });
+        } else {
+          await this.telegram.sendDocument(user.telegram_id, document);
+          await this.telegram.sendMessage(user.telegram_id, finalCaption, {
+            parse_mode: 'HTML',
+          });
+        }
+      } else {
+        await this.telegram.sendDocument(user.telegram_id, document);
+      }
+
+      await this.templates.setUserBlocked(user.telegram_id, false);
+      await this.templates.logDispatch({
+        user_id: user.id,
+        template_id: template?.id ?? null,
+        dispatch_type: dispatchType,
+        status: 'sent',
+        error_message: null,
+      });
+      return { status: 'sent' };
+    } catch (error) {
+      if (isTelegramBlockedError(error)) {
+        await this.templates.setUserBlocked(user.telegram_id, true);
+      }
+      await this.templates.logDispatch({
+        user_id: user.id,
+        template_id: template?.id ?? null,
+        dispatch_type: dispatchType,
+        status: 'failed',
+        error_message: errorMessage(error),
+      });
+      return { status: 'failed' };
+    }
+  }
 
   async sendDirectMessage(params: SendDirectMessageParams): Promise<DirectMessageDeliveryResult> {
     const user = await this.users.findByPhoneNumber(params.phoneNumber);
