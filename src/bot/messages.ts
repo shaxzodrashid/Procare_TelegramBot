@@ -50,6 +50,11 @@ const messages = {
     adminExport: '📤 Excel eksport',
     settings: '⚙️ Sozlamalar',
     settingsTitle: '⚙️ Sozlamalar bo‘limi. Qaysi ma’lumotni boshqaramiz?',
+    settingsCurrent:
+      '⚙️ <b>Joriy sozlamalaringiz</b>\n\n👤 <b>Ism:</b> {{name}}\n📱 <b>Telefon:</b> {{phone}}\n🌐 <b>Til:</b> {{language}}\n\nKerakli bo‘limni tanlab, ma’lumotlarni yangilashingiz mumkin.',
+    settingsNotProvided: 'Kiritilmagan',
+    settingsLanguageUzbek: 'O‘zbekcha',
+    settingsLanguageRussian: 'Ruscha',
     settingsName: '👤 Ism',
     settingsPhone: '📱 Telefon raqami',
     settingsLanguage: '🌐 Til',
@@ -222,6 +227,11 @@ const messages = {
     adminExport: '📤 Excel экспорт',
     settings: '⚙️ Настройки',
     settingsTitle: '⚙️ Раздел настроек. Что хотите изменить?',
+    settingsCurrent:
+      '⚙️ <b>Ваши текущие настройки</b>\n\n👤 <b>Имя:</b> {{name}}\n📱 <b>Телефон:</b> {{phone}}\n🌐 <b>Язык:</b> {{language}}\n\nВыберите нужный раздел, чтобы обновить данные.',
+    settingsNotProvided: 'Не указан',
+    settingsLanguageUzbek: 'Узбекский',
+    settingsLanguageRussian: 'Русский',
     settingsName: '👤 Имя',
     settingsPhone: '📱 Номер телефона',
     settingsLanguage: '🌐 Язык',

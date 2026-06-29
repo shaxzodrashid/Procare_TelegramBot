@@ -1,6 +1,8 @@
 import type { Bot } from 'grammy';
 import type { BotContext, BotSession } from '../context.js';
 import type { BotDependencies } from '../create-bot.js';
+import type { Locale } from '../../types/client.js';
+import type { UserRegistrationState } from '../../types/registered-user.js';
 import { t } from '../messages.js';
 import {
   hasRegisteredProfile,
@@ -23,15 +25,71 @@ import {
   settingsLanguageKeyboard,
   personalMenuKeyboard,
 } from '../keyboards.js';
+import { escapeHtml } from '../../utils/html.js';
 
-const showSettingsMenu = async (ctx: BotContext): Promise<void> => {
+interface CurrentSettingsView {
+  name: string;
+  phone: string | null;
+  locale: Locale;
+}
+
+const fullName = (firstName: string | null | undefined, lastName: string | null | undefined) =>
+  [firstName, lastName].filter(Boolean).join(' ').trim();
+
+const currentSettingsView = (
+  sessionData: BotSession,
+  storedState: UserRegistrationState | null,
+): CurrentSettingsView => {
+  const sessionProfile = sessionData.admin ?? sessionData.client;
+  const name =
+    fullName(storedState?.user.first_name, storedState?.user.last_name) ||
+    fullName(sessionProfile?.first_name, sessionProfile?.last_name);
+  const locale = storedState?.user.locale ?? sessionData.locale;
+
+  return {
+    name,
+    phone: storedState?.user.phone_number ?? sessionData.admin?.phone_number ?? null,
+    locale,
+  };
+};
+
+export const formatCurrentSettings = (locale: Locale, settings: CurrentSettingsView): string => {
+  const displayName = settings.name || t(locale, 'settingsNotProvided');
+  const displayPhone = settings.phone || t(locale, 'settingsNotProvided');
+  const displayLanguage =
+    settings.locale === 'ru'
+      ? t(locale, 'settingsLanguageRussian')
+      : t(locale, 'settingsLanguageUzbek');
+
+  return t(locale, 'settingsCurrent', {
+    name: escapeHtml(displayName),
+    phone: escapeHtml(displayPhone),
+    language: escapeHtml(displayLanguage),
+  });
+};
+
+const showSettingsMenu = async (ctx: BotContext, dependencies: BotDependencies): Promise<void> => {
   clearUnknownFlow(ctx.session);
   clearAdminTemplateFlow(ctx.session);
   clearSupportFlow(ctx.session);
   ctx.session.stage = 'settings';
-  await ctx.reply(t(ctx.session.locale, 'settingsTitle'), {
-    reply_markup: settingsKeyboard(ctx.session.locale),
-  });
+
+  let storedState: UserRegistrationState | null = null;
+  if (ctx.from) {
+    try {
+      storedState = await dependencies.registeredUserStore.findByTelegramId(String(ctx.from.id));
+    } catch (error) {
+      dependencies.logger.warn('Failed to load current Telegram user settings', error);
+    }
+  }
+
+  await ctx.reply(
+    formatCurrentSettings(ctx.session.locale, currentSettingsView(ctx.session, storedState)),
+    {
+      reply_markup: settingsKeyboard(ctx.session.locale),
+      parse_mode: 'HTML',
+    },
+  );
 };
 
 const updateSessionName = (sessionData: BotSession, name: SettingsName): void => {
@@ -96,7 +154,7 @@ export const registerSettingsHandlers = (
       });
       return;
     }
-    await showSettingsMenu(ctx);
+    await showSettingsMenu(ctx, dependencies);
   });
 
   bot.hears([t('uz', 'settingsBack'), t('ru', 'settingsBack')], async (ctx) => {

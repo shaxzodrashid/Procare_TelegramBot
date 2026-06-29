@@ -10,6 +10,7 @@ import {
   createSessionRestorationMiddleware,
   setLocalizedBotCommands,
 } from '../src/bot/create-bot.js';
+import { formatCurrentSettings } from '../src/bot/handlers/settings.js';
 import type { BotContext, BotSession } from '../src/bot/context.js';
 import type { Logger } from '../src/utils/logger.js';
 import type { RegisteredUserStore } from '../src/services/registered-user.store.js';
@@ -96,6 +97,36 @@ describe('settings name parsing', () => {
     assert.equal(parseSettingsName(' '), null);
     assert.equal(parseSettingsName('---'), null);
     assert.equal(parseSettingsName('A'.repeat(121)), null);
+  });
+});
+
+describe('settings summary formatting', () => {
+  it('renders a clean Uzbek settings summary with escaped profile values', () => {
+    const text = formatCurrentSettings('uz', {
+      name: 'Ali <Valiyev>',
+      phone: '+998901234567',
+      locale: 'ru',
+    });
+
+    assert.match(text, /<b>Joriy sozlamalaringiz<\/b>/);
+    assert.match(text, /Ali &lt;Valiyev&gt;/);
+    assert.match(text, /Telefon:<\/b> \+998901234567/);
+    assert.match(text, /Til:<\/b> Ruscha/);
+    assert.doesNotMatch(text, /Profil turi/);
+  });
+
+  it('renders Russian employee settings with a professional fallback for missing phone', () => {
+    const text = formatCurrentSettings('ru', {
+      name: 'Admin User',
+      phone: null,
+      locale: 'uz',
+    });
+
+    assert.match(text, /<b>Ваши текущие настройки<\/b>/);
+    assert.match(text, /Имя:<\/b> Admin User/);
+    assert.match(text, /Телефон:<\/b> Не указан/);
+    assert.match(text, /Язык:<\/b> Узбекский/);
+    assert.doesNotMatch(text, /Тип профиля/);
   });
 });
 
