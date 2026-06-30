@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 
 import type { AppConfig } from '../config/index.js';
+import type { SystemHealthSnapshot } from '../services/health.service.js';
 import type {
   DirectMessageInlineKeyboard,
   DirectMessageSupportReply,
@@ -36,6 +37,9 @@ export interface DirectFileSender {
 export interface ApiServerDependencies {
   directMessageSender?: DirectMessageSender;
   directFileSender?: DirectFileSender;
+  healthReporter?: {
+    snapshot(): Promise<SystemHealthSnapshot>;
+  };
 }
 
 export const createApiServer = (
@@ -45,12 +49,21 @@ export const createApiServer = (
 ): FastifyInstance => {
   const app = Fastify({ logger: false });
 
-  app.get('/health', async () => ({
-    status: 'ok',
-    service: 'procare-telegram-bot',
-    timestamp: new Date().toISOString(),
-    botEnabled: config.bot.enabled,
-  }));
+  app.get('/health', async (request, reply) => {
+    void request;
+    if (!dependencies.healthReporter) {
+      return {
+        status: 'ok',
+        service: 'procare-telegram-bot',
+        timestamp: new Date().toISOString(),
+        botEnabled: config.bot.enabled,
+      };
+    }
+
+    const snapshot = await dependencies.healthReporter.snapshot();
+    if (snapshot.status === 'unhealthy') return reply.status(503).send(snapshot);
+    return reply.send(snapshot);
+  });
 
   app.post('/messages/send', async (request, reply) => {
     if (!isAuthorized(request.headers.authorization, config.api.messageSendToken)) {

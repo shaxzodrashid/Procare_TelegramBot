@@ -11,8 +11,17 @@ import { PostgresApiErrorLocalizationStore } from '../services/api-error-localiz
 import { BotDirectMessageService } from '../services/bot-notification.service.js';
 import { HttpClientRepairOrderService } from '../services/client-repair-order.service.js';
 import { HttpClientRegistrationService } from '../services/client-registration.service.js';
+import { SystemHealthMonitor } from '../services/health.service.js';
+import {
+  BotLifecycleNotificationService,
+  type LifecycleBroadcastSummary,
+} from '../services/lifecycle-notification.service.js';
 import { PostgresMessageTemplateStore } from '../services/message-template.service.js';
 import { PostgresRegisteredUserStore } from '../services/registered-user.store.js';
+import {
+  HttpRepairOrderStatusService,
+  PostgresRepairOrderStatusNameStore,
+} from '../services/repair-order-status.service.js';
 import { HttpRepairOrderService } from '../services/repair-order.service.js';
 import { PostgresSupportMessageStore } from '../services/support-message.store.js';
 import { PostgresUnknownClientStore } from '../services/unknown-client.store.js';
@@ -27,15 +36,24 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
   let botTask: Promise<void> | undefined;
   let api: FastifyInstance | undefined;
   let directMessageService: BotDirectMessageService | undefined;
+  let lifecycleNotificationService: BotLifecycleNotificationService | undefined;
+  let startupNotificationTask: Promise<void> | undefined;
   let stopping = false;
 
   const database = createDatabase(config.database);
+  const healthMonitor = new SystemHealthMonitor({
+    database,
+    botEnabled: config.bot.enabled,
+    apiEnabled: config.api.enabled,
+    lifecycleNotificationsEnabled: config.lifecycleNotifications.enabled,
+  });
   try {
     await migrateDatabase(database);
   } catch (error) {
     await database.destroy();
     throw error;
   }
+  healthMonitor.markMigrationsCompleted();
   logger.info('PostgreSQL migrations completed');
 
   const registrationService = new HttpClientRegistrationService(
@@ -66,9 +84,21 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
     },
     logger,
   );
+  const repairOrderStatusService = new HttpRepairOrderStatusService(
+    {
+      baseUrl: config.crm.baseUrl,
+      username: config.crm.username,
+      password: config.crm.password,
+      branchId: config.crm.repairStatusBranchId,
+      timeoutMs: config.crm.requestTimeoutMs,
+      maxRetries: config.crm.maxRetries,
+    },
+    logger,
+  );
   const unknownClientStore = new PostgresUnknownClientStore(database);
   const registeredUserStore = new PostgresRegisteredUserStore(database);
   const messageTemplateStore = new PostgresMessageTemplateStore(database);
+  const repairOrderStatusNameStore = new PostgresRepairOrderStatusNameStore(database);
   const apiErrorLocalizationStore = new PostgresApiErrorLocalizationStore(database);
   const supportMessageStore = new PostgresSupportMessageStore(database);
   const actionExportService = new PostgresActionExportService(database);
@@ -78,9 +108,11 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       registrationService,
       repairOrderService,
       clientRepairOrderService,
+      repairOrderStatusService,
       unknownClientStore,
       registeredUserStore,
       messageTemplateStore,
+      repairOrderStatusNameStore,
       apiErrorLocalizationStore,
       supportMessageStore,
       actionExportService,
@@ -90,6 +122,11 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       developerTelegramIds: new Set(config.bot.developerTelegramIds),
     });
     await bot.init();
+    healthMonitor.markBotAuthenticated(bot.botInfo.username);
+    healthMonitor.setTelegramProbe(async () => {
+      const me = await bot!.api.getMe();
+      return { id: me.id, username: me.username };
+    });
     await setLocalizedBotCommands(bot);
     directMessageService = new BotDirectMessageService(
       registeredUserStore,
@@ -97,6 +134,18 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       bot.api,
       supportMessageStore,
     );
+    if (config.lifecycleNotifications.enabled) {
+      lifecycleNotificationService = new BotLifecycleNotificationService(
+        registeredUserStore,
+        messageTemplateStore,
+        bot.api,
+        logger,
+        {
+          batchSize: config.lifecycleNotifications.batchSize,
+          concurrency: config.lifecycleNotifications.concurrency,
+        },
+      );
+    }
     logger.info(`Telegram bot @${bot.botInfo.username} authenticated`);
   }
 
@@ -104,18 +153,37 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
     api = createApiServer(config, logger, {
       directMessageSender: directMessageService,
       directFileSender: directMessageService,
+      healthReporter: healthMonitor,
     });
     await api.listen({ host: config.api.host, port: config.api.port });
+    healthMonitor.markApiListening();
     logger.info(`Health API listening on ${config.api.host}:${config.api.port}`);
   }
 
   if (bot) {
+    healthMonitor.markBotPollingStarting();
     botTask = bot
       .start({
-        onStart: (botInfo) => logger.info(`Telegram bot @${botInfo.username} started`),
+        onStart: (botInfo) => {
+          healthMonitor.markBotPollingRunning(botInfo.username);
+          logger.info(`Telegram bot @${botInfo.username} started`);
+          if (lifecycleNotificationService) {
+            startupNotificationTask = runLifecycleNotification(
+              'startup',
+              lifecycleNotificationService.notifyStartup(
+                config.lifecycleNotifications.startupTimeoutMs,
+              ),
+              healthMonitor,
+              logger,
+            );
+          }
+        },
       })
       .catch((error: unknown) => {
-        if (!stopping) logger.error('Telegram bot polling stopped unexpectedly', error);
+        if (!stopping) {
+          healthMonitor.markBotPollingFailed(error);
+          logger.error('Telegram bot polling stopped unexpectedly', error);
+        }
       });
   }
 
@@ -125,7 +193,22 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       stopping = true;
       logger.info(`Stopping application after ${signal}`);
 
-      if (bot) await bot.stop();
+      if (bot) {
+        healthMonitor.markBotPollingStopping();
+        if (startupNotificationTask) await startupNotificationTask.catch(() => undefined);
+        if (lifecycleNotificationService) {
+          await runLifecycleNotification(
+            'shutdown',
+            lifecycleNotificationService.notifyShutdown(
+              config.lifecycleNotifications.shutdownTimeoutMs,
+            ),
+            healthMonitor,
+            logger,
+          );
+        }
+        await bot.stop();
+        healthMonitor.markBotPollingStopped();
+      }
       if (botTask) await botTask;
       if (api) await api.close();
       await database.destroy();
@@ -133,4 +216,18 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       logger.info('Application stopped');
     },
   };
+};
+
+const runLifecycleNotification = async (
+  kind: LifecycleBroadcastSummary['kind'],
+  task: Promise<LifecycleBroadcastSummary>,
+  healthMonitor: SystemHealthMonitor,
+  logger: Logger,
+): Promise<void> => {
+  try {
+    const summary = await task;
+    healthMonitor.recordLifecycleBroadcast(summary);
+  } catch (error) {
+    logger.error(`Lifecycle ${kind} notification failed`, error);
+  }
 };

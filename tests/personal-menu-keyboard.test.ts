@@ -33,6 +33,7 @@ describe('personal menu keyboard', () => {
 
     assert.deepEqual(keyboardLabels(keyboard), [
       ['🔍 Поиск клиентов', '🧩 Шаблоны сообщений'],
+      ['🏷 Названия статусов'],
       ['📤 Excel экспорт'],
       ['⚙️ Настройки'],
     ]);
@@ -47,6 +48,7 @@ describe('personal menu keyboard', () => {
 
     assert.deepEqual(keyboardLabels(keyboard), [
       ['🔍 Поиск клиентов', '🧩 Шаблоны сообщений'],
+      ['🏷 Названия статусов'],
       ['📤 Excel экспорт'],
       ['⚙️ Настройки'],
     ]);
@@ -84,6 +86,7 @@ describe('personal menu keyboard', () => {
 
     assert.deepEqual(keyboardLabels(keyboard), [
       ['🔍 Поиск клиентов', '🧩 Шаблоны сообщений'],
+      ['🏷 Названия статусов'],
       ['📤 Excel экспорт'],
       ['🛠 API endpoints'],
       ['⚙️ Настройки'],

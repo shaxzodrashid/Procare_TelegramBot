@@ -77,6 +77,7 @@ always validates CRM and database configuration, connects to PostgreSQL, and run
 | `src/services/message-template.service.ts`       | Message template CRUD, rendering, dispatch logs, and block status       |
 | `src/services/api-error-localization.service.ts` | Developer endpoint registry and error-location localizations            |
 | `src/services/bot-notification.service.ts`       | Telegram template notification delivery                                 |
+| `src/services/repair-order-status.service.ts`    | CRM status catalog sync and client-facing status-name persistence       |
 | `src/services/repair-order.service.ts`           | Public catalog reads and repair-order creation                          |
 | `src/services/registered-user.store.ts`          | PostgreSQL upsert for registered client and employee role rows          |
 | `src/services/unknown-client.store.ts`           | PostgreSQL upsert for declined unknown clients                          |
@@ -104,9 +105,10 @@ Startup is intentionally ordered:
 7. When enabled, Fastify starts listening.
 8. The bot starts long polling.
 
-If migrations fail, the database pool is destroyed and startup fails. The HTTP health endpoint is
-not a database or CRM readiness check; it reports process-level service status and whether the bot
-is configured as enabled.
+If migrations fail, the database pool is destroyed and startup fails. The HTTP health endpoint
+checks process state, PostgreSQL reachability, migration completion, Fastify readiness, Telegram
+authentication/polling, and lifecycle notification state. It does not perform a CRM business
+operation as a health probe.
 
 Shutdown handles `SIGINT` and `SIGTERM` once. It stops bot polling, waits for polling completion,
 closes Fastify, destroys the database pool, and then exits.
@@ -221,6 +223,25 @@ Rules:
 - Map ownership-hidden and visibility-hidden `404` responses to the same user-safe not-found state.
 - Never log complete detail responses, full IMEI values, payment details, or authorization headers.
 
+### Repair Order Status Catalog
+
+`HttpRepairOrderStatusService` calls this Basic-Auth-protected endpoint:
+
+```text
+GET /api/v1/external/repair-order-statuses?branch_id={CRM_REPAIR_STATUS_BRANCH_ID}&limit={limit}&offset={offset}
+```
+
+Rules:
+
+- `CRM_REPAIR_STATUS_BRANCH_ID` is required because the CRM status endpoint is branch-scoped.
+- Validate the live Postman response shape (`meta` plus `data`) and the documented fallback shape
+  (`rows`, `total`, `limit`, `offset`).
+- Persist the status snapshot into `repair_order_status_names`; employees edit only
+  `display_name_uz` and `display_name_ru`.
+- Client repair-order renderers must keep the upstream contract intact and overlay display names by
+  `customer_code` immediately before presentation.
+- Do not log full status payloads or authorization headers.
+
 ### Catalog And Public Repair Orders
 
 `HttpRepairOrderService` calls these unauthenticated upstream endpoints:
@@ -251,9 +272,9 @@ contract changes.
 
 ## Database Rules
 
-The local database currently owns seven application tables: `users`, `clients`, `employees`,
-`message_templates`, `message_dispatch_logs`, `support_messages`, and `api_error_localizations`,
-plus Knex migration metadata.
+The local database currently owns eight application tables: `users`, `clients`, `employees`,
+`message_templates`, `message_dispatch_logs`, `support_messages`, `api_error_localizations`, and
+`repair_order_status_names`, plus Knex migration metadata.
 `users.telegram_id` is the unique Telegram identity used for upserts. `clients.user_id`,
 `employees.user_id`, `message_dispatch_logs.user_id`, and `support_messages.user_id` reference
 `users.id`.
@@ -299,6 +320,13 @@ The API error localization store persists Developer-managed endpoint error copy:
 - Uzbek and Russian localized user-facing messages;
 - creation and update timestamps.
 
+The repair-order status-name store persists employee-managed client-facing status copy:
+
+- CRM status ID, branch ID, customer code, CRM names, visibility/activity flags, sort order, and
+  latest order count from the status catalog;
+- Uzbek and Russian client-facing display names;
+- creation and update timestamps.
+
 ### Migration Policy
 
 The repository is currently pre-production and documented as having no real user data. Under that
@@ -338,9 +366,15 @@ with `AppConfig` and `loadConfig`.
 | `API_HOST`                         | `0.0.0.0`                 | Fastify listen host                                       |
 | `API_PORT`                         | `3000`                    | Integer from 1 through 65535                              |
 | `API_MESSAGE_SEND_TOKEN`           | Required when API enabled | Bearer token for `POST /messages/send`; secret            |
+| `LIFECYCLE_NOTIFICATIONS_ENABLED`  | `true`                    | Send startup and graceful-shutdown Telegram notices       |
+| `LIFECYCLE_BROADCAST_BATCH_SIZE`   | `100`                     | Integer from 1 through 1000                               |
+| `LIFECYCLE_BROADCAST_CONCURRENCY`  | `10`                      | Integer from 1 through 50                                 |
+| `LIFECYCLE_STARTUP_TIMEOUT_MS`     | `60000`                   | Integer from 1000 through 300000                          |
+| `LIFECYCLE_SHUTDOWN_TIMEOUT_MS`    | `60000`                   | Integer from 1000 through 300000                          |
 | `CRM_BASE_URL`                     | Required                  | Trailing slashes are removed                              |
 | `TELEGRAM_BOT_BASIC_AUTH_USER`     | Required                  | CRM service credential                                    |
 | `TELEGRAM_BOT_BASIC_AUTH_PASSWORD` | Required                  | CRM service secret                                        |
+| `CRM_REPAIR_STATUS_BRANCH_ID`      | Required                  | Branch UUID used for external repair-order status sync    |
 | `CRM_REQUEST_TIMEOUT_MS`           | `10000`                   | Integer from 100 through 120000                           |
 | `CRM_MAX_RETRIES`                  | `2`                       | Integer from 0 through 5                                  |
 | `DB_HOST`                          | `localhost`               | Overridden to `postgres` by Compose for the bot container |
@@ -471,6 +505,8 @@ Use `npm ci` for a clean reproducible install when `package-lock.json` is availa
 | `npm run format`            | Write Prettier formatting                     |
 | `npm run format:check`      | Check Prettier formatting                     |
 | `npm run check`             | Type-check, lint, and test                    |
+| `./deploy.sh down`          | Production-safe graceful shutdown             |
+| `./deploy.sh up`            | Production build/start and health wait        |
 | `docker compose up --build` | Build and run PostgreSQL plus the bot service |
 
 Minimum verification for documentation-only changes:
@@ -535,12 +571,12 @@ Do not accidentally present these as implemented features:
 - A restart loses registration and in-progress repair-request state.
 - The bot uses long polling, not webhooks.
 - Private-chat operation is an architectural assumption, not an explicit global chat-type guard.
-- The health endpoint does not verify PostgreSQL, Telegram, or CRM readiness.
+- The health endpoint does not perform CRM business-operation probes.
 - Registered client identity is cached only in session; repair-order objects are fetched on demand.
 - There is no full Telegram update integration test suite.
 - There is no live PostgreSQL integration test.
-- There is no broadcast system, coupon system, support flow, or scheduled job layer in this
-  repository.
+- There is no campaign broadcast system, coupon system, support flow, or scheduled job layer in this
+  repository; lifecycle notices are limited to startup and graceful shutdown.
 - Public repair-order creation has no client-provided idempotency key, so it must not be retried
   automatically.
 

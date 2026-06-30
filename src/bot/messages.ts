@@ -45,8 +45,13 @@ const messages = {
     invalidPhone: '⚠️ Telefon raqami noto‘g‘ri. O‘zbekiston raqamini qayta ulashing.',
     maintenance: '🛠 Texnik ishlar ketmoqda. Iltimos, keyinroq urinib ko‘ring.',
     unavailable: '📡 Xizmat vaqtincha ishlamayapti. Iltimos, keyinroq urinib ko‘ring.',
+    serviceShutdownNotice:
+      '🛠 Procare bot qisqa texnik yangilanish uchun vaqtincha to‘xtatilmoqda.\n\nNoqulaylik uchun uzr so‘raymiz. Bot qayta ishga tushgach, sizga xabar beramiz.',
+    serviceStartupNotice:
+      '✅ Procare bot qayta ishga tushdi.\n\nSessiyani yangilash va menyuni qayta ochish uchun /start buyrug‘ini yuboring.',
     orders: '🧾 Buyurtmalarim',
     adminTemplates: '🧩 Xabar shablonlari',
+    adminStatusNames: '🏷 Status nomlari',
     adminExport: '📤 Excel eksport',
     settings: '⚙️ Sozlamalar',
     settingsTitle: '⚙️ Sozlamalar bo‘limi. Qaysi ma’lumotni boshqaramiz?',
@@ -107,7 +112,7 @@ const messages = {
     clientHelp:
       'Menyudan buyurtmalaringizni ko‘rishingiz va profil sozlamalarini yangilashingiz mumkin.',
     employeeHelp:
-      'Xodim menyusi: xabar shablonlarini boshqarishingiz va profil sozlamalarini yangilashingiz mumkin.',
+      'Xodim menyusi: xabar shablonlari, status nomlari va profil sozlamalarini boshqarishingiz mumkin.',
     logoutSuccess: '👋 Siz tizimdan chiqdingiz. Qayta boshlash uchun /start buyrug‘ini yuboring.',
     logoutFailed: '⚠️ Hozir tizimdan chiqib bo‘lmadi. Iltimos, keyinroq urinib ko‘ring.',
     commandStart: 'Procare botini boshlash yoki qayta boshlash',
@@ -144,6 +149,25 @@ const messages = {
     adminTemplateCancel: '❌ Bekor qilish',
     adminTemplateCancelled: '❌ Bekor qilindi.',
     adminTemplateUnavailable: '❌ Xatolik yuz berdi.',
+    adminStatusNamesTitle: '🏷 Buyurtma statuslarining mijozga ko‘rinadigan nomlari',
+    adminStatusNamesEmpty: 'CRM’dan statuslar topilmadi.',
+    adminStatusNamesRefresh: '🔄 CRM’dan yangilash',
+    adminStatusNameDetail:
+      '<b>{{crmName}}</b>\n\nCRM ID: <code>{{crmStatusId}}</code>\nCustomer code: <code>{{customerCode}}</code>\nMijozga ko‘rinadi: <b>{{canUserView}}</b>\nFaol: <b>{{isActive}}</b>\nBuyurtmalar soni: <b>{{totalRepairOrders}}</b>\n\n<b>Mijozga ko‘rinadigan nomlar</b>\nUZ: {{displayUz}}\nRU: {{displayRu}}',
+    adminStatusNameEditUz: 'UZ nomi',
+    adminStatusNameEditRu: 'RU nomi',
+    adminStatusNamePromptUz:
+      'Mijoz Telegramda ko‘radigan o‘zbekcha status nomini yuboring. Masalan: Javobingiz kutilmoqda',
+    adminStatusNamePromptRu:
+      'Mijoz Telegramda ko‘radigan ruscha status nomini yuboring. Masalan: Ожидаем ваш ответ',
+    adminStatusNameSaved: '✅ Status nomi saqlandi.',
+    adminStatusNameInvalid:
+      '⚠️ Nom 1-120 belgi bo‘lishi kerak. Iltimos, mijozga tushunarli qisqa nom yuboring.',
+    adminStatusNameNotFound: 'Status topilmadi.',
+    adminStatusNameCancel: '✖️ Bekor qilish',
+    adminStatusNameCancelled: '✅ Status nomini tahrirlash bekor qilindi.',
+    adminStatusNameUnavailable:
+      '⚠️ Statuslarni hozir yuklab yoki saqlab bo‘lmadi. Keyinroq urinib ko‘ring.',
     adminClients: '🔍 Mijozlarni qidirish',
     adminClientSearchPrompt:
       '🔍 Mijozning ismi, familiyasi, username yoki telefon raqamini yozib yuboring (masalan: Ali yoki +998...):',
@@ -247,8 +271,13 @@ const messages = {
     invalidPhone: '⚠️ Неверный номер. Пожалуйста, отправьте номер Узбекистана повторно.',
     maintenance: '🛠 Ведутся технические работы. Попробуйте позже.',
     unavailable: '📡 Сервис временно недоступен. Попробуйте позже.',
+    serviceShutdownNotice:
+      '🛠 Procare bot временно останавливается для короткого технического обновления.\n\nПриносим извинения за неудобства. Когда бот снова запустится, мы отправим уведомление.',
+    serviceStartupNotice:
+      '✅ Procare bot снова запущен.\n\nЧтобы обновить сессию и открыть меню заново, отправьте команду /start.',
     orders: '🧾 Мои заказы',
     adminTemplates: '🧩 Шаблоны сообщений',
+    adminStatusNames: '🏷 Названия статусов',
     adminExport: '📤 Excel экспорт',
     settings: '⚙️ Настройки',
     settingsTitle: '⚙️ Раздел настроек. Что хотите изменить?',
@@ -304,7 +333,7 @@ const messages = {
     help: '💬 Нужна помощь? Поделитесь номером телефона или отправьте команду /start.',
     clientHelp: 'В меню можно смотреть свои заказы и обновлять настройки профиля.',
     employeeHelp:
-      'Меню сотрудника: можно управлять шаблонами сообщений и обновлять настройки профиля.',
+      'Меню сотрудника: можно управлять шаблонами сообщений, названиями статусов и настройками профиля.',
     logoutSuccess: '👋 Вы вышли из системы. Чтобы начать заново, отправьте /start.',
     logoutFailed: '⚠️ Сейчас не удалось выйти из системы. Попробуйте позже.',
     commandStart: 'Начать или перезапустить Procare',
@@ -341,6 +370,25 @@ const messages = {
     adminTemplateCancel: '❌ Отмена',
     adminTemplateCancelled: '❌ Отменено.',
     adminTemplateUnavailable: '❌ Произошла ошибка.',
+    adminStatusNamesTitle: '🏷 Клиентские названия статусов заказов',
+    adminStatusNamesEmpty: 'Статусы из CRM не найдены.',
+    adminStatusNamesRefresh: '🔄 Обновить из CRM',
+    adminStatusNameDetail:
+      '<b>{{crmName}}</b>\n\nCRM ID: <code>{{crmStatusId}}</code>\nCustomer code: <code>{{customerCode}}</code>\nПоказывается клиенту: <b>{{canUserView}}</b>\nАктивен: <b>{{isActive}}</b>\nЗаказов: <b>{{totalRepairOrders}}</b>\n\n<b>Клиентские названия</b>\nUZ: {{displayUz}}\nRU: {{displayRu}}',
+    adminStatusNameEditUz: 'UZ название',
+    adminStatusNameEditRu: 'RU название',
+    adminStatusNamePromptUz:
+      'Отправьте узбекское название статуса, которое клиент увидит в Telegram. Например: Javobingiz kutilmoqda',
+    adminStatusNamePromptRu:
+      'Отправьте русское название статуса, которое клиент увидит в Telegram. Например: Ожидаем ваш ответ',
+    adminStatusNameSaved: '✅ Название статуса сохранено.',
+    adminStatusNameInvalid:
+      '⚠️ Название должно быть от 1 до 120 символов. Отправьте короткое понятное название для клиента.',
+    adminStatusNameNotFound: 'Статус не найден.',
+    adminStatusNameCancel: '✖️ Отмена',
+    adminStatusNameCancelled: '✅ Редактирование названия статуса отменено.',
+    adminStatusNameUnavailable:
+      '⚠️ Сейчас не удалось загрузить или сохранить статусы. Попробуйте позже.',
     adminClients: '🔍 Поиск клиентов',
     adminClientSearchPrompt:
       '🔍 Введите имя, фамилию, username или номер телефона клиента (например: Ali или +998...):',

@@ -23,6 +23,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'if [ "$$API_ENABLED" = "false" ]; then exit 0; fi; node -e "const port=process.env.API_PORT||3000; fetch(''http://127.0.0.1:''+port+''/health'').then(async (res)=>{ if (!res.ok) process.exit(1); const body=await res.json(); process.exit(body.status === ''unhealthy'' ? 1 : 0); }).catch(()=>process.exit(1));"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     restart: unless-stopped
     ports:
       - '${API_PORT:-3000}:${API_PORT:-3000}'

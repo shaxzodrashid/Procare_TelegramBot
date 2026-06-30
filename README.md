@@ -25,6 +25,7 @@ PostgreSQL, including separate client and employee role rows.
 - database-backed transactional message templates with Uzbek/Russian rendering
 - Telegram notification dispatch logging and blocked-user tracking for template messages
 - employee-only template management inside the bot
+- employee-managed customer-facing repair-order status names sourced from CRM
 - configured Developer seat for endpoint inventory and API error-location localizations
 - API-triggered direct Telegram messages to registered users by phone number
 - localized rich repair-order cards with classic Telegram HTML fallback
@@ -49,6 +50,7 @@ PostgreSQL, including separate client and employee role rows.
   -> active CRM employee
        -> show employee-role confirmation
        -> manage transactional message templates
+       -> manage customer-facing repair-order status names
        -> do not offer client repair orders or unknown-client repair creation
   -> unknown client
        -> offer a new repair request
@@ -69,6 +71,10 @@ Employees can open `Xabar shablonlari` / `Шаблоны сообщений` fro
 edit, activate, deactivate, or delete Telegram message templates. Template text supports
 placeholders such as `{{ customer_name }}` and `{{ coupon_code }}`; rendered placeholder values are
 HTML-escaped, and coupon codes are wrapped in Telegram `<code>` tags for tap-to-copy behavior.
+
+Employees can also open `Status nomlari` / `Названия статусов` to refresh the CRM repair-order
+status catalog for `CRM_REPAIR_STATUS_BRANCH_ID` and set Uzbek/Russian names that clients see in
+Telegram repair-order lists, details, and direct-message repair-order cards.
 
 Telegram IDs listed in `DEVELOPER_TELEGRAM_IDS` receive a Developer menu. Developers can view the
 upstream API endpoints used by the bot and create or update Uzbek/Russian localizations for each
@@ -143,11 +149,28 @@ Example response:
   "status": "ok",
   "service": "procare-telegram-bot",
   "timestamp": "2026-06-15T10:00:00.000Z",
-  "botEnabled": true
+  "uptimeSeconds": 42,
+  "checks": {
+    "process": { "status": "ok" },
+    "configuration": { "status": "ok" },
+    "database": { "status": "ok", "latencyMs": 3 },
+    "migrations": { "status": "ok" },
+    "api": { "status": "ok" },
+    "telegram": { "status": "ok" },
+    "lifecycleNotifications": { "status": "ok" }
+  }
 }
 ```
 
-This is a process health endpoint. It does not actively probe PostgreSQL, Telegram, or CRM.
+The endpoint returns HTTP `503` when a required component is unhealthy. It actively verifies the
+PostgreSQL connection, migration completion, API readiness, Telegram authentication/polling, and
+Telegram `getMe` reachability when the bot is enabled. Lifecycle notification delivery is reported
+as `ok`, `degraded`, or `disabled` so deployments can detect whether startup/shutdown broadcasts are
+working.
+
+When lifecycle notifications are enabled, startup sends every non-blocked stored Telegram user a
+localized service-restored message with a one-tap `/start` keyboard. Graceful shutdown sends a
+localized apology before polling is stopped.
 
 The direct message endpoint is:
 
@@ -233,7 +256,7 @@ docker compose up --build
 
 Compose starts:
 
-- `postgres`: PostgreSQL 18 with a persistent named volume
+- `postgres`: PostgreSQL 16 with a persistent named volume
 - `bot`: the production image, with `DB_HOST` set to `postgres`
 
 The bot container publishes `API_PORT` and mounts `./logs` at `/app/logs`.
@@ -242,14 +265,30 @@ When CRM runs on the host machine, do not leave `CRM_BASE_URL` as `http://localh
 container. Inside the bot container, `localhost` means the container itself. Use a reachable
 Compose service name or a host address such as `host.docker.internal` where supported.
 
-To stop the services:
+For production deploys, use the root manager script instead of raw Compose commands:
 
-```powershell
-docker compose down
+```sh
+./deploy.sh down
+./deploy.sh up
 ```
 
-`docker compose down -v` also deletes the PostgreSQL volume and all data in it. Use that command
-only for a confirmed disposable development database.
+`./deploy.sh down` stops the bot first while PostgreSQL is still running, giving the bot time to
+send the shutdown apology and write dispatch logs. It then stops the full Compose stack without
+deleting volumes.
+
+`./deploy.sh up` runs `docker compose up -d --build`, waits until the bot container is healthy, and
+writes a small deployment history record under `logs/deployment-history.tsv`.
+
+Useful manager commands:
+
+```sh
+./deploy.sh restart
+./deploy.sh status
+./deploy.sh logs
+```
+
+`docker compose down -v` deletes the PostgreSQL volume and all data in it. Use that command only for
+a confirmed disposable development database.
 
 ## Configuration
 
@@ -268,9 +307,15 @@ All supported variables are listed in `.env.example`.
 | `API_HOST`                         | `0.0.0.0`       | API listen host                                   |
 | `API_PORT`                         | `3000`          | API listen port                                   |
 | `API_MESSAGE_SEND_TOKEN`           | Required        | Bearer token for `POST /messages/send`            |
+| `LIFECYCLE_NOTIFICATIONS_ENABLED`  | `true`          | Send startup/shutdown Telegram service notices    |
+| `LIFECYCLE_BROADCAST_BATCH_SIZE`   | `100`           | Users fetched per lifecycle broadcast page        |
+| `LIFECYCLE_BROADCAST_CONCURRENCY`  | `10`            | Parallel Telegram sends per broadcast batch       |
+| `LIFECYCLE_STARTUP_TIMEOUT_MS`     | `60000`         | Max startup broadcast time per process            |
+| `LIFECYCLE_SHUTDOWN_TIMEOUT_MS`    | `60000`         | Max graceful shutdown broadcast time              |
 | `CRM_BASE_URL`                     | none            | Required CRM/API base URL                         |
 | `TELEGRAM_BOT_BASIC_AUTH_USER`     | none            | Required CRM service username                     |
 | `TELEGRAM_BOT_BASIC_AUTH_PASSWORD` | none            | Required CRM service password                     |
+| `CRM_REPAIR_STATUS_BRANCH_ID`      | none            | Required branch UUID for CRM status-name sync     |
 | `CRM_REQUEST_TIMEOUT_MS`           | `10000`         | Upstream request timeout                          |
 | `CRM_MAX_RETRIES`                  | `2`             | Retry count for eligible upstream requests        |
 | `DB_HOST`                          | `localhost`     | PostgreSQL host                                   |
@@ -378,6 +423,13 @@ POST /api/v1/repair-orders/register-comment/{repair_order_id}
 Authorization: Basic ...
 ```
 
+Employee status-name sync calls:
+
+```http
+GET /api/v1/external/repair-order-statuses?branch_id={CRM_REPAIR_STATUS_BRANCH_ID}&limit=100&offset=0
+Authorization: Basic ...
+```
+
 Catalog and repair-request calls:
 
 ```http
@@ -428,6 +480,10 @@ localizations stay tied to APIs this bot actually uses.
 ID, repair-order context, Telegram chat/message IDs, content type, text, and photo count. The direct
 message API can use this durable mapping to send CRM employee responses as threaded Telegram replies
 when `support_reply.target_crm_comment_id` is provided.
+
+`repair_order_status_names` stores the latest CRM repair-order status snapshot plus employee-managed
+Uzbek/Russian client-facing names by `customer_code`. Client order presentation overlays only those
+display names while keeping the upstream contract intact.
 
 While this project is pre-production and has no real user data, edit an existing table's original
 migration instead of creating follow-up alteration migrations. Add a new migration file only when
@@ -484,7 +540,6 @@ Do not log bot tokens, passwords, authorization headers, or unnecessary personal
 - The bot uses long polling, not webhooks.
 - Private-chat operation is assumed by the data model but is not enforced by a global chat-type
   guard.
-- The health endpoint is not a dependency readiness check.
 - Repair-order creation has no client-provided idempotency key.
 - Tests do not currently include live PostgreSQL or full Telegram update integration.
 - Legacy documents under `Docs/` may describe broader systems not implemented in this repository.

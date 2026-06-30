@@ -66,6 +66,12 @@ export const summarizeSession = (sessionData: BotSession): Record<string, unknow
           : undefined,
       }
     : undefined,
+  adminStatusNameInput: sessionData.adminStatusNameInput
+    ? {
+        statusId: sessionData.adminStatusNameInput.statusId,
+        field: sessionData.adminStatusNameInput.field,
+      }
+    : undefined,
   repairOrdersView: sessionData.repairOrdersView
     ? {
         offset: sessionData.repairOrdersView.offset,
@@ -279,6 +285,11 @@ export const clearAdminTemplateFlow = (sessionData: BotSession): void => {
   if (sessionData.stage === 'admin_template_input') delete sessionData.stage;
 };
 
+export const clearAdminStatusNameFlow = (sessionData: BotSession): void => {
+  delete sessionData.adminStatusNameInput;
+  if (sessionData.stage === 'admin_status_name_input') delete sessionData.stage;
+};
+
 export const clearSupportFlow = (sessionData: BotSession): void => {
   delete sessionData.supportComment;
   if (sessionData.stage === 'support_comment_input') delete sessionData.stage;
@@ -327,6 +338,7 @@ export const resetSession = (sessionData: BotSession, locale: Locale): void => {
   delete sessionData.repairOrdersView;
   clearUnknownFlow(sessionData);
   clearAdminTemplateFlow(sessionData);
+  clearAdminStatusNameFlow(sessionData);
   clearSupportFlow(sessionData);
   clearAdminClientFlow(sessionData);
   clearAdminExportFlow(sessionData);

@@ -18,10 +18,18 @@ export interface AppConfig {
     port: number;
     messageSendToken: string;
   };
+  lifecycleNotifications: {
+    enabled: boolean;
+    batchSize: number;
+    concurrency: number;
+    startupTimeoutMs: number;
+    shutdownTimeoutMs: number;
+  };
   crm: {
     baseUrl: string;
     username: string;
     password: string;
+    repairStatusBranchId: string;
     requestTimeoutMs: number;
     maxRetries: number;
   };
@@ -86,6 +94,14 @@ const readTelegramIdList = (value: string | undefined): string[] => {
   return [...new Set(ids)];
 };
 
+const readUuid = (value: string | undefined): string => {
+  const trimmed = value?.trim() ?? '';
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) {
+    throw new Error('must be a UUID');
+  }
+  return trimmed;
+};
+
 export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
   const issues: string[] = [];
   const capture = <T>(name: string, reader: () => T, fallback: T): T => {
@@ -123,6 +139,31 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
     'API_PORT',
     () => readInteger(env.API_PORT, 3000, { min: 1, max: 65535 }),
     3000,
+  );
+  const lifecycleNotificationsEnabled = capture(
+    'LIFECYCLE_NOTIFICATIONS_ENABLED',
+    () => readBoolean(env.LIFECYCLE_NOTIFICATIONS_ENABLED, true),
+    true,
+  );
+  const lifecycleBroadcastBatchSize = capture(
+    'LIFECYCLE_BROADCAST_BATCH_SIZE',
+    () => readInteger(env.LIFECYCLE_BROADCAST_BATCH_SIZE, 100, { min: 1, max: 1000 }),
+    100,
+  );
+  const lifecycleBroadcastConcurrency = capture(
+    'LIFECYCLE_BROADCAST_CONCURRENCY',
+    () => readInteger(env.LIFECYCLE_BROADCAST_CONCURRENCY, 10, { min: 1, max: 50 }),
+    10,
+  );
+  const lifecycleStartupTimeoutMs = capture(
+    'LIFECYCLE_STARTUP_TIMEOUT_MS',
+    () => readInteger(env.LIFECYCLE_STARTUP_TIMEOUT_MS, 60_000, { min: 1000, max: 300_000 }),
+    60_000,
+  );
+  const lifecycleShutdownTimeoutMs = capture(
+    'LIFECYCLE_SHUTDOWN_TIMEOUT_MS',
+    () => readInteger(env.LIFECYCLE_SHUTDOWN_TIMEOUT_MS, 60_000, { min: 1000, max: 300_000 }),
+    60_000,
   );
   const requestTimeoutMs = capture(
     'CRM_REQUEST_TIMEOUT_MS',
@@ -165,6 +206,11 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
   if (!env.TELEGRAM_BOT_BASIC_AUTH_PASSWORD?.trim()) {
     issues.push('TELEGRAM_BOT_BASIC_AUTH_PASSWORD is required');
   }
+  const repairStatusBranchId = capture(
+    'CRM_REPAIR_STATUS_BRANCH_ID',
+    () => readUuid(env.CRM_REPAIR_STATUS_BRANCH_ID),
+    '',
+  );
   if (!env.DB_PASS) issues.push('DB_PASS is required');
   if (apiEnabled && !env.API_MESSAGE_SEND_TOKEN?.trim()) {
     issues.push('API_MESSAGE_SEND_TOKEN is required when API_ENABLED=true');
@@ -191,10 +237,18 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
       port: apiPort,
       messageSendToken: env.API_MESSAGE_SEND_TOKEN?.trim() ?? '',
     },
+    lifecycleNotifications: {
+      enabled: lifecycleNotificationsEnabled,
+      batchSize: lifecycleBroadcastBatchSize,
+      concurrency: lifecycleBroadcastConcurrency,
+      startupTimeoutMs: lifecycleStartupTimeoutMs,
+      shutdownTimeoutMs: lifecycleShutdownTimeoutMs,
+    },
     crm: {
       baseUrl: env.CRM_BASE_URL!.trim().replace(/\/+$/, ''),
       username: env.TELEGRAM_BOT_BASIC_AUTH_USER!.trim(),
       password: env.TELEGRAM_BOT_BASIC_AUTH_PASSWORD!,
+      repairStatusBranchId,
       requestTimeoutMs,
       maxRetries,
     },

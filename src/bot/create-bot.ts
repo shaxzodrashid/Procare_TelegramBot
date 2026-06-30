@@ -5,6 +5,10 @@ import type { ActionExportService } from '../services/action-export.service.js';
 import type { ApiErrorLocalizationStore } from '../services/api-error-localization.service.js';
 import type { MessageTemplateStore } from '../services/message-template.service.js';
 import type { RegisteredUserStore } from '../services/registered-user.store.js';
+import type {
+  RepairOrderStatusGateway,
+  RepairOrderStatusNameStore,
+} from '../services/repair-order-status.service.js';
 import type { RepairOrderGateway } from '../services/repair-order.service.js';
 import type { SupportMessageStore } from '../services/support-message.store.js';
 import type { UnknownClientStore } from '../services/unknown-client.store.js';
@@ -29,6 +33,7 @@ import { registerSupportHandlers } from './handlers/support.js';
 import { registerUnknownFlowHandlers } from './handlers/unknown-flow.js';
 import { registerAdminClientsHandlers } from './handlers/admin-clients.js';
 import { registerAdminTemplatesHandlers } from './handlers/admin-templates.js';
+import { registerAdminStatusNamesHandlers } from './handlers/admin-status-names.js';
 import { registerAdminExportHandlers } from './handlers/admin-export.js';
 import { registerDirectMessageHandlers } from './handlers/direct-messages.js';
 import { registerDeveloperHandlers } from './handlers/developer.js';
@@ -37,9 +42,11 @@ export interface BotDependencies {
   registrationService: ClientRegistrationGateway;
   repairOrderService: RepairOrderGateway;
   clientRepairOrderService: ClientRepairOrderGateway;
+  repairOrderStatusService?: RepairOrderStatusGateway;
   unknownClientStore: UnknownClientStore;
   registeredUserStore: RegisteredUserStore;
   messageTemplateStore: MessageTemplateStore;
+  repairOrderStatusNameStore?: RepairOrderStatusNameStore;
   apiErrorLocalizationStore?: ApiErrorLocalizationStore;
   supportMessageStore: SupportMessageStore;
   actionExportService?: ActionExportService;
@@ -114,6 +121,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
   registerUnknownFlowHandlers(bot, dependencies);
   registerAdminClientsHandlers(bot, dependencies);
   registerAdminTemplatesHandlers(bot, dependencies);
+  registerAdminStatusNamesHandlers(bot, dependencies);
   registerAdminExportHandlers(bot, dependencies);
   if (dependencies.apiErrorLocalizationStore) {
     registerDeveloperHandlers(bot, {

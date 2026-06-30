@@ -26,7 +26,7 @@ export interface SendFileRequestBody {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_INLINE_KEYBOARD_ROWS = 8;
 const MAX_INLINE_KEYBOARD_BUTTONS = 32;
 const MAX_INLINE_KEYBOARD_BUTTONS_PER_ROW = 4;

@@ -20,10 +20,18 @@ const config: AppConfig = {
   logLevel: 'info',
   bot: { enabled: false, richMessagesEnabled: false, developerTelegramIds: [] },
   api: { enabled: true, host: '127.0.0.1', port: 3000, messageSendToken: 'message-token' },
+  lifecycleNotifications: {
+    enabled: true,
+    batchSize: 100,
+    concurrency: 10,
+    startupTimeoutMs: 60_000,
+    shutdownTimeoutMs: 60_000,
+  },
   crm: {
     baseUrl: 'http://crm.test',
     username: 'bot',
     password: 'secret',
+    repairStatusBranchId: '11111111-1111-4111-8111-111111111111',
     requestTimeoutMs: 1_000,
     maxRetries: 0,
   },
@@ -56,6 +64,40 @@ describe('health API', () => {
       timestamp: response.json<{ timestamp: string }>().timestamp,
       botEnabled: false,
     });
+  });
+
+  it('returns service unavailable when a health reporter marks the process unhealthy', async () => {
+    const app = createApiServer(config, logger, {
+      healthReporter: {
+        async snapshot() {
+          return {
+            status: 'unhealthy',
+            service: 'procare-telegram-bot',
+            timestamp: '2026-06-30T00:00:00.000Z',
+            uptimeSeconds: 1,
+            checks: {
+              process: { status: 'ok' },
+              configuration: { status: 'ok' },
+              database: { status: 'unhealthy', message: 'PostgreSQL health query timed out' },
+              migrations: { status: 'ok' },
+              api: { status: 'ok' },
+              telegram: { status: 'disabled' },
+              lifecycleNotifications: { status: 'disabled' },
+            },
+          };
+        },
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/health' });
+    await app.close();
+
+    assert.equal(response.statusCode, 503);
+    assert.equal(response.json<{ status: string }>().status, 'unhealthy');
+    assert.equal(
+      response.json<{ checks: { database: { message: string } } }>().checks.database.message,
+      'PostgreSQL health query timed out',
+    );
   });
 });
 

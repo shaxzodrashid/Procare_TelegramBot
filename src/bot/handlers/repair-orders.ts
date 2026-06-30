@@ -13,6 +13,56 @@ import {
   repairOrdersKeyboard,
 } from '../keyboards.js';
 import { ClientRepairOrderError } from '../../services/client-repair-order.service.js';
+import type {
+  CustomerRepairOrderDetail,
+  CustomerRepairOrderList,
+} from '../../types/client-repair-order.js';
+
+const applyStatusNameOverridesToList = async (
+  result: CustomerRepairOrderList,
+  dependencies: BotDependencies,
+): Promise<CustomerRepairOrderList> => {
+  if (!dependencies.repairOrderStatusNameStore) return result;
+  const overrides = await dependencies.repairOrderStatusNameStore.findDisplayNamesByCustomerCodes(
+    result.orders.map((order) => order.status.code),
+  );
+  if (overrides.size === 0) return result;
+  return {
+    ...result,
+    orders: result.orders.map((order) => {
+      const override = overrides.get(order.status.code);
+      if (!override) return order;
+      return {
+        ...order,
+        status: {
+          ...order.status,
+          name_uz: override.display_name_uz ?? order.status.name_uz,
+          name_ru: override.display_name_ru ?? order.status.name_ru,
+        },
+      };
+    }),
+  };
+};
+
+export const applyStatusNameOverridesToDetail = async (
+  order: CustomerRepairOrderDetail,
+  dependencies: BotDependencies,
+): Promise<CustomerRepairOrderDetail> => {
+  if (!dependencies.repairOrderStatusNameStore) return order;
+  const overrides = await dependencies.repairOrderStatusNameStore.findDisplayNamesByCustomerCodes([
+    order.status.code,
+  ]);
+  const override = overrides.get(order.status.code);
+  if (!override) return order;
+  return {
+    ...order,
+    status: {
+      ...order.status,
+      name_uz: override.display_name_uz ?? order.status.name_uz,
+      name_ru: override.display_name_ru ?? order.status.name_ru,
+    },
+  };
+};
 
 const REPAIR_ORDERS_PAGE_SIZE = 10;
 
@@ -40,11 +90,12 @@ export const showClientRepairOrders = async (
         offset,
       },
     );
+    const displayedResult = await applyStatusNameOverridesToList(result, dependencies);
     if (pendingMessage && ctx.chat) {
       await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
     }
 
-    if (result.orders.length === 0) {
+    if (displayedResult.orders.length === 0) {
       ctx.session.repairOrdersView = { offset: result.pagination.offset, orderNumbers: [] };
       await ctx.reply(t(ctx.session.locale, 'noOrders'), {
         reply_markup: personalMenuKeyboard(ctx.session),
@@ -52,12 +103,12 @@ export const showClientRepairOrders = async (
       return;
     }
 
-    const orderNumbers = result.orders.map((order) => order.order_number);
+    const orderNumbers = displayedResult.orders.map((order) => order.order_number);
     ctx.session.repairOrdersView = {
       offset: result.pagination.offset,
       orderNumbers,
     };
-    await replySmart(ctx, formatClientRepairOrderList(result, ctx.session.locale), {
+    await replySmart(ctx, formatClientRepairOrderList(displayedResult, ctx.session.locale), {
       enabled: dependencies.richMessagesEnabled,
       logger: dependencies.logger,
       replyMarkup: repairOrdersKeyboard(orderNumbers, result.pagination, ctx.session.locale),
@@ -91,21 +142,22 @@ export const showClientRepairOrderDetail = async (
       client.client_id,
       orderNumber,
     );
+    const displayedOrder = await applyStatusNameOverridesToDetail(order, dependencies);
     ctx.session.repairOrdersView ??= { offset: 0, orderNumbers: [] };
-    ctx.session.repairOrdersView.selectedOrderNumber = order.order_number;
-    ctx.session.repairOrdersView.selectedRepairOrderId = order.id;
-    ctx.session.repairOrdersView.selectedAssignedAdminIds = order.assigned_admins.map(
+    ctx.session.repairOrdersView.selectedOrderNumber = displayedOrder.order_number;
+    ctx.session.repairOrdersView.selectedRepairOrderId = displayedOrder.id;
+    ctx.session.repairOrdersView.selectedAssignedAdminIds = displayedOrder.assigned_admins.map(
       (admin) => admin.id,
     );
-    await replySmart(ctx, formatClientRepairOrderDetail(order, ctx.session.locale), {
+    await replySmart(ctx, formatClientRepairOrderDetail(displayedOrder, ctx.session.locale), {
       enabled: dependencies.richMessagesEnabled,
       logger: dependencies.logger,
       replyMarkup: repairOrderDetailKeyboard(ctx.session.locale, {
         supportEnabled: true,
-        mapUrl: safeHttpUrl(order.branch?.map_url),
-        checklistUrl: safeHttpUrl(order.documents.checklist_url),
-        warrantyDocumentUrl: safeHttpUrl(order.documents.warranty_document_url),
-        offerUrl: safeHttpUrl(order.documents.offer_url),
+        mapUrl: safeHttpUrl(displayedOrder.branch?.map_url),
+        checklistUrl: safeHttpUrl(displayedOrder.documents.checklist_url),
+        warrantyDocumentUrl: safeHttpUrl(displayedOrder.documents.warranty_document_url),
+        offerUrl: safeHttpUrl(displayedOrder.documents.offer_url),
       }),
     });
   } catch (error) {

@@ -6,9 +6,10 @@ import { safeHttpUrl } from '../helpers.js';
 import { t } from '../messages.js';
 import type { BotContext } from '../context.js';
 import type { BotDependencies } from '../create-bot.js';
+import { applyStatusNameOverridesToDetail } from './repair-orders.js';
 
 const repairOrderCallbackPattern =
-  /^dm:ro:(?<action>o|r|b):(?<repairOrderUuid>[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
+  /^dm:ro:(?<action>o|r|b):(?<repairOrderUuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
 const callbackMessageId = (ctx: BotContext): string | null => {
   const message = ctx.callbackQuery?.message;
@@ -117,14 +118,15 @@ const showDirectMessageRepairOrder = async (
       client.client_id,
       repairOrderUuid,
     );
-    const content = formatClientRepairOrderDetail(order, ctx.session.locale);
+    const displayedOrder = await applyStatusNameOverridesToDetail(order, dependencies);
+    const content = formatClientRepairOrderDetail(displayedOrder, ctx.session.locale);
     await ctx.editMessageText(content.fallbackHtml, {
       parse_mode: 'HTML',
       reply_markup: directMessageRepairOrderKeyboard(ctx.session.locale, repairOrderUuid, {
-        mapUrl: safeHttpUrl(order.branch?.map_url),
-        checklistUrl: safeHttpUrl(order.documents.checklist_url),
-        warrantyDocumentUrl: safeHttpUrl(order.documents.warranty_document_url),
-        offerUrl: safeHttpUrl(order.documents.offer_url),
+        mapUrl: safeHttpUrl(displayedOrder.branch?.map_url),
+        checklistUrl: safeHttpUrl(displayedOrder.documents.checklist_url),
+        warrantyDocumentUrl: safeHttpUrl(displayedOrder.documents.warranty_document_url),
+        offerUrl: safeHttpUrl(displayedOrder.documents.offer_url),
       }),
     });
   } catch (error) {

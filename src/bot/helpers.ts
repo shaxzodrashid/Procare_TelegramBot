@@ -8,6 +8,7 @@ import {
   supportCommentKeyboard,
   developerCancelKeyboard,
   adminExportCancelKeyboard,
+  adminStatusNameCancelKeyboard,
   settingsBackKeyboard,
   settingsPhoneKeyboard,
   settingsLanguageKeyboard,
@@ -127,19 +128,21 @@ export const currentReplyKeyboard = (sessionData: BotSession) =>
           sessionData.stage === 'developer_error_message_uz_input' ||
           sessionData.stage === 'developer_error_message_ru_input'
         ? developerCancelKeyboard(sessionData.locale)
-        : sessionData.stage === 'admin_export_period_input'
-          ? adminExportCancelKeyboard(sessionData.locale)
-          : sessionData.stage === 'settings_awaiting_name'
-            ? settingsBackKeyboard(sessionData.locale)
-            : sessionData.stage === 'settings_awaiting_phone'
-              ? settingsPhoneKeyboard(sessionData.locale)
-              : sessionData.stage === 'settings_choosing_language'
-                ? settingsLanguageKeyboard(sessionData.locale)
-                : sessionData.client || hasEmployeeMenuAccess(sessionData)
-                  ? personalMenuKeyboard(sessionData)
-                  : sessionData.stage === 'awaiting_phone'
-                    ? registrationKeyboard(sessionData.locale)
-                    : languageKeyboard();
+        : sessionData.stage === 'admin_status_name_input'
+          ? adminStatusNameCancelKeyboard(sessionData.locale)
+          : sessionData.stage === 'admin_export_period_input'
+            ? adminExportCancelKeyboard(sessionData.locale)
+            : sessionData.stage === 'settings_awaiting_name'
+              ? settingsBackKeyboard(sessionData.locale)
+              : sessionData.stage === 'settings_awaiting_phone'
+                ? settingsPhoneKeyboard(sessionData.locale)
+                : sessionData.stage === 'settings_choosing_language'
+                  ? settingsLanguageKeyboard(sessionData.locale)
+                  : sessionData.client || hasEmployeeMenuAccess(sessionData)
+                    ? personalMenuKeyboard(sessionData)
+                    : sessionData.stage === 'awaiting_phone'
+                      ? registrationKeyboard(sessionData.locale)
+                      : languageKeyboard();
 
 export const replyWithAdminRegistration = async (ctx: BotContext): Promise<void> => {
   await ctx.reply(

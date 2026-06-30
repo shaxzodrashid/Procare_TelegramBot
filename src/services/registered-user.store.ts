@@ -18,6 +18,11 @@ export interface RegisteredUserStore {
   findActiveEmployeesByCrmAdminIds(
     crmAdminIds: string[],
   ): Promise<RegisteredEmployeeMessageTarget[]>;
+  listMessageTargets(params: {
+    afterId?: string;
+    limit: number;
+    includeBlocked?: boolean;
+  }): Promise<RegisteredUserMessageTarget[]>;
   findByTelegramId(telegramId: string): Promise<UserRegistrationState | null>;
   searchClients(query: string): Promise<UserRegistrationState[]>;
 }
@@ -163,6 +168,41 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
       id: String(row.id),
       telegram_id: String(row.telegram_id),
       crm_admin_id: row.crm_admin_id,
+      locale: row.language_code === 'ru' ? 'ru' : 'uz',
+      is_blocked: Boolean(row.is_blocked),
+    }));
+  }
+
+  async listMessageTargets(params: {
+    afterId?: string;
+    limit: number;
+    includeBlocked?: boolean;
+  }): Promise<RegisteredUserMessageTarget[]> {
+    const query = this.database('users')
+      .select(
+        'id',
+        'telegram_id',
+        'telegram_username',
+        'first_name',
+        'last_name',
+        'phone_number',
+        'language_code',
+        'is_blocked',
+      )
+      .orderBy('id', 'asc')
+      .limit(params.limit);
+
+    if (params.afterId) query.where('id', '>', params.afterId);
+    if (!params.includeBlocked) query.andWhere('is_blocked', false);
+
+    const rows = (await query) as UserMessageTargetRow[];
+    return rows.map((row) => ({
+      id: String(row.id),
+      telegram_id: String(row.telegram_id),
+      telegram_username: row.telegram_username,
+      first_name: row.first_name ?? '',
+      last_name: row.last_name,
+      phone_number: row.phone_number,
       locale: row.language_code === 'ru' ? 'ru' : 'uz',
       is_blocked: Boolean(row.is_blocked),
     }));

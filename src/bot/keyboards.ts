@@ -6,6 +6,7 @@ import type {
   ApiErrorLocalization,
 } from '../types/api-error-localization.js';
 import { MESSAGE_TEMPLATE_TYPES, type MessageTemplate } from '../types/message-template.js';
+import type { RepairOrderStatusNameRecord } from '../types/repair-order-status.js';
 import type { UserRegistrationState } from '../types/registered-user.js';
 import type { OsType, ProblemCategory } from '../types/repair-order.js';
 import { localizedCatalogName } from '../types/repair-order.js';
@@ -32,6 +33,8 @@ const employeeMenuKeyboard = (locale: Locale): Keyboard =>
     .text(t(locale, 'adminClients'))
     .text(t(locale, 'adminTemplates'))
     .row()
+    .text(t(locale, 'adminStatusNames'))
+    .row()
     .text(t(locale, 'adminExport'))
     .row()
     .text(t(locale, 'settings'))
@@ -41,6 +44,7 @@ const developerMenuKeyboard = (user: PersonalMenuUser): Keyboard => {
   const keyboard = new Keyboard();
   if (user.admin?.is_active) {
     keyboard.text(t(user.locale, 'adminClients')).text(t(user.locale, 'adminTemplates')).row();
+    keyboard.text(t(user.locale, 'adminStatusNames')).row();
     keyboard.text(t(user.locale, 'adminExport')).row();
   } else if (user.client) {
     keyboard.text(t(user.locale, 'orders')).row();
@@ -254,6 +258,41 @@ export const adminTemplateTypeKeyboard = (locale: Locale): InlineKeyboard => {
   keyboard.row().text(t(locale, 'adminTemplateCancel'), 'atts:cancel');
   return keyboard;
 };
+
+export const adminStatusNameListKeyboard = (
+  statuses: Pick<
+    RepairOrderStatusNameRecord,
+    'id' | 'crm_name_uz' | 'crm_name_ru' | 'customer_code'
+  >[],
+  locale: Locale,
+): InlineKeyboard => {
+  const keyboard = new InlineKeyboard();
+  statuses.forEach((status) => {
+    const title = locale === 'ru' ? status.crm_name_ru : status.crm_name_uz;
+    const label = `${status.customer_code ?? '—'} · ${
+      title.length > 28 ? `${title.slice(0, 25).trimEnd()}...` : title
+    }`;
+    keyboard.text(label, `st:v:${status.id}`).row();
+  });
+  keyboard
+    .text(t(locale, 'adminStatusNamesRefresh'), 'st:refresh')
+    .row()
+    .text(t(locale, 'adminTemplateBackToMenu'), 'admin:menu');
+  return keyboard;
+};
+
+export const adminStatusNameDetailKeyboard = (
+  status: Pick<RepairOrderStatusNameRecord, 'id'>,
+  locale: Locale,
+): InlineKeyboard =>
+  new InlineKeyboard()
+    .text(t(locale, 'adminStatusNameEditUz'), `st:e:${status.id}:uz`)
+    .text(t(locale, 'adminStatusNameEditRu'), `st:e:${status.id}:ru`)
+    .row()
+    .text(t(locale, 'adminTemplateBack'), 'st:list');
+
+export const adminStatusNameCancelKeyboard = (locale: Locale): Keyboard =>
+  new Keyboard().text(t(locale, 'adminStatusNameCancel')).resized().oneTime();
 
 export const adminClientResultsKeyboard = (
   clients: UserRegistrationState[],

@@ -463,6 +463,78 @@ describe('PostgresRegisteredUserStore', () => {
     ]);
   });
 
+  it('lists message targets using a stable user ID cursor', async () => {
+    const rows = [
+      {
+        id: 501,
+        telegram_id: 900501,
+        telegram_username: null,
+        first_name: 'Broadcast',
+        last_name: null,
+        phone_number: '+998901234567',
+        language_code: 'ru',
+        is_blocked: false,
+      },
+    ];
+    const calls: QueryCall[] = [];
+    const database = ((table: string) => {
+      assert.equal(table, 'users');
+      const query = {
+        select(...columns: string[]) {
+          calls.push({ table, action: 'select', payload: columns });
+          return this;
+        },
+        orderBy(...args: unknown[]) {
+          calls.push({ table, action: 'orderBy', payload: args });
+          return this;
+        },
+        limit(value: number) {
+          calls.push({ table, action: 'limit', payload: value });
+          return this;
+        },
+        where(...args: unknown[]) {
+          calls.push({ table, action: 'where', payload: args });
+          return this;
+        },
+        andWhere(...args: unknown[]) {
+          calls.push({ table, action: 'andWhere', payload: args });
+          return this;
+        },
+        then(resolve: (value: unknown) => void) {
+          resolve(rows);
+        },
+      };
+      return query;
+    }) as unknown as Knex;
+
+    const store = new PostgresRegisteredUserStore(database);
+    const targets = await store.listMessageTargets({
+      afterId: '500',
+      limit: 100,
+      includeBlocked: false,
+    });
+
+    assert.deepEqual(calls.find((call) => call.action === 'where')?.payload, ['id', '>', '500']);
+    assert.deepEqual(calls.find((call) => call.action === 'andWhere')?.payload, [
+      'is_blocked',
+      false,
+    ]);
+    assert.deepEqual(calls.find((call) => call.action === 'orderBy')?.payload, ['id', 'asc']);
+    assert.equal(calls.find((call) => call.action === 'limit')?.payload, 100);
+    assert.deepEqual(targets, [
+      {
+        id: '501',
+        telegram_id: '900501',
+        telegram_username: null,
+        first_name: 'Broadcast',
+        last_name: null,
+        phone_number: '+998901234567',
+        locale: 'ru',
+        is_blocked: false,
+      },
+    ]);
+  });
+
   it('searches clients using name, username, or phone number', async () => {
     let selectColumns: unknown;
     let limitValue: number | undefined;

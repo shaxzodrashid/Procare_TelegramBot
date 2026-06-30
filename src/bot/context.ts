@@ -21,6 +21,7 @@ export type RegistrationStage =
   | 'settings_awaiting_phone'
   | 'settings_choosing_language'
   | 'admin_template_input'
+  | 'admin_status_name_input'
   | 'support_comment_input'
   | 'admin_client_search_input'
   | 'admin_client_send_custom_message'
@@ -88,6 +89,10 @@ export interface BotSession {
     field: MessageTemplateField;
     templateId?: string;
     draft?: MessageTemplateDraft;
+  };
+  adminStatusNameInput?: {
+    statusId: string;
+    field: 'display_name_uz' | 'display_name_ru';
   };
   adminClientFlow?: {
     searchQuery?: string;
