@@ -5,9 +5,7 @@ import type { UnknownClientDeclineReason } from '../../types/unknown-client.js';
 import type { Locale } from '../../types/client.js';
 import { RepairOrderError } from '../../services/repair-order.service.js';
 import { t } from '../messages.js';
-import {
-  fullTelegramName,
-} from '../helpers.js';
+import { fullTelegramName } from '../helpers.js';
 import {
   buildRepairDescription,
   formatCategoryPage,

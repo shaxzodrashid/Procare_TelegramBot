@@ -223,7 +223,10 @@ export class BotDirectMessageService {
 
   constructor(
     private readonly users: Pick<RegisteredUserStore, 'findByPhoneNumber'>,
-    private readonly templates: Pick<MessageTemplateStore, 'logDispatch' | 'setUserBlocked' | 'findActiveTemplateByType'>,
+    private readonly templates: Pick<
+      MessageTemplateStore,
+      'logDispatch' | 'setUserBlocked' | 'findActiveTemplateByType'
+    >,
     private readonly telegram: TelegramDirectMessageApi,
     private readonly supportMessages?: Pick<SupportMessageStore, 'findReplyTargetByCrmCommentId'>,
     options?: { fetchImpl?: typeof fetch },
@@ -270,7 +273,9 @@ export class BotDirectMessageService {
     try {
       const response = await this.fetchImpl(params.fileUrl);
       if (!response.ok) {
-        throw new Error(`Failed to fetch file from URL: ${response.statusText} (Status: ${response.status})`);
+        throw new Error(
+          `Failed to fetch file from URL: ${response.statusText} (Status: ${response.status})`,
+        );
       }
       const arrayBuffer = await response.arrayBuffer();
       buffer = Buffer.from(arrayBuffer);
@@ -282,7 +287,10 @@ export class BotDirectMessageService {
         status: 'failed',
         error_message: `File download failed: ${errorMessage(error)}`,
       });
-      return { status: 'invalid_file', message: `Failed to download file from URL: ${errorMessage(error)}` };
+      return {
+        status: 'invalid_file',
+        message: `Failed to download file from URL: ${errorMessage(error)}`,
+      };
     }
 
     const defaultFileName = `${params.fileType}.pdf`;

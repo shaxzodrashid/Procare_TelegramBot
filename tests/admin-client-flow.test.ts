@@ -251,7 +251,9 @@ describe('Employee Client Search and Messaging Flow', () => {
     const searchResultsCall = apiCalls.find((c) => c.method === 'sendMessage');
     assert.ok(searchResultsCall);
     assert.ok(searchResultsCall.payload.text.includes('Topilgan mijozlar'));
-    assert.ok(searchResultsCall.payload.reply_markup?.inline_keyboard[0][0].text.includes('John Doe'));
+    assert.ok(
+      searchResultsCall.payload.reply_markup?.inline_keyboard[0][0].text.includes('John Doe'),
+    );
 
     apiCalls.length = 0;
 
@@ -331,7 +333,10 @@ describe('Employee Client Search and Messaging Flow', () => {
 
     // Verify success confirmation sent to admin
     const successCall = apiCalls.find(
-      (c) => c.method === 'sendMessage' && String(c.payload.chat_id) === '800100' && c.payload.text.includes('muvaffaqiyatli yuborildi'),
+      (c) =>
+        c.method === 'sendMessage' &&
+        String(c.payload.chat_id) === '800100' &&
+        c.payload.text.includes('muvaffaqiyatli yuborildi'),
     );
     assert.ok(successCall);
 
@@ -422,12 +427,17 @@ describe('Employee Client Search and Messaging Flow', () => {
 
     // Verify success confirmation sent to admin
     const tmplSuccessCall = apiCalls.find(
-      (c) => c.method === 'sendMessage' && String(c.payload.chat_id) === '800100' && c.payload.text.includes('muvaffaqiyatli yuborildi'),
+      (c) =>
+        c.method === 'sendMessage' &&
+        String(c.payload.chat_id) === '800100' &&
+        c.payload.text.includes('muvaffaqiyatli yuborildi'),
     );
     assert.ok(tmplSuccessCall);
 
     // Verify dispatch log
-    const tmplDispatch = deps.dispatches.find((d) => d.dispatch_type === 'admin_client_send_template');
+    const tmplDispatch = deps.dispatches.find(
+      (d) => d.dispatch_type === 'admin_client_send_template',
+    );
     assert.ok(tmplDispatch);
     assert.equal(tmplDispatch.status, 'sent');
     assert.equal(tmplDispatch.template_id, '10');

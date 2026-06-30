@@ -105,12 +105,17 @@ const createTelegramDouble = (sendMessageError?: unknown | unknown[]) => {
       return {};
     },
     async sendDocument(chatId: string | number, document: unknown, options?: unknown) {
-      calls.push({ method: 'sendDocument', chatId, text: (document as any).filename, options });
+      calls.push({
+        method: 'sendDocument',
+        chatId,
+        text: (document as { filename?: string }).filename,
+        options,
+      });
       const error = sendMessageErrors.shift();
       if (error) throw error;
       return {};
     },
-  } as any;
+  } as unknown as Api;
 
   return { telegram, calls };
 };
