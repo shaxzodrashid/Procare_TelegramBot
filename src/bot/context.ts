@@ -25,7 +25,10 @@ export type RegistrationStage =
   | 'admin_client_search_input'
   | 'admin_client_send_custom_message'
   | 'admin_client_template_placeholder'
-  | 'admin_export_period_input';
+  | 'admin_export_period_input'
+  | 'developer_error_location_input'
+  | 'developer_error_message_uz_input'
+  | 'developer_error_message_ru_input';
 
 export interface UnknownClientSession {
   phoneNumber: string;
@@ -58,6 +61,9 @@ export interface BotSession {
   locale: Locale;
   client?: ClientProfile;
   admin?: AdminProfile;
+  developer?: {
+    is_active: boolean;
+  };
   repairOrdersView?: {
     offset: number;
     orderNumbers: string[];
@@ -91,6 +97,11 @@ export interface BotSession {
     placeholdersToPrompt?: string[];
     promptedPlaceholders?: Record<string, string>;
     customMessageText?: string;
+  };
+  developerFlow?: {
+    endpointKey?: string;
+    location?: string;
+    messageUz?: string;
   };
 }
 

@@ -10,6 +10,7 @@ export interface AppConfig {
     token?: string;
     username?: string;
     richMessagesEnabled: boolean;
+    developerTelegramIds: string[];
   };
   api: {
     enabled: boolean;
@@ -74,6 +75,17 @@ const readEnum = <T extends string>(
   throw new Error(`must be one of: ${allowed.join(', ')}`);
 };
 
+const readTelegramIdList = (value: string | undefined): string[] => {
+  if (value === undefined || value.trim() === '') return [];
+  const ids = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const invalid = ids.find((id) => !/^[1-9]\d{0,18}$/.test(id));
+  if (invalid) throw new Error('must be a comma-separated list of Telegram numeric IDs');
+  return [...new Set(ids)];
+};
+
 export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
   const issues: string[] = [];
   const capture = <T>(name: string, reader: () => T, fallback: T): T => {
@@ -100,6 +112,11 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
     'RICH_MESSAGES_ENABLED',
     () => readBoolean(env.RICH_MESSAGES_ENABLED, false),
     false,
+  );
+  const developerTelegramIds = capture(
+    'DEVELOPER_TELEGRAM_IDS',
+    () => readTelegramIdList(env.DEVELOPER_TELEGRAM_IDS),
+    [],
   );
   const apiEnabled = capture('API_ENABLED', () => readBoolean(env.API_ENABLED, true), true);
   const apiPort = capture(
@@ -166,6 +183,7 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
       token: env.BOT_TOKEN?.trim(),
       username: env.BOT_USERNAME?.trim(),
       richMessagesEnabled,
+      developerTelegramIds,
     },
     api: {
       enabled: apiEnabled,

@@ -10,6 +10,7 @@ const validEnv: NodeJS.ProcessEnv = {
   API_PORT: '3001',
   API_MESSAGE_SEND_TOKEN: 'message-token',
   RICH_MESSAGES_ENABLED: 'true',
+  DEVELOPER_TELEGRAM_IDS: '1001, 1002,1001',
   CRM_BASE_URL: 'http://localhost:5001/',
   TELEGRAM_BOT_BASIC_AUTH_USER: 'bot',
   TELEGRAM_BOT_BASIC_AUTH_PASSWORD: 'secret',
@@ -23,6 +24,7 @@ describe('loadConfig', () => {
     assert.equal(config.api.messageSendToken, 'message-token');
     assert.equal(config.bot.enabled, false);
     assert.equal(config.bot.richMessagesEnabled, true);
+    assert.deepEqual(config.bot.developerTelegramIds, ['1001', '1002']);
     assert.equal(config.crm.baseUrl, 'http://localhost:5001');
     assert.equal(config.database.host, 'localhost');
     assert.equal(config.database.name, 'probox_bot_db');
@@ -43,6 +45,17 @@ describe('loadConfig', () => {
         error.issues.includes('BOT_TOKEN is required when BOT_ENABLED=true') &&
         error.issues.includes('CRM_BASE_URL is required') &&
         error.issues.includes('API_MESSAGE_SEND_TOKEN is required when API_ENABLED=true'),
+    );
+  });
+
+  it('rejects invalid developer Telegram IDs', () => {
+    assert.throws(
+      () => loadConfig({ ...validEnv, DEVELOPER_TELEGRAM_IDS: '1001,abc' }),
+      (error: unknown) =>
+        error instanceof ConfigurationError &&
+        error.issues.includes(
+          'DEVELOPER_TELEGRAM_IDS must be a comma-separated list of Telegram numeric IDs',
+        ),
     );
   });
 });

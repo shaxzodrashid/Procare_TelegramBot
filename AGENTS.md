@@ -61,34 +61,35 @@ always validates CRM and database configuration, connects to PostgreSQL, and run
 
 ## Repository Map
 
-| Path                                          | Responsibility                                                          |
-| --------------------------------------------- | ----------------------------------------------------------------------- |
-| `src/server.ts`                               | Process entry point, configuration, logger creation, signal handling    |
-| `src/app/bootstrap.ts`                        | Dependency construction, migrations, bot/API startup, graceful shutdown |
-| `src/config/index.ts`                         | Environment parsing, defaults, bounds, and aggregate validation         |
-| `src/api/server.ts`                           | Fastify health API and API-level error handler                          |
-| `src/bot/create-bot.ts`                       | Telegram commands, messages, callbacks, and flow orchestration          |
-| `src/bot/context.ts`                          | Session state and repair-request draft types                            |
-| `src/bot/messages.ts`                         | All user-facing Uzbek and Russian message strings                       |
-| `src/bot/keyboards.ts`                        | Reply and inline keyboard construction                                  |
-| `src/bot/formatters.ts`                       | Repair-order and repair-request presentation                            |
-| `src/services/client-registration.service.ts` | Authenticated CRM client lookup                                         |
-| `src/services/client-repair-order.service.ts` | Authenticated customer repair-order tracking                            |
-| `src/services/message-template.service.ts`    | Message template CRUD, rendering, dispatch logs, and block status       |
-| `src/services/bot-notification.service.ts`    | Telegram template notification delivery                                 |
-| `src/services/repair-order.service.ts`        | Public catalog reads and repair-order creation                          |
-| `src/services/registered-user.store.ts`       | PostgreSQL upsert for registered client and employee role rows          |
-| `src/services/unknown-client.store.ts`        | PostgreSQL upsert for declined unknown clients                          |
-| `src/database/database.ts`                    | Knex connection and migration runner                                    |
-| `src/database/migrations/`                    | Local application schema                                                |
-| `src/types/`                                  | External contract and persistence types                                 |
-| `src/utils/phone.ts`                          | Uzbek phone normalization                                               |
-| `src/utils/html.ts`                           | Telegram HTML escaping                                                  |
-| `src/utils/logger.ts`                         | Console and per-process file logging                                    |
-| `tests/`                                      | Unit and component-level tests with injected dependencies               |
-| `Docs/`                                       | Upstream contracts plus legacy/reference material                       |
-| `dist/`                                       | Generated TypeScript output; never edit                                 |
-| `logs/`                                       | Generated runtime logs; never commit                                    |
+| Path                                             | Responsibility                                                          |
+| ------------------------------------------------ | ----------------------------------------------------------------------- |
+| `src/server.ts`                                  | Process entry point, configuration, logger creation, signal handling    |
+| `src/app/bootstrap.ts`                           | Dependency construction, migrations, bot/API startup, graceful shutdown |
+| `src/config/index.ts`                            | Environment parsing, defaults, bounds, and aggregate validation         |
+| `src/api/server.ts`                              | Fastify health API and API-level error handler                          |
+| `src/bot/create-bot.ts`                          | Telegram commands, messages, callbacks, and flow orchestration          |
+| `src/bot/context.ts`                             | Session state and repair-request draft types                            |
+| `src/bot/messages.ts`                            | All user-facing Uzbek and Russian message strings                       |
+| `src/bot/keyboards.ts`                           | Reply and inline keyboard construction                                  |
+| `src/bot/formatters.ts`                          | Repair-order and repair-request presentation                            |
+| `src/services/client-registration.service.ts`    | Authenticated CRM client lookup                                         |
+| `src/services/client-repair-order.service.ts`    | Authenticated customer repair-order tracking                            |
+| `src/services/message-template.service.ts`       | Message template CRUD, rendering, dispatch logs, and block status       |
+| `src/services/api-error-localization.service.ts` | Developer endpoint registry and error-location localizations            |
+| `src/services/bot-notification.service.ts`       | Telegram template notification delivery                                 |
+| `src/services/repair-order.service.ts`           | Public catalog reads and repair-order creation                          |
+| `src/services/registered-user.store.ts`          | PostgreSQL upsert for registered client and employee role rows          |
+| `src/services/unknown-client.store.ts`           | PostgreSQL upsert for declined unknown clients                          |
+| `src/database/database.ts`                       | Knex connection and migration runner                                    |
+| `src/database/migrations/`                       | Local application schema                                                |
+| `src/types/`                                     | External contract and persistence types                                 |
+| `src/utils/phone.ts`                             | Uzbek phone normalization                                               |
+| `src/utils/html.ts`                              | Telegram HTML escaping                                                  |
+| `src/utils/logger.ts`                            | Console and per-process file logging                                    |
+| `tests/`                                         | Unit and component-level tests with injected dependencies               |
+| `Docs/`                                          | Upstream contracts plus legacy/reference material                       |
+| `dist/`                                          | Generated TypeScript output; never edit                                 |
+| `logs/`                                          | Generated runtime logs; never commit                                    |
 
 ## Runtime Lifecycle
 
@@ -158,6 +159,11 @@ Important behavior:
   must be enforced rather than assumed operationally, add an explicit chat-type guard and tests.
 - Admin template management uses the existing session state machine. `adminTemplateInput` must be
   cleared when the admin cancels, completes, logs out, or leaves the template flow.
+- Developer access is a local privileged seat controlled by `DEVELOPER_TELEGRAM_IDS`. It does not
+  change CRM client/employee classification; it adds endpoint/localization tools to the personal
+  menu for configured Telegram IDs.
+- Developer API error localization rows are keyed by the code-owned endpoint registry and the
+  upstream error envelope's `location` token. Keep `location` values stable and endpoint-specific.
 
 When changing a flow, update session types, handler guards, messages, keyboards, formatters, and
 tests as one change. Avoid introducing user-facing text directly inside handlers when it belongs in
@@ -245,8 +251,9 @@ contract changes.
 
 ## Database Rules
 
-The local database currently owns six application tables: `users`, `clients`, `employees`,
-`message_templates`, `message_dispatch_logs`, and `support_messages`, plus Knex migration metadata.
+The local database currently owns seven application tables: `users`, `clients`, `employees`,
+`message_templates`, `message_dispatch_logs`, `support_messages`, and `api_error_localizations`,
+plus Knex migration metadata.
 `users.telegram_id` is the unique Telegram identity used for upserts. `clients.user_id`,
 `employees.user_id`, `message_dispatch_logs.user_id`, and `support_messages.user_id` reference
 `users.id`.
@@ -285,6 +292,13 @@ The support-message store persists Telegram-to-CRM support comment mappings:
 - Telegram account, chat ID, message ID, message date, and content type;
 - sender direction, text, photo count, and optional reply linkage for future threaded replies.
 
+The API error localization store persists Developer-managed endpoint error copy:
+
+- code-owned endpoint key;
+- upstream `location` token from the API error envelope;
+- Uzbek and Russian localized user-facing messages;
+- creation and update timestamps.
+
 ### Migration Policy
 
 The repository is currently pre-production and documented as having no real user data. Under that
@@ -319,6 +333,7 @@ with `AppConfig` and `loadConfig`.
 | `BOT_TOKEN`                        | Required when bot enabled | Telegram bot token; secret                                |
 | `BOT_USERNAME`                     | Optional                  | Parsed for configuration; currently not used at runtime   |
 | `RICH_MESSAGES_ENABLED`            | `false`                   | Rich order cards with automatic classic HTML fallback     |
+| `DEVELOPER_TELEGRAM_IDS`           | Optional empty list       | Comma-separated Telegram numeric IDs with Developer tools |
 | `API_ENABLED`                      | `true`                    | Strict lowercase boolean                                  |
 | `API_HOST`                         | `0.0.0.0`                 | Fastify listen host                                       |
 | `API_PORT`                         | `3000`                    | Integer from 1 through 65535                              |
@@ -423,6 +438,7 @@ Tests currently cover:
 - unknown-client PostgreSQL upsert behavior;
 - logger routing, persistence, ANSI stripping, and level gating.
 - message-template rendering, caption splitting, blocked-user handling, and dispatch logging.
+- Developer endpoint inventory and API error-location localization management.
 
 The suite uses injected `fetch`, sleep functions, Fastify injection, temporary directories, and a
 Knex-shaped test double. It does not require Telegram, CRM, or PostgreSQL to be live.

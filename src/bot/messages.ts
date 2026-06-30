@@ -175,6 +175,31 @@ const messages = {
     adminExportUnavailable: '⚠️ Excel eksportni hozir tayyorlab bo‘lmadi. Keyinroq urinib ko‘ring.',
     adminExportCancel: '✖️ Bekor qilish',
     adminExportCancelled: '✅ Excel eksport bekor qilindi.',
+    developerApiEndpoints: '🛠 API endpointlar',
+    developerHelp:
+      'Developer menyusi: bot ishlatayotgan API endpointlarni ko‘rishingiz va endpoint location xatolari uchun lokalizatsiyalarni boshqarishingiz mumkin.',
+    developerEndpointsTitle: '🛠 Bot ishlatayotgan API endpointlar:',
+    developerEndpointTitle:
+      '<b>{{title}}</b>\n\n<code>{{method}} {{path}}</code>\nAuth: <code>{{auth}}</code>\n\n{{description}}\n\nLocation lokalizatsiyalari: {{count}}',
+    developerEndpointEmpty:
+      'Bu endpoint uchun hali location lokalizatsiyalari yo‘q. Yangi location qo‘shishingiz mumkin.',
+    developerLocalizationAdd: '➕ Location qo‘shish',
+    developerLocalizationEdit: '✏️ Tahrirlash',
+    developerLocalizationTitle: '<b>{{location}}</b>\n\nUZ:\n{{messageUz}}\n\nRU:\n{{messageRu}}',
+    developerLocalizationPromptLocation:
+      'Endpoint xatosidagi <code>location</code> tokenini yuboring. Masalan: <code>phone_number</code>',
+    developerLocalizationPromptUz: 'Ushbu location uchun o‘zbekcha xabar matnini yuboring:',
+    developerLocalizationPromptRu: 'Ushbu location uchun ruscha xabar matnini yuboring:',
+    developerLocalizationSaved: '✅ Location lokalizatsiyasi saqlandi.',
+    developerLocalizationInvalid:
+      '⚠️ Qiymat noto‘g‘ri. Location 1-120 belgi bo‘lishi, xabarlar esa 2-1000 belgi bo‘lishi kerak.',
+    developerLocalizationNotFound: 'Location lokalizatsiyasi topilmadi.',
+    developerUnavailable:
+      '⚠️ Developer ma’lumotlarini hozir yuklab bo‘lmadi. Keyinroq urinib ko‘ring.',
+    developerCancel: '✖️ Bekor qilish',
+    developerCancelled: '✅ Developer amali bekor qilindi.',
+    developerEndpointBack: '⬅️ Endpointga qaytish',
+    developerBackToMenu: '⬅️ Menyuga qaytish',
     language: '🇷🇺 Русский',
     uzbek: '🇺🇿 O‘zbekcha',
     russian: '🇷🇺 Русский',
@@ -347,6 +372,30 @@ const messages = {
     adminExportUnavailable: '⚠️ Сейчас не удалось подготовить Excel-экспорт. Попробуйте позже.',
     adminExportCancel: '✖️ Отмена',
     adminExportCancelled: '✅ Excel-экспорт отменён.',
+    developerApiEndpoints: '🛠 API endpoints',
+    developerHelp:
+      'Меню Developer: можно смотреть API endpoints, которые использует бот, и управлять локализациями ошибок по endpoint location.',
+    developerEndpointsTitle: '🛠 API endpoints, которые использует бот:',
+    developerEndpointTitle:
+      '<b>{{title}}</b>\n\n<code>{{method}} {{path}}</code>\nAuth: <code>{{auth}}</code>\n\n{{description}}\n\nЛокализаций location: {{count}}',
+    developerEndpointEmpty:
+      'Для этого endpoint пока нет локализаций location. Можно добавить новый location.',
+    developerLocalizationAdd: '➕ Добавить location',
+    developerLocalizationEdit: '✏️ Изменить',
+    developerLocalizationTitle: '<b>{{location}}</b>\n\nUZ:\n{{messageUz}}\n\nRU:\n{{messageRu}}',
+    developerLocalizationPromptLocation:
+      'Отправьте token <code>location</code> из ошибки endpoint. Например: <code>phone_number</code>',
+    developerLocalizationPromptUz: 'Отправьте узбекский текст сообщения для этого location:',
+    developerLocalizationPromptRu: 'Отправьте русский текст сообщения для этого location:',
+    developerLocalizationSaved: '✅ Локализация location сохранена.',
+    developerLocalizationInvalid:
+      '⚠️ Некорректное значение. Location должен быть 1-120 символов, сообщения 2-1000 символов.',
+    developerLocalizationNotFound: 'Локализация location не найдена.',
+    developerUnavailable: '⚠️ Сейчас не удалось загрузить Developer-данные. Попробуйте позже.',
+    developerCancel: '✖️ Отмена',
+    developerCancelled: '✅ Developer-действие отменено.',
+    developerEndpointBack: '⬅️ Вернуться к endpoint',
+    developerBackToMenu: '⬅️ Вернуться в меню',
     language: '🇺🇿 O‘zbekcha',
     uzbek: '🇺🇿 O‘zbekcha',
     russian: '🇷🇺 Русский',

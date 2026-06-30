@@ -52,6 +52,44 @@ describe('personal menu keyboard', () => {
     ]);
   });
 
+  it('shows developer tools for developer-only sessions', () => {
+    const keyboard = personalMenuKeyboard({
+      locale: 'uz',
+      developer: { is_active: true },
+    });
+
+    assert.deepEqual(keyboardLabels(keyboard), [['🛠 API endpointlar'], ['⚙️ Sozlamalar']]);
+  });
+
+  it('adds developer tools alongside client sections', () => {
+    const keyboard = personalMenuKeyboard({
+      locale: 'uz',
+      client: { account_type: 'client' },
+      developer: { is_active: true },
+    });
+
+    assert.deepEqual(keyboardLabels(keyboard), [
+      ['🧾 Buyurtmalarim'],
+      ['🛠 API endpointlar'],
+      ['⚙️ Sozlamalar'],
+    ]);
+  });
+
+  it('adds developer tools alongside employee sections', () => {
+    const keyboard = personalMenuKeyboard({
+      locale: 'ru',
+      admin: { id: 'admin-1', is_active: true },
+      developer: { is_active: true },
+    });
+
+    assert.deepEqual(keyboardLabels(keyboard), [
+      ['🔍 Поиск клиентов', '🧩 Шаблоны сообщений'],
+      ['📤 Excel экспорт'],
+      ['🛠 API endpoints'],
+      ['⚙️ Настройки'],
+    ]);
+  });
+
   it('does not show employee sections for inactive employee data', () => {
     const keyboard = personalMenuKeyboard({
       locale: 'uz',

@@ -15,10 +15,7 @@ import {
   currentReplyKeyboard,
   registeredHelpKey,
 } from '../helpers.js';
-import {
-  clearSettingsFlow,
-  clearUnknownFlow,
-} from '../session.js';
+import { clearSettingsFlow, clearUnknownFlow } from '../session.js';
 import {
   personalMenuKeyboard,
   registrationKeyboard,
@@ -239,9 +236,11 @@ export const registerRegistrationHandlers = (
               ? t(ctx.session.locale, 'adminRegistered', {
                   name: adminDisplayName(ctx),
                 })
-              : t(ctx.session.locale, 'registered', {
-                  name: ctx.session.client?.first_name || ctx.from?.first_name || 'Procare',
-                }),
+              : ctx.session.client
+                ? t(ctx.session.locale, 'registered', {
+                    name: ctx.session.client.first_name || ctx.from?.first_name || 'Procare',
+                  })
+                : t(ctx.session.locale, 'developerHelp'),
           { reply_markup: personalMenuKeyboard(ctx.session) },
         );
       } catch (error) {

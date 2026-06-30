@@ -30,6 +30,11 @@ export const summarizeSession = (sessionData: BotSession): Record<string, unknow
         is_active: sessionData.admin.is_active,
       }
     : undefined,
+  developer: sessionData.developer
+    ? {
+        is_active: sessionData.developer.is_active,
+      }
+    : undefined,
   unknownClient: sessionData.unknownClient
     ? {
         phoneNumber: redactPhoneNumber(sessionData.unknownClient.phoneNumber),
@@ -74,6 +79,13 @@ export const summarizeSession = (sessionData: BotSession): Record<string, unknow
         repairOrderId: sessionData.supportComment.repairOrderId,
         orderNumber: sessionData.supportComment.orderNumber,
         submitting: sessionData.supportComment.submitting,
+      }
+    : undefined,
+  developerFlow: sessionData.developerFlow
+    ? {
+        endpointKey: sessionData.developerFlow.endpointKey,
+        location: sessionData.developerFlow.location,
+        hasMessageUz: Boolean(sessionData.developerFlow.messageUz),
       }
     : undefined,
 });
@@ -287,6 +299,17 @@ export const clearAdminExportFlow = (sessionData: BotSession): void => {
   if (sessionData.stage === 'admin_export_period_input') delete sessionData.stage;
 };
 
+export const clearDeveloperFlow = (sessionData: BotSession): void => {
+  delete sessionData.developerFlow;
+  if (
+    sessionData.stage === 'developer_error_location_input' ||
+    sessionData.stage === 'developer_error_message_uz_input' ||
+    sessionData.stage === 'developer_error_message_ru_input'
+  ) {
+    delete sessionData.stage;
+  }
+};
+
 const settingsStages = new Set<RegistrationStage>([
   'settings',
   'settings_awaiting_name',
@@ -307,6 +330,7 @@ export const resetSession = (sessionData: BotSession, locale: Locale): void => {
   clearSupportFlow(sessionData);
   clearAdminClientFlow(sessionData);
   clearAdminExportFlow(sessionData);
+  clearDeveloperFlow(sessionData);
   clearSettingsFlow(sessionData);
   sessionData.locale = locale;
   sessionData.stage = 'choosing_language';

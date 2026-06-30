@@ -18,7 +18,7 @@ const logger: Logger = {
 const config: AppConfig = {
   nodeEnv: 'test',
   logLevel: 'info',
-  bot: { enabled: false, richMessagesEnabled: false },
+  bot: { enabled: false, richMessagesEnabled: false, developerTelegramIds: [] },
   api: { enabled: true, host: '127.0.0.1', port: 3000, messageSendToken: 'message-token' },
   crm: {
     baseUrl: 'http://crm.test',
@@ -441,7 +441,11 @@ describe('direct message API', () => {
         method: 'POST',
         url: '/messages/send-file',
         headers: authHeaders,
-        payload: { phone_number: '+998901234567', file_type: 'invalid', file_url: 'https://minio.test/a.pdf' },
+        payload: {
+          phone_number: '+998901234567',
+          file_type: 'invalid',
+          file_url: 'https://minio.test/a.pdf',
+        },
       });
       assert.equal(response.statusCode, 400);
 
@@ -483,7 +487,11 @@ describe('direct message API', () => {
       const response = await app.inject({
         method: 'POST',
         url: '/messages/send-file',
-        payload: { phone_number: '+998901234567', file_type: 'warranty', file_url: 'https://minio.test/a.pdf' },
+        payload: {
+          phone_number: '+998901234567',
+          file_type: 'warranty',
+          file_url: 'https://minio.test/a.pdf',
+        },
       });
       await app.close();
 
@@ -503,7 +511,11 @@ describe('direct message API', () => {
         method: 'POST',
         url: '/messages/send-file',
         headers: authHeaders,
-        payload: { phone_number: '+998901234567', file_type: 'warranty', file_url: 'https://minio.test/a.pdf' },
+        payload: {
+          phone_number: '+998901234567',
+          file_type: 'warranty',
+          file_url: 'https://minio.test/a.pdf',
+        },
       });
       await app.close();
 
@@ -523,7 +535,11 @@ describe('direct message API', () => {
         method: 'POST',
         url: '/messages/send-file',
         headers: authHeaders,
-        payload: { phone_number: '+998901234567', file_type: 'warranty', file_url: 'https://minio.test/a.pdf' },
+        payload: {
+          phone_number: '+998901234567',
+          file_type: 'warranty',
+          file_url: 'https://minio.test/a.pdf',
+        },
       });
       await app.close();
 
@@ -543,7 +559,11 @@ describe('direct message API', () => {
         method: 'POST',
         url: '/messages/send-file',
         headers: authHeaders,
-        payload: { phone_number: '+998901234567', file_type: 'warranty', file_url: 'https://minio.test/a.pdf' },
+        payload: {
+          phone_number: '+998901234567',
+          file_type: 'warranty',
+          file_url: 'https://minio.test/a.pdf',
+        },
       });
       await app.close();
 

@@ -3,6 +3,7 @@ import type { BotContext } from '../context.js';
 import type { BotDependencies } from '../create-bot.js';
 import {
   hasEmployeeMenuAccess,
+  hasDeveloperMenuAccess,
   adminDisplayName,
   registeredHelpKey,
   currentReplyKeyboard,
@@ -40,6 +41,12 @@ export const registerCommandHandlers = (
         }),
         { reply_markup: personalMenuKeyboard(ctx.session) },
       );
+      return;
+    }
+    if (hasDeveloperMenuAccess(ctx.session)) {
+      await ctx.reply(t(ctx.session.locale, 'developerHelp'), {
+        reply_markup: personalMenuKeyboard(ctx.session),
+      });
       return;
     }
 

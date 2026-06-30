@@ -2,6 +2,7 @@ import { Bot, session, GrammyError, HttpError } from 'grammy';
 import type { ClientRegistrationGateway } from '../services/client-registration.service.js';
 import type { ClientRepairOrderGateway } from '../services/client-repair-order.service.js';
 import type { ActionExportService } from '../services/action-export.service.js';
+import type { ApiErrorLocalizationStore } from '../services/api-error-localization.service.js';
 import type { MessageTemplateStore } from '../services/message-template.service.js';
 import type { RegisteredUserStore } from '../services/registered-user.store.js';
 import type { RepairOrderGateway } from '../services/repair-order.service.js';
@@ -30,6 +31,7 @@ import { registerAdminClientsHandlers } from './handlers/admin-clients.js';
 import { registerAdminTemplatesHandlers } from './handlers/admin-templates.js';
 import { registerAdminExportHandlers } from './handlers/admin-export.js';
 import { registerDirectMessageHandlers } from './handlers/direct-messages.js';
+import { registerDeveloperHandlers } from './handlers/developer.js';
 
 export interface BotDependencies {
   registrationService: ClientRegistrationGateway;
@@ -38,11 +40,13 @@ export interface BotDependencies {
   unknownClientStore: UnknownClientStore;
   registeredUserStore: RegisteredUserStore;
   messageTemplateStore: MessageTemplateStore;
+  apiErrorLocalizationStore?: ApiErrorLocalizationStore;
   supportMessageStore: SupportMessageStore;
   actionExportService?: ActionExportService;
   logger: Logger;
   allowManualPhoneEntry: boolean;
   richMessagesEnabled: boolean;
+  developerTelegramIds?: ReadonlySet<string>;
 }
 
 export type { RegistrationAccountKind, SettingsName } from './helpers.js';
@@ -52,6 +56,7 @@ export {
   setLocalizedBotCommands,
   parseSettingsName,
   hasEmployeeMenuAccess,
+  hasDeveloperMenuAccess,
   canRegisterWithManualPhone,
 } from './helpers.js';
 
@@ -65,6 +70,15 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
 
   // Initialize session support
   bot.use(session({ initial: initialSession }));
+
+  bot.use(async (ctx, next) => {
+    if (ctx.from && dependencies.developerTelegramIds?.has(String(ctx.from.id))) {
+      ctx.session.developer = { is_active: true };
+    } else {
+      delete ctx.session.developer;
+    }
+    await next();
+  });
 
   // Automatically restore sessions for registered users
   bot.use(createSessionRestorationMiddleware(dependencies));
@@ -101,6 +115,12 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
   registerAdminClientsHandlers(bot, dependencies);
   registerAdminTemplatesHandlers(bot, dependencies);
   registerAdminExportHandlers(bot, dependencies);
+  if (dependencies.apiErrorLocalizationStore) {
+    registerDeveloperHandlers(bot, {
+      ...dependencies,
+      apiErrorLocalizationStore: dependencies.apiErrorLocalizationStore,
+    });
+  }
 
   // Fallback handlers for unhandled messages
   const sendHelpOrPhoneOnly = async (ctx: BotContext) => {

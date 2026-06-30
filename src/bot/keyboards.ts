@@ -1,6 +1,10 @@
 import { InlineKeyboard, Keyboard } from 'grammy';
 
 import type { AdminProfile, ClientProfile, Locale } from '../types/client.js';
+import type {
+  ApiEndpointDescriptor,
+  ApiErrorLocalization,
+} from '../types/api-error-localization.js';
 import { MESSAGE_TEMPLATE_TYPES, type MessageTemplate } from '../types/message-template.js';
 import type { UserRegistrationState } from '../types/registered-user.js';
 import type { OsType, ProblemCategory } from '../types/repair-order.js';
@@ -17,6 +21,7 @@ export interface PersonalMenuUser {
   locale: Locale;
   client?: Pick<ClientProfile, 'account_type'> | null;
   admin?: Pick<AdminProfile, 'id' | 'is_active'> | null;
+  developer?: { is_active: boolean } | null;
 }
 
 const clientMenuKeyboard = (locale: Locale): Keyboard =>
@@ -32,7 +37,20 @@ const employeeMenuKeyboard = (locale: Locale): Keyboard =>
     .text(t(locale, 'settings'))
     .resized();
 
+const developerMenuKeyboard = (user: PersonalMenuUser): Keyboard => {
+  const keyboard = new Keyboard();
+  if (user.admin?.is_active) {
+    keyboard.text(t(user.locale, 'adminClients')).text(t(user.locale, 'adminTemplates')).row();
+    keyboard.text(t(user.locale, 'adminExport')).row();
+  } else if (user.client) {
+    keyboard.text(t(user.locale, 'orders')).row();
+  }
+  keyboard.text(t(user.locale, 'developerApiEndpoints')).row().text(t(user.locale, 'settings'));
+  return keyboard.resized();
+};
+
 export const personalMenuKeyboard = (user: PersonalMenuUser): Keyboard => {
+  if (user.developer?.is_active) return developerMenuKeyboard(user);
   if (user.admin?.is_active) return employeeMenuKeyboard(user.locale);
   if (user.client) return clientMenuKeyboard(user.locale);
   return languageKeyboard();
@@ -295,3 +313,44 @@ export const adminClientCancelKeyboard = (locale: Locale): Keyboard =>
 
 export const adminExportCancelKeyboard = (locale: Locale): Keyboard =>
   new Keyboard().text(t(locale, 'adminExportCancel')).resized().oneTime();
+
+export const developerEndpointListKeyboard = (
+  endpoints: readonly ApiEndpointDescriptor[],
+  locale: Locale,
+): InlineKeyboard => {
+  const keyboard = new InlineKeyboard();
+  endpoints.forEach((endpoint, index) => {
+    keyboard.text(`${endpoint.method} ${endpoint.title}`, `dev:e:${index}`).row();
+  });
+  keyboard.text(t(locale, 'developerBackToMenu'), 'dev:menu');
+  return keyboard;
+};
+
+export const developerEndpointDetailKeyboard = (
+  endpointIndex: number,
+  localizations: Pick<ApiErrorLocalization, 'id' | 'location'>[],
+  locale: Locale,
+): InlineKeyboard => {
+  const keyboard = new InlineKeyboard();
+  localizations.forEach((localization) => {
+    keyboard.text(localization.location, `dev:l:${endpointIndex}:${localization.id}`).row();
+  });
+  keyboard
+    .text(t(locale, 'developerLocalizationAdd'), `dev:a:${endpointIndex}`)
+    .row()
+    .text(t(locale, 'developerEndpointBack'), 'dev:list');
+  return keyboard;
+};
+
+export const developerLocalizationDetailKeyboard = (
+  endpointIndex: number,
+  localizationId: string,
+  locale: Locale,
+): InlineKeyboard =>
+  new InlineKeyboard()
+    .text(t(locale, 'developerLocalizationEdit'), `dev:edit:${endpointIndex}:${localizationId}`)
+    .row()
+    .text(t(locale, 'developerEndpointBack'), `dev:e:${endpointIndex}`);
+
+export const developerCancelKeyboard = (locale: Locale): Keyboard =>
+  new Keyboard().text(t(locale, 'developerCancel')).resized().oneTime();

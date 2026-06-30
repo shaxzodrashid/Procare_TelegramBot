@@ -7,6 +7,7 @@ import type { BotContext } from '../bot/context.js';
 import type { AppConfig } from '../config/index.js';
 import { createDatabase, migrateDatabase } from '../database/database.js';
 import { PostgresActionExportService } from '../services/action-export.service.js';
+import { PostgresApiErrorLocalizationStore } from '../services/api-error-localization.service.js';
 import { BotDirectMessageService } from '../services/bot-notification.service.js';
 import { HttpClientRepairOrderService } from '../services/client-repair-order.service.js';
 import { HttpClientRegistrationService } from '../services/client-registration.service.js';
@@ -68,6 +69,7 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
   const unknownClientStore = new PostgresUnknownClientStore(database);
   const registeredUserStore = new PostgresRegisteredUserStore(database);
   const messageTemplateStore = new PostgresMessageTemplateStore(database);
+  const apiErrorLocalizationStore = new PostgresApiErrorLocalizationStore(database);
   const supportMessageStore = new PostgresSupportMessageStore(database);
   const actionExportService = new PostgresActionExportService(database);
 
@@ -79,11 +81,13 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       unknownClientStore,
       registeredUserStore,
       messageTemplateStore,
+      apiErrorLocalizationStore,
       supportMessageStore,
       actionExportService,
       logger,
       allowManualPhoneEntry: config.nodeEnv === 'development',
       richMessagesEnabled: config.bot.richMessagesEnabled,
+      developerTelegramIds: new Set(config.bot.developerTelegramIds),
     });
     await bot.init();
     await setLocalizedBotCommands(bot);

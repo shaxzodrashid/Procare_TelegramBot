@@ -25,6 +25,7 @@ PostgreSQL, including separate client and employee role rows.
 - database-backed transactional message templates with Uzbek/Russian rendering
 - Telegram notification dispatch logging and blocked-user tracking for template messages
 - employee-only template management inside the bot
+- configured Developer seat for endpoint inventory and API error-location localizations
 - API-triggered direct Telegram messages to registered users by phone number
 - localized rich repair-order cards with classic Telegram HTML fallback
 - customer support comments from repair-order detail cards to assigned employees or branch staff
@@ -68,6 +69,10 @@ Employees can open `Xabar shablonlari` / `Шаблоны сообщений` fro
 edit, activate, deactivate, or delete Telegram message templates. Template text supports
 placeholders such as `{{ customer_name }}` and `{{ coupon_code }}`; rendered placeholder values are
 HTML-escaped, and coupon codes are wrapped in Telegram `<code>` tags for tap-to-copy behavior.
+
+Telegram IDs listed in `DEVELOPER_TELEGRAM_IDS` receive a Developer menu. Developers can view the
+upstream API endpoints used by the bot and create or update Uzbek/Russian localizations for each
+endpoint-specific error `location` token returned by the CRM/API error envelope.
 
 ## Technology
 
@@ -250,32 +255,33 @@ only for a confirmed disposable development database.
 
 All supported variables are listed in `.env.example`.
 
-| Variable                           | Default         | Requirement or purpose                     |
-| ---------------------------------- | --------------- | ------------------------------------------ |
-| `NODE_ENV`                         | `development`   | `development`, `test`, or `production`     |
-| `LOG_LEVEL`                        | `info`          | `info`, `debug`, or `extra-high`           |
-| `BOT_ENABLED`                      | `true`          | Enable Telegram bot startup                |
-| `BOT_TOKEN`                        | none            | Required when `BOT_ENABLED=true`           |
-| `BOT_USERNAME`                     | none            | Optional; currently not used at runtime    |
-| `RICH_MESSAGES_ENABLED`            | `false`         | Rich order cards with HTML fallback        |
-| `API_ENABLED`                      | `true`          | Enable the Fastify health API              |
-| `API_HOST`                         | `0.0.0.0`       | API listen host                            |
-| `API_PORT`                         | `3000`          | API listen port                            |
-| `API_MESSAGE_SEND_TOKEN`           | Required        | Bearer token for `POST /messages/send`     |
-| `CRM_BASE_URL`                     | none            | Required CRM/API base URL                  |
-| `TELEGRAM_BOT_BASIC_AUTH_USER`     | none            | Required CRM service username              |
-| `TELEGRAM_BOT_BASIC_AUTH_PASSWORD` | none            | Required CRM service password              |
-| `CRM_REQUEST_TIMEOUT_MS`           | `10000`         | Upstream request timeout                   |
-| `CRM_MAX_RETRIES`                  | `2`             | Retry count for eligible upstream requests |
-| `DB_HOST`                          | `localhost`     | PostgreSQL host                            |
-| `DB_PORT`                          | `5432`          | PostgreSQL port                            |
-| `DB_USER`                          | `postgres`      | PostgreSQL user                            |
-| `DB_PASS`                          | none            | Required PostgreSQL password               |
-| `DB_NAME`                          | `probox_bot_db` | PostgreSQL database                        |
-| `DB_SSL`                           | `false`         | Enable PostgreSQL TLS                      |
-| `DB_POOL_MIN`                      | `0`             | Minimum pool size                          |
-| `DB_POOL_MAX`                      | `10`            | Maximum pool size                          |
-| `DB_ACQUIRE_TIMEOUT_MS`            | `10000`         | Connection acquisition timeout             |
+| Variable                           | Default         | Requirement or purpose                            |
+| ---------------------------------- | --------------- | ------------------------------------------------- |
+| `NODE_ENV`                         | `development`   | `development`, `test`, or `production`            |
+| `LOG_LEVEL`                        | `info`          | `info`, `debug`, or `extra-high`                  |
+| `BOT_ENABLED`                      | `true`          | Enable Telegram bot startup                       |
+| `BOT_TOKEN`                        | none            | Required when `BOT_ENABLED=true`                  |
+| `BOT_USERNAME`                     | none            | Optional; currently not used at runtime           |
+| `RICH_MESSAGES_ENABLED`            | `false`         | Rich order cards with HTML fallback               |
+| `DEVELOPER_TELEGRAM_IDS`           | none            | Comma-separated Telegram IDs with Developer tools |
+| `API_ENABLED`                      | `true`          | Enable the Fastify health API                     |
+| `API_HOST`                         | `0.0.0.0`       | API listen host                                   |
+| `API_PORT`                         | `3000`          | API listen port                                   |
+| `API_MESSAGE_SEND_TOKEN`           | Required        | Bearer token for `POST /messages/send`            |
+| `CRM_BASE_URL`                     | none            | Required CRM/API base URL                         |
+| `TELEGRAM_BOT_BASIC_AUTH_USER`     | none            | Required CRM service username                     |
+| `TELEGRAM_BOT_BASIC_AUTH_PASSWORD` | none            | Required CRM service password                     |
+| `CRM_REQUEST_TIMEOUT_MS`           | `10000`         | Upstream request timeout                          |
+| `CRM_MAX_RETRIES`                  | `2`             | Retry count for eligible upstream requests        |
+| `DB_HOST`                          | `localhost`     | PostgreSQL host                                   |
+| `DB_PORT`                          | `5432`          | PostgreSQL port                                   |
+| `DB_USER`                          | `postgres`      | PostgreSQL user                                   |
+| `DB_PASS`                          | none            | Required PostgreSQL password                      |
+| `DB_NAME`                          | `probox_bot_db` | PostgreSQL database                               |
+| `DB_SSL`                           | `false`         | Enable PostgreSQL TLS                             |
+| `DB_POOL_MIN`                      | `0`             | Minimum pool size                                 |
+| `DB_POOL_MAX`                      | `10`            | Maximum pool size                                 |
+| `DB_ACQUIRE_TIMEOUT_MS`            | `10000`         | Connection acquisition timeout                    |
 
 Boolean values must be lowercase `true` or `false`. Invalid configuration is reported as one
 aggregated startup error.
@@ -414,6 +420,10 @@ attempts as `sent`, `failed`, or `template_not_found`. The notification dispatch
 blocked when Telegram returns a blocked-bot error and clears that flag after successful delivery or
 when a known user is saved again.
 
+`api_error_localizations` stores Developer-managed Uzbek/Russian messages keyed by bot endpoint and
+the upstream error envelope's `location` token. The endpoint registry is code-owned so stored
+localizations stay tied to APIs this bot actually uses.
+
 `support_messages` stores each client support message accepted by CRM with the returned CRM comment
 ID, repair-order context, Telegram chat/message IDs, content type, text, and photo count. The direct
 message API can use this durable mapping to send CRM employee responses as threaded Telegram replies
@@ -438,6 +448,7 @@ Current coverage includes:
 
 - configuration parsing
 - health API
+- Developer endpoint localization flow
 - direct message API validation and response mapping
 - Uzbek phone normalization
 - CRM request authentication and retries

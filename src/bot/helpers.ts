@@ -6,6 +6,7 @@ import { t, type MessageKey } from './messages.js';
 import {
   settingsKeyboard,
   supportCommentKeyboard,
+  developerCancelKeyboard,
   adminExportCancelKeyboard,
   settingsBackKeyboard,
   settingsPhoneKeyboard,
@@ -69,6 +70,9 @@ export const parseSettingsName = (value: string): SettingsName | null => {
 export const hasEmployeeMenuAccess = (sessionData: Pick<BotSession, 'admin'>): boolean =>
   Boolean(sessionData.admin?.is_active);
 
+export const hasDeveloperMenuAccess = (sessionData: Pick<BotSession, 'developer'>): boolean =>
+  Boolean(sessionData.developer?.is_active);
+
 export const canRegisterWithManualPhone = (
   sessionData: BotSession,
   allowManualPhoneEntry: boolean,
@@ -101,29 +105,41 @@ export const safeHttpUrl = (value: string | null | undefined): string | null => 
 };
 
 export const hasRegisteredProfile = (sessionData: BotSession): boolean =>
-  Boolean(sessionData.client || hasEmployeeMenuAccess(sessionData));
+  Boolean(
+    sessionData.client || hasEmployeeMenuAccess(sessionData) || hasDeveloperMenuAccess(sessionData),
+  );
 
 export const registeredHelpKey = (sessionData: BotSession): MessageKey =>
-  hasEmployeeMenuAccess(sessionData) ? 'employeeHelp' : sessionData.client ? 'clientHelp' : 'help';
+  hasEmployeeMenuAccess(sessionData)
+    ? 'employeeHelp'
+    : sessionData.client
+      ? 'clientHelp'
+      : hasDeveloperMenuAccess(sessionData)
+        ? 'developerHelp'
+        : 'help';
 
 export const currentReplyKeyboard = (sessionData: BotSession) =>
   sessionData.stage === 'settings'
     ? settingsKeyboard(sessionData.locale)
     : sessionData.stage === 'support_comment_input'
       ? supportCommentKeyboard(sessionData.locale)
-      : sessionData.stage === 'admin_export_period_input'
-        ? adminExportCancelKeyboard(sessionData.locale)
-        : sessionData.stage === 'settings_awaiting_name'
-          ? settingsBackKeyboard(sessionData.locale)
-          : sessionData.stage === 'settings_awaiting_phone'
-            ? settingsPhoneKeyboard(sessionData.locale)
-            : sessionData.stage === 'settings_choosing_language'
-              ? settingsLanguageKeyboard(sessionData.locale)
-              : sessionData.client || hasEmployeeMenuAccess(sessionData)
-                ? personalMenuKeyboard(sessionData)
-                : sessionData.stage === 'awaiting_phone'
-                  ? registrationKeyboard(sessionData.locale)
-                  : languageKeyboard();
+      : sessionData.stage === 'developer_error_location_input' ||
+          sessionData.stage === 'developer_error_message_uz_input' ||
+          sessionData.stage === 'developer_error_message_ru_input'
+        ? developerCancelKeyboard(sessionData.locale)
+        : sessionData.stage === 'admin_export_period_input'
+          ? adminExportCancelKeyboard(sessionData.locale)
+          : sessionData.stage === 'settings_awaiting_name'
+            ? settingsBackKeyboard(sessionData.locale)
+            : sessionData.stage === 'settings_awaiting_phone'
+              ? settingsPhoneKeyboard(sessionData.locale)
+              : sessionData.stage === 'settings_choosing_language'
+                ? settingsLanguageKeyboard(sessionData.locale)
+                : sessionData.client || hasEmployeeMenuAccess(sessionData)
+                  ? personalMenuKeyboard(sessionData)
+                  : sessionData.stage === 'awaiting_phone'
+                    ? registrationKeyboard(sessionData.locale)
+                    : languageKeyboard();
 
 export const replyWithAdminRegistration = async (ctx: BotContext): Promise<void> => {
   await ctx.reply(
