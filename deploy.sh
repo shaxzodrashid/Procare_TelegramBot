@@ -7,7 +7,6 @@ HEALTH_TIMEOUT_SECONDS="${DEPLOY_HEALTH_TIMEOUT_SECONDS:-180}"
 HEALTH_INTERVAL_SECONDS="${DEPLOY_HEALTH_INTERVAL_SECONDS:-5}"
 SHUTDOWN_TIMEOUT_SECONDS="${DEPLOY_SHUTDOWN_TIMEOUT_SECONDS:-90}"
 LOG_TAIL_LINES="${DEPLOY_LOG_TAIL_LINES:-100}"
-HISTORY_FILE="${DEPLOY_HISTORY_FILE:-logs/deployment-history.tsv}"
 
 COMPOSE="docker compose"
 
@@ -36,7 +35,6 @@ Environment overrides:
   DEPLOY_HEALTH_INTERVAL_SECONDS=5
   DEPLOY_SHUTDOWN_TIMEOUT_SECONDS=90
   DEPLOY_LOG_TAIL_LINES=100
-  DEPLOY_HISTORY_FILE=logs/deployment-history.tsv
 
 Never use docker compose down -v for production deploys unless volume data loss is intentional.
 USAGE
@@ -57,36 +55,12 @@ require_git_repo() {
   git rev-parse --verify HEAD >/dev/null 2>&1 || fail "current directory has no valid Git commit"
 }
 
-now_utc() {
-  date -u '+%Y-%m-%dT%H:%M:%SZ'
-}
-
 current_commit_sha() {
   git rev-parse HEAD 2>/dev/null || printf 'unknown'
 }
 
 current_commit_message() {
-  git log -1 --pretty=%s 2>/dev/null | tr '\t\r\n' '   ' || printf 'unknown'
-}
-
-append_history() {
-  event="$1"
-  status="$2"
-  note="$3"
-
-  mkdir -p "$(dirname "$HISTORY_FILE")"
-  if [ ! -f "$HISTORY_FILE" ]; then
-    printf 'timestamp_utc\tevent\tstatus\tcommit_sha\tcommit_message\tnote\n' >"$HISTORY_FILE"
-  fi
-
-  safe_note="$(printf '%s' "$note" | tr '\t\r\n' '   ')"
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$(now_utc)" \
-    "$event" \
-    "$status" \
-    "$(current_commit_sha)" \
-    "$(current_commit_message)" \
-    "$safe_note" >>"$HISTORY_FILE"
+  git log -1 --pretty=%B 2>/dev/null | tr '\r\n' '  ' || printf 'unknown'
 }
 
 service_container_id() {
@@ -106,6 +80,177 @@ container_health() {
 print_failure_logs() {
   info "Recent $APP_SERVICE logs:"
   $COMPOSE logs --tail="$LOG_TAIL_LINES" "$APP_SERVICE" || true
+}
+
+sql_quote() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"
+}
+
+postgres_container_id() {
+  service_container_id "$POSTGRES_SERVICE"
+}
+
+require_postgres_running() {
+  postgres_container="$(postgres_container_id)"
+  [ -n "$postgres_container" ] || fail "$POSTGRES_SERVICE is not running; cannot record deployment history"
+
+  postgres_state="$(container_state "$postgres_container")"
+  [ "$postgres_state" = "running" ] || fail "$POSTGRES_SERVICE is $postgres_state; cannot record deployment history"
+}
+
+psql_exec() {
+  $COMPOSE exec -T "$POSTGRES_SERVICE" sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+}
+
+ensure_deployment_history_table() {
+  require_postgres_running
+  psql_exec <<'SQL'
+CREATE TABLE IF NOT EXISTS deployment_history (
+  id BIGSERIAL PRIMARY KEY,
+  stopped_at TIMESTAMPTZ NULL,
+  started_at TIMESTAMPTZ NULL,
+  shutdown_period INTERVAL NULL,
+  shutdown_period_seconds INTEGER NULL,
+  git_commit_sha VARCHAR(40) NULL,
+  git_commit_message TEXT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'started',
+  note TEXT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS deployment_history_stopped_at_index ON deployment_history (stopped_at);
+CREATE INDEX IF NOT EXISTS deployment_history_started_at_index ON deployment_history (started_at);
+CREATE INDEX IF NOT EXISTS deployment_history_status_index ON deployment_history (status);
+SQL
+}
+
+record_deploy_down() {
+  ensure_deployment_history_table
+  commit_sha="$(sql_quote "$(current_commit_sha)")"
+  commit_message="$(sql_quote "$(current_commit_message)")"
+  note="$(sql_quote "safe shutdown requested; grace period ${SHUTDOWN_TIMEOUT_SECONDS}s")"
+
+  psql_exec <<SQL
+INSERT INTO deployment_history (
+  stopped_at,
+  git_commit_sha,
+  git_commit_message,
+  status,
+  note,
+  created_at,
+  updated_at
+)
+VALUES (
+  CURRENT_TIMESTAMP,
+  $commit_sha,
+  $commit_message,
+  'stopped',
+  $note,
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+)
+RETURNING id, stopped_at, git_commit_sha, git_commit_message;
+SQL
+}
+
+record_deploy_up_started() {
+  ensure_deployment_history_table
+  commit_sha="$(sql_quote "$(current_commit_sha)")"
+  commit_message="$(sql_quote "$(current_commit_message)")"
+  note="$(sql_quote "startup requested")"
+
+  psql_exec <<SQL
+WITH open_deployment AS (
+  SELECT id
+  FROM deployment_history
+  WHERE stopped_at IS NOT NULL
+    AND started_at IS NULL
+  ORDER BY stopped_at DESC
+  LIMIT 1
+),
+updated AS (
+  UPDATE deployment_history
+  SET
+    git_commit_sha = $commit_sha,
+    git_commit_message = $commit_message,
+    status = 'starting',
+    note = $note,
+    updated_at = CURRENT_TIMESTAMP
+  WHERE id IN (SELECT id FROM open_deployment)
+  RETURNING id
+)
+INSERT INTO deployment_history (
+  git_commit_sha,
+  git_commit_message,
+  status,
+  note,
+  created_at,
+  updated_at
+)
+SELECT
+  $commit_sha,
+  $commit_message,
+  'starting',
+  $note,
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM updated)
+RETURNING id;
+SQL
+}
+
+record_deploy_up_completed() {
+  ensure_deployment_history_table
+  commit_sha="$(sql_quote "$(current_commit_sha)")"
+  commit_message="$(sql_quote "$(current_commit_message)")"
+  note="$(sql_quote "bot health check passed")"
+
+  psql_exec <<SQL
+WITH target AS (
+  SELECT id
+  FROM deployment_history
+  WHERE started_at IS NULL
+  ORDER BY stopped_at DESC NULLS LAST, created_at DESC
+  LIMIT 1
+)
+UPDATE deployment_history
+SET
+  started_at = CURRENT_TIMESTAMP,
+  shutdown_period = CASE
+    WHEN stopped_at IS NULL THEN NULL
+    ELSE CURRENT_TIMESTAMP - stopped_at
+  END,
+  shutdown_period_seconds = CASE
+    WHEN stopped_at IS NULL THEN NULL
+    ELSE FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - stopped_at)))::INTEGER
+  END,
+  git_commit_sha = $commit_sha,
+  git_commit_message = $commit_message,
+  status = 'healthy',
+  note = $note,
+  updated_at = CURRENT_TIMESTAMP
+WHERE id IN (SELECT id FROM target)
+RETURNING id, stopped_at, started_at, shutdown_period, shutdown_period_seconds, git_commit_sha, git_commit_message;
+SQL
+}
+
+show_deployment_history() {
+  require_postgres_running
+  ensure_deployment_history_table
+  psql_exec <<'SQL'
+SELECT
+  id,
+  stopped_at,
+  started_at,
+  shutdown_period,
+  shutdown_period_seconds,
+  git_commit_sha,
+  git_commit_message,
+  status
+FROM deployment_history
+ORDER BY COALESCE(started_at, stopped_at, created_at) DESC
+LIMIT 10;
+SQL
 }
 
 warn_if_postgres_unavailable_for_shutdown() {
@@ -163,11 +308,44 @@ wait_for_bot_health() {
   fail "timed out waiting for $APP_SERVICE to become healthy"
 }
 
+wait_for_postgres_ready() {
+  deadline=$(( $(date +%s) + HEALTH_TIMEOUT_SECONDS ))
+
+  while [ "$(date +%s)" -le "$deadline" ]; do
+    postgres_container="$(postgres_container_id)"
+    if [ -z "$postgres_container" ]; then
+      info "Waiting for $POSTGRES_SERVICE container..."
+      sleep "$HEALTH_INTERVAL_SECONDS"
+      continue
+    fi
+
+    postgres_state="$(container_state "$postgres_container")"
+    if [ "$postgres_state" != "running" ]; then
+      info "Waiting for $POSTGRES_SERVICE: state=$postgres_state"
+      sleep "$HEALTH_INTERVAL_SECONDS"
+      continue
+    fi
+
+    if psql_exec >/dev/null 2>&1 <<'SQL'
+SELECT 1;
+SQL
+    then
+      info "$POSTGRES_SERVICE is accepting SQL"
+      return 0
+    fi
+
+    info "Waiting for $POSTGRES_SERVICE SQL readiness..."
+    sleep "$HEALTH_INTERVAL_SECONDS"
+  done
+
+  fail "timed out waiting for $POSTGRES_SERVICE SQL readiness"
+}
+
 command_down() {
   require_tools
   require_git_repo
 
-  append_history "down" "started" "safe shutdown requested"
+  record_deploy_down
 
   bot_container="$(service_container_id "$APP_SERVICE")"
   if [ -n "$bot_container" ]; then
@@ -180,28 +358,26 @@ command_down() {
 
   info "Stopping Compose stack"
   $COMPOSE down --timeout "$SHUTDOWN_TIMEOUT_SECONDS"
-  append_history "down" "completed" "compose stack stopped"
 }
 
 command_up() {
   require_tools
   require_git_repo
 
-  append_history "up" "started" "build and startup requested"
   info "Building and starting Compose stack"
   $COMPOSE up -d --build
 
+  wait_for_postgres_ready
+  record_deploy_up_started
   wait_for_bot_health
-  append_history "up" "completed" "bot health check passed"
+  record_deploy_up_completed
 }
 
 command_status() {
   require_tools
   $COMPOSE ps
-  if [ -f "$HISTORY_FILE" ]; then
-    info "Recent deployment history:"
-    tail -n 10 "$HISTORY_FILE"
-  fi
+  info "Recent deployment history:"
+  show_deployment_history
 }
 
 command_logs() {

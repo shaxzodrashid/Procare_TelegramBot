@@ -83,6 +83,7 @@ always validates CRM and database configuration, connects to PostgreSQL, and run
 | `src/services/unknown-client.store.ts`           | PostgreSQL upsert for declined unknown clients                          |
 | `src/database/database.ts`                       | Knex connection and migration runner                                    |
 | `src/database/migrations/`                       | Local application schema                                                |
+| `deploy.sh`                                      | Production deploy manager and database-backed deployment history        |
 | `src/types/`                                     | External contract and persistence types                                 |
 | `src/utils/phone.ts`                             | Uzbek phone normalization                                               |
 | `src/utils/html.ts`                              | Telegram HTML escaping                                                  |
@@ -109,6 +110,11 @@ If migrations fail, the database pool is destroyed and startup fails. The HTTP h
 checks process state, PostgreSQL reachability, migration completion, Fastify readiness, Telegram
 authentication/polling, and lifecycle notification state. It does not perform a CRM business
 operation as a health probe.
+
+Production deploys should go through `./deploy.sh`, not raw Compose commands. The script records
+deployment history in PostgreSQL before stopping the stack and after the bot becomes healthy again.
+Use database-server timestamps for `stopped_at` and `started_at`, and store the computed shutdown
+period, Git commit SHA, and full Git commit message.
 
 Shutdown handles `SIGINT` and `SIGTERM` once. It stops bot polling, waits for polling completion,
 closes Fastify, destroys the database pool, and then exits.
@@ -272,9 +278,9 @@ contract changes.
 
 ## Database Rules
 
-The local database currently owns eight application tables: `users`, `clients`, `employees`,
-`message_templates`, `message_dispatch_logs`, `support_messages`, `api_error_localizations`, and
-`repair_order_status_names`, plus Knex migration metadata.
+The local database currently owns nine application tables: `users`, `clients`, `employees`,
+`message_templates`, `message_dispatch_logs`, `support_messages`, `api_error_localizations`,
+`repair_order_status_names`, and `deployment_history`, plus Knex migration metadata.
 `users.telegram_id` is the unique Telegram identity used for upserts. `clients.user_id`,
 `employees.user_id`, `message_dispatch_logs.user_id`, and `support_messages.user_id` reference
 `users.id`.
@@ -326,6 +332,13 @@ The repair-order status-name store persists employee-managed client-facing statu
   latest order count from the status catalog;
 - Uzbek and Russian client-facing display names;
 - creation and update timestamps.
+
+The deployment history table persists production deploy timing:
+
+- exact database-server `stopped_at` and `started_at` timestamps;
+- computed shutdown period as both interval and seconds;
+- Git commit SHA and full commit message captured by `deploy.sh`;
+- status, operational note, creation, and update timestamps.
 
 ### Migration Policy
 

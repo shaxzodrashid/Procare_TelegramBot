@@ -277,7 +277,13 @@ send the shutdown apology and write dispatch logs. It then stops the full Compos
 deleting volumes.
 
 `./deploy.sh up` runs `docker compose up -d --build`, waits until the bot container is healthy, and
-writes a small deployment history record under `logs/deployment-history.tsv`.
+updates the latest open `deployment_history` database row with the exact database-server
+`started_at` timestamp, shutdown period, current Git commit SHA, and full Git commit message.
+
+Deployment history is stored in PostgreSQL table `deployment_history`. `./deploy.sh down` creates
+the table if needed before shutdown and inserts `stopped_at` using `CURRENT_TIMESTAMP` from the
+database server. `./deploy.sh up` fills `started_at`, `shutdown_period`,
+`shutdown_period_seconds`, `git_commit_sha`, and `git_commit_message` after the bot is healthy.
 
 Useful manager commands:
 
@@ -484,6 +490,10 @@ when `support_reply.target_crm_comment_id` is provided.
 `repair_order_status_names` stores the latest CRM repair-order status snapshot plus employee-managed
 Uzbek/Russian client-facing names by `customer_code`. Client order presentation overlays only those
 display names while keeping the upstream contract intact.
+
+`deployment_history` stores production deploy stop/start records. It captures exact database-server
+timestamps for `stopped_at` and `started_at`, the computed shutdown period, current Git commit SHA,
+full Git commit message, status, and an operational note.
 
 While this project is pre-production and has no real user data, edit an existing table's original
 migration instead of creating follow-up alteration migrations. Add a new migration file only when
