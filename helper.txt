@@ -1,0 +1,47 @@
+[LOGGER] Failed to write to log file: EACCES: permission denied, open '/app/logs/2026-07-01_10-23.log'
+[EXTRA] 2026-07-01T10:38:29.337Z - Telegram API request { method: 'getMe', payload: {} }
+[LOGGER] Failed to write to log file: EACCES: permission denied, open '/app/logs/2026-07-01_10-23.log'
+[EXTRA] 2026-07-01T10:38:29.441Z - Telegram API response {
+  method: 'getMe',
+  ok: true,
+  result: {
+    type: 'bot_user',
+    id: 8086703570,
+    username: 'procare_services_bot',
+    is_bot: true
+  },
+  error: undefined
+}
+[LOGGER] Failed to write to log file: EACCES: permission denied, open '/app/logs/2026-07-01_10-23.log'
+[EXTRA] 2026-07-01T10:38:38.253Z - Telegram API response {
+  method: 'getUpdates',
+  ok: true,
+  result: { type: 'array', count: 0 },
+  error: undefined
+}
+[EXTRA] 2026-07-01T10:38:38.254Z - Telegram API request {
+  method: 'getUpdates',
+  payload: {
+    offset: 202511370,
+    limit: undefined,
+    timeout: 30,
+    allowed_updates: undefined
+  }
+}
+[LOGGER] Failed to write to log file: EACCES: permission denied, open '/app/logs/2026-07-01_10-23.log'
+[LOGGER] Failed to write to log file: EACCES: permission denied, open '/app/logs/2026-07-01_10-23.log'
+[EXTRA] 2026-07-01T10:38:39.657Z - Telegram API request { method: 'getMe', payload: {} }
+[LOGGER] Failed to write to log file: EACCES: permission denied, open '/app/logs/2026-07-01_10-23.log'
+[EXTRA] 2026-07-01T10:38:39.761Z - Telegram API response {
+  method: 'getMe',
+  ok: true,
+  result: {
+    type: 'bot_user',
+    id: 8086703570,
+    username: 'procare_services_bot',
+    is_bot: true
+  },
+  error: undefined
+}
+[LOGGER] Failed to write to log file: EACCES: permission denied, open '/app/logs/2026-07-01_10-23.log'
+appserver:/home/Procare_TelegramBot #

@@ -12,5 +12,6 @@ ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
+RUN mkdir -p /app/logs && chown -R node:node /app/logs
 USER node
 CMD ["node", "dist/src/server.js"]

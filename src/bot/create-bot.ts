@@ -64,6 +64,7 @@ export interface BotDependencies {
 export type { RegistrationAccountKind, SettingsName } from './helpers.js';
 export {
   registrationAccountKind,
+  clearLocalizedBotCommands,
   localizedBotCommands,
   setLocalizedBotCommands,
   parseSettingsName,

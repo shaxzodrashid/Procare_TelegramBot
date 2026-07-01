@@ -52,6 +52,17 @@ export const setLocalizedBotCommands = async (bot: Bot<BotContext>): Promise<voi
   });
 };
 
+export const clearLocalizedBotCommands = async (bot: Bot<BotContext>): Promise<void> => {
+  const defaultPrivateScope: BotCommandScope = { type: 'all_private_chats' };
+
+  await bot.api.deleteMyCommands();
+  await bot.api.deleteMyCommands({ language_code: 'uz' });
+  await bot.api.deleteMyCommands({ language_code: 'ru' });
+  await bot.api.deleteMyCommands({ scope: defaultPrivateScope });
+  await bot.api.deleteMyCommands({ scope: defaultPrivateScope, language_code: 'uz' });
+  await bot.api.deleteMyCommands({ scope: defaultPrivateScope, language_code: 'ru' });
+};
+
 export const parseSettingsName = (value: string): SettingsName | null => {
   const fullName = value.trim().replace(/\s+/g, ' ');
   if (fullName.length < 2 || fullName.length > 120 || !/[\p{L}\p{N}]/u.test(fullName)) {

@@ -168,8 +168,9 @@ as `ok`, `degraded`, or `disabled` so deployments can detect whether startup/shu
 working.
 
 When lifecycle notifications are enabled, startup sends every non-blocked stored Telegram user a
-localized service-restored message with a one-tap `/start` keyboard. Graceful shutdown sends a
-localized apology before polling is stopped.
+localized service-restored message with a one-tap `/start` keyboard. Graceful shutdown clears the
+Telegram command menu, sends a localized technical-update notice, and removes the user's current
+reply keyboard before polling is stopped.
 
 The direct message endpoint is:
 
@@ -272,12 +273,15 @@ For production deploys, use the root manager script instead of raw Compose comma
 ```
 
 `./deploy.sh down` stops the bot first while PostgreSQL is still running, giving the bot time to
-send the shutdown apology and write dispatch logs. It then stops the full Compose stack without
-deleting volumes.
+send the shutdown technical-update notice, clear Telegram menu commands, remove user reply
+keyboards, and write dispatch logs. It then stops the full Compose stack without deleting volumes.
 
-`./deploy.sh up` runs `docker compose up -d --build`, waits until the bot container is healthy, and
-updates the latest open `deployment_history` database row with the exact database-server
-`started_at` timestamp, shutdown period, current Git commit SHA, and full Git commit message.
+`./deploy.sh up` pulls `origin/main` with `--ff-only`, prepares the mounted `./logs` directory for
+the container user, runs `docker compose up -d --build`, waits until the bot container is healthy,
+prints the `/health` report, and updates the latest open `deployment_history` database row with the
+exact database-server `started_at` timestamp, shutdown period, current Git commit SHA, and full Git
+commit message. Override the source branch only for exceptional cases with `DEPLOY_GIT_REMOTE` and
+`DEPLOY_GIT_BRANCH`.
 
 Deployment history is stored in PostgreSQL table `deployment_history`. `./deploy.sh down` creates
 the table if needed before shutdown and inserts `stopped_at` using `CURRENT_TIMESTAMP` from the

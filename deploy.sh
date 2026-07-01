@@ -3,6 +3,8 @@ set -eu
 
 APP_SERVICE="${APP_SERVICE:-bot}"
 POSTGRES_SERVICE="${POSTGRES_SERVICE:-postgres}"
+DEPLOY_GIT_REMOTE="${DEPLOY_GIT_REMOTE:-origin}"
+DEPLOY_GIT_BRANCH="${DEPLOY_GIT_BRANCH:-main}"
 HEALTH_TIMEOUT_SECONDS="${DEPLOY_HEALTH_TIMEOUT_SECONDS:-180}"
 HEALTH_INTERVAL_SECONDS="${DEPLOY_HEALTH_INTERVAL_SECONDS:-5}"
 SHUTDOWN_TIMEOUT_SECONDS="${DEPLOY_SHUTDOWN_TIMEOUT_SECONDS:-90}"
@@ -23,14 +25,16 @@ usage() {
   cat <<'USAGE'
 Usage:
   ./deploy.sh down       Stop the bot safely, then stop the Compose stack.
-  ./deploy.sh up         Build/start the Compose stack and wait for bot health.
-  ./deploy.sh restart    Run down, then up.
+  ./deploy.sh up         Pull main, build/start the Compose stack, and diagnose bot health.
+  ./deploy.sh restart    Run down, pull main, then up.
   ./deploy.sh status     Show Compose status and recent deployment history.
   ./deploy.sh logs       Show recent bot logs.
 
 Environment overrides:
   APP_SERVICE=bot
   POSTGRES_SERVICE=postgres
+  DEPLOY_GIT_REMOTE=origin
+  DEPLOY_GIT_BRANCH=main
   DEPLOY_HEALTH_TIMEOUT_SECONDS=180
   DEPLOY_HEALTH_INTERVAL_SECONDS=5
   DEPLOY_SHUTDOWN_TIMEOUT_SECONDS=90
@@ -63,6 +67,20 @@ current_commit_message() {
   git log -1 --pretty=%B 2>/dev/null | tr '\r\n' '  ' || printf 'unknown'
 }
 
+pull_main_branch() {
+  info "Updating repository from ${DEPLOY_GIT_REMOTE}/${DEPLOY_GIT_BRANCH}"
+  git fetch "$DEPLOY_GIT_REMOTE" "$DEPLOY_GIT_BRANCH"
+
+  current_branch="$(git branch --show-current 2>/dev/null || true)"
+  if [ "$current_branch" != "$DEPLOY_GIT_BRANCH" ]; then
+    git rev-parse --verify "$DEPLOY_GIT_BRANCH" >/dev/null 2>&1 || \
+      fail "local branch $DEPLOY_GIT_BRANCH does not exist"
+    git checkout "$DEPLOY_GIT_BRANCH"
+  fi
+
+  git pull --ff-only "$DEPLOY_GIT_REMOTE" "$DEPLOY_GIT_BRANCH"
+}
+
 service_container_id() {
   $COMPOSE ps -q "$1" 2>/dev/null || true
 }
@@ -80,6 +98,20 @@ container_health() {
 print_failure_logs() {
   info "Recent $APP_SERVICE logs:"
   $COMPOSE logs --tail="$LOG_TAIL_LINES" "$APP_SERVICE" || true
+}
+
+ensure_logs_directory() {
+  mkdir -p logs
+  chown 1000:1000 logs 2>/dev/null || true
+  chmod 775 logs 2>/dev/null || true
+}
+
+print_health_report() {
+  info "Health endpoint report:"
+  if ! $COMPOSE exec -T "$APP_SERVICE" sh -c 'if [ "$API_ENABLED" = "false" ]; then echo "health API disabled"; exit 0; fi; node -e "const port=process.env.API_PORT||3000; fetch(`http://127.0.0.1:${port}/health`).then(async (res)=>{ const body=await res.text(); console.log(body); process.exit(res.ok ? 0 : 1); }).catch((error)=>{ console.error(error); process.exit(1); });"'; then
+    print_failure_logs
+    fail "$APP_SERVICE health endpoint diagnosis failed"
+  fi
 }
 
 sql_quote() {
@@ -364,12 +396,15 @@ command_up() {
   require_tools
   require_git_repo
 
+  pull_main_branch
+  ensure_logs_directory
   info "Building and starting Compose stack"
   $COMPOSE up -d --build
 
   wait_for_postgres_ready
   record_deploy_up_started
   wait_for_bot_health
+  print_health_report
   record_deploy_up_completed
 }
 

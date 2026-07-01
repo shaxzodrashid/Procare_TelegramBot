@@ -1,4 +1,5 @@
 import type { Api } from 'grammy';
+import type { ReplyKeyboardMarkup, ReplyKeyboardRemove } from 'grammy/types';
 
 import { t } from '../bot/messages.js';
 import type { AppConfig } from '../config/index.js';
@@ -29,10 +30,14 @@ const dispatchType = (kind: LifecycleKind): string => `lifecycle_${kind}`;
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-const startCommandKeyboard = {
+const startCommandKeyboard: ReplyKeyboardMarkup = {
   keyboard: [[{ text: '/start' }]],
   resize_keyboard: true,
   one_time_keyboard: true,
+};
+
+const removeReplyKeyboard: ReplyKeyboardRemove = {
+  remove_keyboard: true,
 };
 
 export class BotLifecycleNotificationService {
@@ -124,7 +129,9 @@ export class BotLifecycleNotificationService {
       await this.telegram.sendMessage(
         recipient.telegram_id,
         text,
-        kind === 'startup' ? { reply_markup: startCommandKeyboard } : undefined,
+        kind === 'startup'
+          ? { reply_markup: startCommandKeyboard }
+          : { reply_markup: removeReplyKeyboard },
       );
       await this.dispatchStore.setUserBlocked(recipient.telegram_id, false);
       await this.dispatchStore.logDispatch({

@@ -93,7 +93,7 @@ describe('BotLifecycleNotificationService', () => {
     assert.equal(dispatchLogs.length, 3);
   });
 
-  it('sends shutdown apologies without the start keyboard', async () => {
+  it('sends shutdown apologies and removes reply keyboards', async () => {
     const telegramCalls: Array<{ options: unknown; text: string }> = [];
     const service = new BotLifecycleNotificationService(
       {
@@ -119,6 +119,10 @@ describe('BotLifecycleNotificationService', () => {
 
     assert.equal(summary.sent, 1);
     assert.equal(telegramCalls[0]?.text.includes('извинения'), true);
-    assert.equal(telegramCalls[0]?.options, undefined);
+    assert.deepEqual(telegramCalls[0]?.options, {
+      reply_markup: {
+        remove_keyboard: true,
+      },
+    });
   });
 });

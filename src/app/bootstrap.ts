@@ -2,7 +2,11 @@ import type { Bot } from 'grammy';
 import type { FastifyInstance } from 'fastify';
 
 import { createApiServer } from '../api/server.js';
-import { createBot, setLocalizedBotCommands } from '../bot/create-bot.js';
+import {
+  clearLocalizedBotCommands,
+  createBot,
+  setLocalizedBotCommands,
+} from '../bot/create-bot.js';
 import type { BotContext } from '../bot/context.js';
 import type { AppConfig } from '../config/index.js';
 import { createDatabase, migrateDatabase } from '../database/database.js';
@@ -195,6 +199,11 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       if (bot) {
         healthMonitor.markBotPollingStopping();
         if (startupNotificationTask) await startupNotificationTask.catch(() => undefined);
+        try {
+          await clearLocalizedBotCommands(bot);
+        } catch (error) {
+          logger.warn('Failed to clear Telegram command menu before shutdown', error);
+        }
         if (lifecycleNotificationService) {
           await runLifecycleNotification(
             'shutdown',

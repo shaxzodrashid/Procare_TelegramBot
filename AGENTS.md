@@ -114,7 +114,8 @@ operation as a health probe.
 Production deploys should go through `./deploy.sh`, not raw Compose commands. The script records
 deployment history in PostgreSQL before stopping the stack and after the bot becomes healthy again.
 Use database-server timestamps for `stopped_at` and `started_at`, and store the computed shutdown
-period, Git commit SHA, and full Git commit message.
+period, Git commit SHA, and full Git commit message. `./deploy.sh up` refreshes from `origin/main`
+with `--ff-only`, rebuilds, waits for container health, and prints the health endpoint report.
 
 Shutdown handles `SIGINT` and `SIGTERM` once. It stops bot polling, waits for polling completion,
 closes Fastify, destroys the database pool, and then exits.
@@ -503,20 +504,20 @@ For changes:
 Use `npm ci` for a clean reproducible install when `package-lock.json` is available. Use
 `npm install` when intentionally changing dependencies.
 
-| Command                     | Purpose                                       |
-| --------------------------- | --------------------------------------------- |
-| `npm run dev`               | Run `src/server.ts` with watch/restart        |
-| `npm run build`             | Compile source and tests to `dist/`           |
-| `npm start`                 | Run compiled `dist/src/server.js`             |
-| `npm run typecheck`         | Type-check without writing output             |
-| `npm test`                  | Run all `tests/*.test.ts` files               |
-| `npm run lint`              | Run ESLint over the repository                |
-| `npm run format`            | Write Prettier formatting                     |
-| `npm run format:check`      | Check Prettier formatting                     |
-| `npm run check`             | Type-check, lint, and test                    |
-| `./deploy.sh down`          | Production-safe graceful shutdown             |
-| `./deploy.sh up`            | Production build/start and health wait        |
-| `docker compose up --build` | Build and run PostgreSQL plus the bot service |
+| Command                     | Purpose                                        |
+| --------------------------- | ---------------------------------------------- |
+| `npm run dev`               | Run `src/server.ts` with watch/restart         |
+| `npm run build`             | Compile source and tests to `dist/`            |
+| `npm start`                 | Run compiled `dist/src/server.js`              |
+| `npm run typecheck`         | Type-check without writing output              |
+| `npm test`                  | Run all `tests/*.test.ts` files                |
+| `npm run lint`              | Run ESLint over the repository                 |
+| `npm run format`            | Write Prettier formatting                      |
+| `npm run format:check`      | Check Prettier formatting                      |
+| `npm run check`             | Type-check, lint, and test                     |
+| `./deploy.sh down`          | Production-safe graceful shutdown              |
+| `./deploy.sh up`            | Pull main, production build/start, health wait |
+| `docker compose up --build` | Build and run PostgreSQL plus the bot service  |
 
 Minimum verification for documentation-only changes:
 

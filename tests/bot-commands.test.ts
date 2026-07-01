@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   canRegisterWithManualPhone,
+  clearLocalizedBotCommands,
   hasEmployeeMenuAccess,
   localizedBotCommands,
   parseSettingsName,
@@ -73,6 +74,28 @@ describe('bot command metadata', () => {
         { scope: { type: 'all_private_chats' }, language_code: 'ru' },
       ],
     );
+  });
+
+  it('clears commands from default and private-chat scopes during shutdown', async () => {
+    const calls: unknown[] = [];
+    const bot = {
+      api: {
+        deleteMyCommands: async (options?: unknown) => {
+          calls.push(options);
+        },
+      },
+    } as unknown as Bot<BotContext>;
+
+    await clearLocalizedBotCommands(bot);
+
+    assert.deepEqual(calls, [
+      undefined,
+      { language_code: 'uz' },
+      { language_code: 'ru' },
+      { scope: { type: 'all_private_chats' } },
+      { scope: { type: 'all_private_chats' }, language_code: 'uz' },
+      { scope: { type: 'all_private_chats' }, language_code: 'ru' },
+    ]);
   });
 });
 
