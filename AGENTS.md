@@ -234,18 +234,16 @@ Rules:
 `HttpRepairOrderStatusService` calls this Basic-Auth-protected endpoint:
 
 ```text
-GET /api/v1/external/repair-order-statuses?branch_id={CRM_REPAIR_STATUS_BRANCH_ID}&limit={limit}&offset={offset}
+GET /api/v1/external/repair-order-statuses
 ```
 
 Rules:
 
-- `CRM_REPAIR_STATUS_BRANCH_ID` is required because the CRM status endpoint is branch-scoped.
-- Validate the live Postman response shape (`meta` plus `data`) and the documented fallback shape
-  (`rows`, `total`, `limit`, `offset`).
-- Persist the status snapshot into `repair_order_status_names`; employees edit only
-  `display_name_uz` and `display_name_ru`.
-- Client repair-order renderers must keep the upstream contract intact and overlay display names by
-  `customer_code` immediately before presentation.
+- The endpoint is branchless. Do not send `branch_id`, `limit`, or `offset`.
+- Validate the live Postman response shape: a plain array of status summaries.
+- Each status summary contains only `id`, `name_uz`, `name_ru`, and `name_en`.
+- Persist the status-name snapshot and CRM response order into `repair_order_status_names`;
+  employees edit only `display_name_uz` and `display_name_ru`.
 - Do not log full status payloads or authorization headers.
 
 ### Catalog And Public Repair Orders
@@ -328,8 +326,7 @@ The API error localization store persists Developer-managed endpoint error copy:
 
 The repair-order status-name store persists employee-managed client-facing status copy:
 
-- CRM status ID, branch ID, customer code, CRM names, visibility/activity flags, sort order, and
-  latest order count from the status catalog;
+- CRM status ID and CRM Uzbek/Russian/English names from the status catalog;
 - Uzbek and Russian client-facing display names;
 - creation and update timestamps.
 
@@ -387,7 +384,6 @@ with `AppConfig` and `loadConfig`.
 | `CRM_BASE_URL`                     | Required                  | Trailing slashes are removed                              |
 | `TELEGRAM_BOT_BASIC_AUTH_USER`     | Required                  | CRM service credential                                    |
 | `TELEGRAM_BOT_BASIC_AUTH_PASSWORD` | Required                  | CRM service secret                                        |
-| `CRM_REPAIR_STATUS_BRANCH_ID`      | Required                  | Branch UUID used for external repair-order status sync    |
 | `CRM_REQUEST_TIMEOUT_MS`           | `10000`                   | Integer from 100 through 120000                           |
 | `CRM_MAX_RETRIES`                  | `2`                       | Integer from 0 through 5                                  |
 | `DB_HOST`                          | `localhost`               | Overridden to `postgres` by Compose for the bot container |

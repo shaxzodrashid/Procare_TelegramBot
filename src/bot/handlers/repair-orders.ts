@@ -1,9 +1,10 @@
-import type { Bot } from 'grammy';
+import type { Bot, InlineKeyboard } from 'grammy';
 import type { BotContext } from '../context.js';
 import type { BotDependencies } from '../create-bot.js';
 import { t } from '../messages.js';
 import { hasEmployeeMenuAccess, replyWithAdminRegistration, safeHttpUrl } from '../helpers.js';
 import { clearSupportFlow } from '../session.js';
+import type { SmartReplyContent } from '../rich-messages.js';
 import { replySmart } from '../rich-messages.js';
 import { formatClientRepairOrderDetail, formatClientRepairOrderList } from '../formatters.js';
 import {
@@ -23,7 +24,7 @@ const applyStatusNameOverridesToList = async (
   dependencies: BotDependencies,
 ): Promise<CustomerRepairOrderList> => {
   if (!dependencies.repairOrderStatusNameStore) return result;
-  const overrides = await dependencies.repairOrderStatusNameStore.findDisplayNamesByCustomerCodes(
+  const overrides = await dependencies.repairOrderStatusNameStore.findDisplayNamesByStatusIds(
     result.orders.map((order) => order.status.code),
   );
   if (overrides.size === 0) return result;
@@ -49,7 +50,7 @@ export const applyStatusNameOverridesToDetail = async (
   dependencies: BotDependencies,
 ): Promise<CustomerRepairOrderDetail> => {
   if (!dependencies.repairOrderStatusNameStore) return order;
-  const overrides = await dependencies.repairOrderStatusNameStore.findDisplayNamesByCustomerCodes([
+  const overrides = await dependencies.repairOrderStatusNameStore.findDisplayNamesByStatusIds([
     order.status.code,
   ]);
   const override = overrides.get(order.status.code);
@@ -66,11 +67,84 @@ export const applyStatusNameOverridesToDetail = async (
 
 const REPAIR_ORDERS_PAGE_SIZE = 10;
 
+type RepairOrderEditOptions = NonNullable<Parameters<BotContext['editMessageText']>[1]>;
+type RepairOrderReplyOptions = NonNullable<Parameters<BotContext['reply']>[1]>;
+type RepairOrderSmartOptions = RepairOrderEditOptions & { reply_markup?: InlineKeyboard };
+
+const isMessageNotModifiedError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+  const description =
+    'description' in error && typeof error.description === 'string'
+      ? error.description
+      : 'message' in error && typeof error.message === 'string'
+        ? error.message
+        : '';
+  return description.toLowerCase().includes('message is not modified');
+};
+
+const editRepairOrderWindow = async (
+  ctx: BotContext,
+  text: string,
+  options: RepairOrderEditOptions,
+): Promise<boolean> => {
+  if (!ctx.callbackQuery?.message) return false;
+
+  try {
+    await ctx.editMessageText(text, options);
+    return true;
+  } catch (error) {
+    return isMessageNotModifiedError(error);
+  }
+};
+
+const sendOrEditRepairOrderWindow = async (
+  ctx: BotContext,
+  content: SmartReplyContent,
+  dependencies: BotDependencies,
+  options: RepairOrderSmartOptions,
+  preferEdit: boolean,
+): Promise<void> => {
+  if (preferEdit && (await editRepairOrderWindow(ctx, content.fallbackHtml, options))) return;
+
+  await replySmart(ctx, content, {
+    enabled: dependencies.richMessagesEnabled,
+    logger: dependencies.logger,
+    replyMarkup: options.reply_markup,
+  });
+};
+
+const sendOrEditPlainWindow = async (
+  ctx: BotContext,
+  text: string,
+  options: RepairOrderReplyOptions,
+  preferEdit: boolean,
+): Promise<void> => {
+  if (preferEdit && (await editRepairOrderWindow(ctx, text, {}))) return;
+  await ctx.reply(text, options);
+};
+
+const editPendingMessage = async (
+  ctx: BotContext,
+  pendingMessage: { message_id: number } | undefined,
+  text: string,
+  options: RepairOrderEditOptions,
+): Promise<boolean> => {
+  if (!pendingMessage || !ctx.chat) return false;
+
+  try {
+    await ctx.api.editMessageText(ctx.chat.id, pendingMessage.message_id, text, options);
+    return true;
+  } catch (error) {
+    return isMessageNotModifiedError(error);
+  }
+};
+
 export const showClientRepairOrders = async (
   ctx: BotContext,
   dependencies: BotDependencies,
   offset: number,
   showLoading = false,
+  preferEdit = false,
 ): Promise<void> => {
   const client = ctx.session.client;
   if (!client) {
@@ -81,7 +155,13 @@ export const showClientRepairOrders = async (
   }
 
   const pendingMessage =
-    showLoading && ctx.chat ? await ctx.reply(t(ctx.session.locale, 'ordersLoading')) : undefined;
+    showLoading && !preferEdit && ctx.chat
+      ? await ctx.reply(t(ctx.session.locale, 'ordersLoading'))
+      : undefined;
+  if (showLoading && preferEdit) {
+    await editRepairOrderWindow(ctx, t(ctx.session.locale, 'ordersLoading'), {});
+  }
+
   try {
     const result = await dependencies.clientRepairOrderService.listClientRepairOrders(
       client.client_id,
@@ -91,15 +171,21 @@ export const showClientRepairOrders = async (
       },
     );
     const displayedResult = await applyStatusNameOverridesToList(result, dependencies);
-    if (pendingMessage && ctx.chat) {
-      await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
-    }
 
     if (displayedResult.orders.length === 0) {
       ctx.session.repairOrdersView = { offset: result.pagination.offset, orderNumbers: [] };
-      await ctx.reply(t(ctx.session.locale, 'noOrders'), {
+      const noOrdersOptions = {
         reply_markup: personalMenuKeyboard(ctx.session),
-      });
+      };
+      if (await editPendingMessage(ctx, pendingMessage, t(ctx.session.locale, 'noOrders'), {})) {
+        return;
+      }
+      await sendOrEditPlainWindow(
+        ctx,
+        t(ctx.session.locale, 'noOrders'),
+        noOrdersOptions,
+        preferEdit,
+      );
       return;
     }
 
@@ -108,19 +194,31 @@ export const showClientRepairOrders = async (
       offset: result.pagination.offset,
       orderNumbers,
     };
-    await replySmart(ctx, formatClientRepairOrderList(displayedResult, ctx.session.locale), {
-      enabled: dependencies.richMessagesEnabled,
-      logger: dependencies.logger,
-      replyMarkup: repairOrdersKeyboard(orderNumbers, result.pagination, ctx.session.locale),
-    });
-  } catch (error) {
-    if (pendingMessage && ctx.chat) {
-      await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
+    const listContent = formatClientRepairOrderList(displayedResult, ctx.session.locale);
+    const listOptions = {
+      parse_mode: 'HTML' as const,
+      reply_markup: repairOrdersKeyboard(orderNumbers, result.pagination, ctx.session.locale),
+    };
+    if (await editPendingMessage(ctx, pendingMessage, listContent.fallbackHtml, listOptions)) {
+      return;
     }
+    await sendOrEditRepairOrderWindow(ctx, listContent, dependencies, listOptions, preferEdit);
+  } catch (error) {
     dependencies.logger.error('Failed to load client repair orders', error);
-    await ctx.reply(t(ctx.session.locale, 'ordersUnavailable'), {
+    const unavailableOptions = {
       reply_markup: personalMenuKeyboard(ctx.session),
-    });
+    };
+    if (
+      await editPendingMessage(ctx, pendingMessage, t(ctx.session.locale, 'ordersUnavailable'), {})
+    ) {
+      return;
+    }
+    await sendOrEditPlainWindow(
+      ctx,
+      t(ctx.session.locale, 'ordersUnavailable'),
+      unavailableOptions,
+      preferEdit,
+    );
   }
 };
 
@@ -128,6 +226,7 @@ export const showClientRepairOrderDetail = async (
   ctx: BotContext,
   dependencies: BotDependencies,
   orderNumber: string,
+  preferEdit = false,
 ): Promise<void> => {
   const client = ctx.session.client;
   if (!client) {
@@ -149,24 +248,29 @@ export const showClientRepairOrderDetail = async (
     ctx.session.repairOrdersView.selectedAssignedAdminIds = displayedOrder.assigned_admins.map(
       (admin) => admin.id,
     );
-    await replySmart(ctx, formatClientRepairOrderDetail(displayedOrder, ctx.session.locale), {
-      enabled: dependencies.richMessagesEnabled,
-      logger: dependencies.logger,
-      replyMarkup: repairOrderDetailKeyboard(ctx.session.locale, {
-        supportEnabled: true,
-        mapUrl: safeHttpUrl(displayedOrder.branch?.map_url),
-        checklistUrl: safeHttpUrl(displayedOrder.documents.checklist_url),
-        warrantyDocumentUrl: safeHttpUrl(displayedOrder.documents.warranty_document_url),
-        offerUrl: safeHttpUrl(displayedOrder.documents.offer_url),
-      }),
-    });
+    await sendOrEditRepairOrderWindow(
+      ctx,
+      formatClientRepairOrderDetail(displayedOrder, ctx.session.locale),
+      dependencies,
+      {
+        parse_mode: 'HTML',
+        reply_markup: repairOrderDetailKeyboard(ctx.session.locale, {
+          supportEnabled: true,
+          mapUrl: safeHttpUrl(displayedOrder.branch?.map_url),
+          checklistUrl: safeHttpUrl(displayedOrder.documents.checklist_url),
+          warrantyDocumentUrl: safeHttpUrl(displayedOrder.documents.warranty_document_url),
+          offerUrl: safeHttpUrl(displayedOrder.documents.offer_url),
+        }),
+      },
+      preferEdit,
+    );
   } catch (error) {
     if (error instanceof ClientRepairOrderError && error.code === 'not_found') {
-      await ctx.reply(t(ctx.session.locale, 'orderNotFound'));
+      await sendOrEditPlainWindow(ctx, t(ctx.session.locale, 'orderNotFound'), {}, preferEdit);
       return;
     }
     dependencies.logger.error('Failed to load client repair-order detail', error);
-    await ctx.reply(t(ctx.session.locale, 'ordersUnavailable'));
+    await sendOrEditPlainWindow(ctx, t(ctx.session.locale, 'ordersUnavailable'), {}, preferEdit);
   }
 };
 
@@ -197,7 +301,7 @@ export const registerRepairOrdersHandlers = (
       await ctx.reply(t(ctx.session.locale, 'staleAction'));
       return;
     }
-    await showClientRepairOrders(ctx, dependencies, offset);
+    await showClientRepairOrders(ctx, dependencies, offset, false, true);
   });
 
   bot.callbackQuery(/^ro:v:(\d+):(\d+)$/, async (ctx) => {
@@ -218,7 +322,7 @@ export const registerRepairOrdersHandlers = (
       await ctx.reply(t(ctx.session.locale, 'staleAction'));
       return;
     }
-    await showClientRepairOrderDetail(ctx, dependencies, orderNumber);
+    await showClientRepairOrderDetail(ctx, dependencies, orderNumber, true);
   });
 
   bot.callbackQuery('ro:r', async (ctx) => {
@@ -228,7 +332,7 @@ export const registerRepairOrdersHandlers = (
       await ctx.reply(t(ctx.session.locale, 'staleAction'));
       return;
     }
-    await showClientRepairOrderDetail(ctx, dependencies, orderNumber);
+    await showClientRepairOrderDetail(ctx, dependencies, orderNumber, true);
   });
 
   bot.callbackQuery('ro:b', async (ctx) => {
@@ -237,6 +341,12 @@ export const registerRepairOrdersHandlers = (
       await ctx.reply(t(ctx.session.locale, 'staleAction'));
       return;
     }
-    await showClientRepairOrders(ctx, dependencies, ctx.session.repairOrdersView?.offset ?? 0);
+    await showClientRepairOrders(
+      ctx,
+      dependencies,
+      ctx.session.repairOrdersView?.offset ?? 0,
+      false,
+      true,
+    );
   });
 };

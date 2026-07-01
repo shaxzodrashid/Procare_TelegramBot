@@ -153,7 +153,7 @@ const messages = {
     adminStatusNamesEmpty: 'CRM’dan statuslar topilmadi.',
     adminStatusNamesRefresh: '🔄 CRM’dan yangilash',
     adminStatusNameDetail:
-      '<b>{{crmName}}</b>\n\nCRM ID: <code>{{crmStatusId}}</code>\nCustomer code: <code>{{customerCode}}</code>\nMijozga ko‘rinadi: <b>{{canUserView}}</b>\nFaol: <b>{{isActive}}</b>\nBuyurtmalar soni: <b>{{totalRepairOrders}}</b>\n\n<b>Mijozga ko‘rinadigan nomlar</b>\nUZ: {{displayUz}}\nRU: {{displayRu}}',
+      '<b>{{crmName}}</b>\n\nCRM ID: <code>{{crmStatusId}}</code>\n\n<b>Mijozga ko‘rinadigan nomlar</b>\nUZ: {{displayUz}}\nRU: {{displayRu}}',
     adminStatusNameEditUz: 'UZ nomi',
     adminStatusNameEditRu: 'RU nomi',
     adminStatusNamePromptUz:
@@ -374,7 +374,7 @@ const messages = {
     adminStatusNamesEmpty: 'Статусы из CRM не найдены.',
     adminStatusNamesRefresh: '🔄 Обновить из CRM',
     adminStatusNameDetail:
-      '<b>{{crmName}}</b>\n\nCRM ID: <code>{{crmStatusId}}</code>\nCustomer code: <code>{{customerCode}}</code>\nПоказывается клиенту: <b>{{canUserView}}</b>\nАктивен: <b>{{isActive}}</b>\nЗаказов: <b>{{totalRepairOrders}}</b>\n\n<b>Клиентские названия</b>\nUZ: {{displayUz}}\nRU: {{displayRu}}',
+      '<b>{{crmName}}</b>\n\nCRM ID: <code>{{crmStatusId}}</code>\n\n<b>Клиентские названия</b>\nUZ: {{displayUz}}\nRU: {{displayRu}}',
     adminStatusNameEditUz: 'UZ название',
     adminStatusNameEditRu: 'RU название',
     adminStatusNamePromptUz:

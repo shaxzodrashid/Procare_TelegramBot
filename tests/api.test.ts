@@ -31,7 +31,6 @@ const config: AppConfig = {
     baseUrl: 'http://crm.test',
     username: 'bot',
     password: 'secret',
-    repairStatusBranchId: '11111111-1111-4111-8111-111111111111',
     requestTimeoutMs: 1_000,
     maxRetries: 0,
   },

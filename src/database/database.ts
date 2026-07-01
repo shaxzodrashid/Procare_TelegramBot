@@ -1,4 +1,6 @@
-import { extname, join } from 'node:path';
+import { readdir } from 'node:fs/promises';
+import { basename, extname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import knex, { type Knex } from 'knex';
 
@@ -22,13 +24,41 @@ export const createDatabase = (config: AppConfig['database']): Knex =>
     acquireConnectionTimeout: config.acquireTimeoutMs,
   });
 
+interface RuntimeMigration {
+  path: string;
+  storedName: string;
+}
+
+const createStableMigrationSource = (
+  migrationsDirectory: string,
+  runtimeExtension: string,
+): Knex.MigrationSource<RuntimeMigration> => ({
+  async getMigrations() {
+    const files = await readdir(migrationsDirectory);
+    return files
+      .filter((file) => extname(file) === `.${runtimeExtension}`)
+      .sort()
+      .map((file) => ({
+        path: join(migrationsDirectory, file),
+        storedName: `${basename(file, extname(file))}.ts`,
+      }));
+  },
+
+  getMigrationName(migration) {
+    return migration.storedName;
+  },
+
+  async getMigration(migration) {
+    return (await import(pathToFileURL(migration.path).href)) as Knex.Migration;
+  },
+});
+
 export const migrateDatabase = async (database: Knex): Promise<void> => {
   const migrationsDirectory = join(__dirname, 'migrations');
   const extension = extname(__filename);
 
   await database.migrate.latest({
-    directory: migrationsDirectory,
-    extension: extension.slice(1),
     tableName: 'knex_migrations',
+    migrationSource: createStableMigrationSource(migrationsDirectory, extension.slice(1)),
   });
 };

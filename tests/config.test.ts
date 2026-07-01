@@ -14,7 +14,6 @@ const validEnv: NodeJS.ProcessEnv = {
   CRM_BASE_URL: 'http://localhost:5001/',
   TELEGRAM_BOT_BASIC_AUTH_USER: 'bot',
   TELEGRAM_BOT_BASIC_AUTH_PASSWORD: 'secret',
-  CRM_REPAIR_STATUS_BRANCH_ID: '11111111-1111-4111-8111-111111111111',
   DB_PASS: 'postgres',
 };
 
@@ -32,7 +31,6 @@ describe('loadConfig', () => {
     assert.equal(config.lifecycleNotifications.startupTimeoutMs, 60_000);
     assert.equal(config.lifecycleNotifications.shutdownTimeoutMs, 60_000);
     assert.equal(config.crm.baseUrl, 'http://localhost:5001');
-    assert.equal(config.crm.repairStatusBranchId, '11111111-1111-4111-8111-111111111111');
     assert.equal(config.database.host, 'localhost');
     assert.equal(config.database.name, 'probox_bot_db');
     assert.equal(config.database.password, 'postgres');

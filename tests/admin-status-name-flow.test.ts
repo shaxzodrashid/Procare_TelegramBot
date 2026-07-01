@@ -22,76 +22,22 @@ const logger: Logger = {
   table: () => undefined,
 };
 
-const crmStatus = (): CrmRepairOrderStatus =>
+const crmStatus = (overrides: Partial<CrmRepairOrderStatus> = {}): CrmRepairOrderStatus =>
   ({
     id: '11111111-1111-4111-8111-111111111111',
     name_uz: "O'ylab ko'radi",
     name_ru: 'Думает',
     name_en: 'Thinking',
-    bg_color: '#ffffff',
-    color: '#000000',
-    sort: 3,
-    can_user_view: true,
-    is_active: true,
-    type: 'Open',
-    is_protected: false,
-    can_add_payment: true,
-    suppress_is_taken_from_mother: false,
-    customer_code: 'AWAITING_APPROVAL',
-    customer_progress_type: 'linear',
-    customer_step: 2,
-    customer_total_steps: 7,
-    customer_message_uz: null,
-    customer_message_ru: null,
-    customer_message_en: null,
-    status: 'Open',
-    branch_id: '22222222-2222-4222-8222-222222222222',
-    created_by: null,
-    created_at: '2026-06-30T12:00:00.000Z',
-    updated_at: '2026-06-30T12:00:00.000Z',
-    permissions: {
-      can_add: true,
-      can_view: true,
-      can_update: true,
-      can_delete: true,
-      can_payment_add: true,
-      can_payment_cancel: true,
-      can_assign_admin: true,
-      can_notification: true,
-      can_notification_bot: true,
-      can_change_active: true,
-      can_change_status: true,
-      can_view_initial_problems: true,
-      can_change_initial_problems: true,
-      can_view_final_problems: true,
-      can_change_final_problems: true,
-      can_comment: true,
-      can_pickup_manage: true,
-      can_delivery_manage: true,
-      can_view_payments: true,
-      can_view_history: true,
-      cannot_continue_without_service_form: false,
-      cannot_continue_from_mother_branch: false,
-      cannot_continue_without_final_problems: false,
-      cannot_continue_without_final_problems_done: false,
-    },
-    transitions: [],
-    metrics: { total_repair_orders: 4 },
+    ...overrides,
   }) as CrmRepairOrderStatus;
 
-const toRecord = (status: CrmRepairOrderStatus): RepairOrderStatusNameRecord => ({
-  id: '1',
+const toRecord = (status: CrmRepairOrderStatus, index = 0): RepairOrderStatusNameRecord => ({
+  id: String(index + 1),
   crm_status_id: status.id,
-  branch_id: status.branch_id,
-  customer_code: status.customer_code,
+  crm_sort_order: index,
   crm_name_uz: status.name_uz,
   crm_name_ru: status.name_ru,
   crm_name_en: status.name_en,
-  sort: status.sort,
-  can_user_view: status.can_user_view,
-  is_active: status.is_active,
-  customer_progress_type: status.customer_progress_type,
-  total_repair_orders: status.metrics.total_repair_orders,
   display_name_uz: null,
   display_name_ru: null,
 });
@@ -131,22 +77,34 @@ const createDependencies = (): BotDependencies & { statuses: RepairOrderStatusNa
     repairOrderStatusService: {
       async listStatuses() {
         return {
-          statuses: [crmStatus()],
-          pagination: { total: 1, limit: 100, offset: 0 },
+          statuses: [
+            crmStatus({
+              id: '22222222-2222-4222-8222-222222222222',
+              name_uz: 'Z yakuniy status',
+              name_ru: 'Z статус',
+              name_en: 'Z status',
+            }),
+            crmStatus({
+              id: '11111111-1111-4111-8111-111111111111',
+              name_uz: "O'ylab ko'radi",
+              name_ru: 'Думает',
+              name_en: 'Thinking',
+            }),
+          ],
         };
       },
     },
     repairOrderStatusNameStore: {
       async upsertFromCrm(items: CrmRepairOrderStatus[]) {
-        items.forEach((item) => {
+        items.forEach((item, index) => {
           const existing = statuses.find((row) => row.crm_status_id === item.id);
-          const next = toRecord(item);
+          const next = toRecord(item, index);
           if (existing) Object.assign(existing, next, { id: existing.id });
           else statuses.push(next);
         });
       },
       async listStatuses() {
-        return statuses;
+        return [...statuses].sort((left, right) => left.crm_sort_order - right.crm_sort_order);
       },
       async findById(id: string) {
         return statuses.find((status) => status.id === id) ?? null;
@@ -157,11 +115,11 @@ const createDependencies = (): BotDependencies & { statuses: RepairOrderStatusNa
         Object.assign(status, update);
         return status;
       },
-      async findDisplayNamesByCustomerCodes(customerCodes: string[]) {
+      async findDisplayNamesByStatusIds(statusIds: string[]) {
         const result = new Map<string, RepairOrderStatusNameUpdate>();
         statuses.forEach((status) => {
-          if (status.customer_code && customerCodes.includes(status.customer_code)) {
-            result.set(status.customer_code, {
+          if (statusIds.includes(status.crm_status_id)) {
+            result.set(status.crm_status_id, {
               display_name_uz: status.display_name_uz,
               display_name_ru: status.display_name_ru,
             });
@@ -240,7 +198,7 @@ const detailOrder = (): CustomerRepairOrderDetail =>
     order_number: '1024',
     device: { brand: 'Apple', model: 'iPhone 15', imei_last4: null },
     status: {
-      code: 'AWAITING_APPROVAL',
+      code: '11111111-1111-4111-8111-111111111111',
       name_uz: "O'ylab ko'radi",
       name_ru: 'Думает',
       name_en: 'Thinking',
@@ -281,7 +239,7 @@ const detailOrder = (): CustomerRepairOrderDetail =>
     warranty: { period_months: null, warranty_until: null },
     documents: { checklist_url: null, warranty_document_url: null, offer_url: null },
     status_history: [],
-  }) as CustomerRepairOrderDetail;
+  }) as unknown as CustomerRepairOrderDetail;
 
 describe('admin repair-order status names', () => {
   it('lets an employee sync statuses and set a customer-facing Uzbek name', async () => {
@@ -295,17 +253,25 @@ describe('admin repair-order status names', () => {
 
     const listCall = apiCalls.find((call) => call.method === 'sendMessage');
     assert.ok(listCall);
-    assert.match(String(listCall.payload.text), /O'ylab ko'radi/);
+    assert.match(String(listCall.payload.text), /1\. <b>Z yakuniy status<\/b>/);
+    assert.match(String(listCall.payload.text), /2\. <b>O'ylab ko'radi<\/b>/);
+    assert.deepEqual(
+      listCall.payload.reply_markup.inline_keyboard[0].map((button: any) => button.text),
+      ['1', '2'],
+    );
     assert.equal(listCall.payload.reply_markup.inline_keyboard[0][0].callback_data, 'st:v:1');
 
     apiCalls.length = 0;
-    await bot.handleUpdate(adminCallback(3, 'st:v:1'));
+    await bot.handleUpdate(adminCallback(3, 'st:v:2'));
     const detailCall = apiCalls.find((call) => call.method === 'editMessageText');
     assert.ok(detailCall);
-    assert.match(String(detailCall.payload.text), /Customer code: <code>AWAITING_APPROVAL<\/code>/);
+    assert.match(
+      String(detailCall.payload.text),
+      /CRM ID: <code>11111111-1111-4111-8111-111111111111<\/code>/,
+    );
 
     apiCalls.length = 0;
-    await bot.handleUpdate(adminCallback(4, 'st:e:1:uz'));
+    await bot.handleUpdate(adminCallback(4, 'st:e:2:uz'));
     assert.ok(
       apiCalls.some((call) => String(call.payload.text).includes('o‘zbekcha status nomini')),
     );
@@ -313,11 +279,25 @@ describe('admin repair-order status names', () => {
     apiCalls.length = 0;
     await bot.handleUpdate(adminMessage(5, 'Javobingiz kutilmoqda'));
 
-    assert.equal(deps.statuses[0]?.display_name_uz, 'Javobingiz kutilmoqda');
+    assert.equal(deps.statuses[1]?.display_name_uz, 'Javobingiz kutilmoqda');
     assert.ok(apiCalls.some((call) => String(call.payload.text).includes('Status nomi saqlandi')));
   });
 
-  it('uses saved status names in client-facing repair-order details', async () => {
+  it('edits the existing status list message when refreshing CRM data', async () => {
+    const deps = createDependencies();
+    const { bot, apiCalls } = createTestBot(deps);
+
+    await bot.handleUpdate(adminMessage(1, '/start'));
+    await bot.handleUpdate(adminMessage(2, '🏷 Status nomlari'));
+
+    apiCalls.length = 0;
+    await bot.handleUpdate(adminCallback(3, 'st:refresh'));
+
+    assert.ok(apiCalls.some((call) => call.method === 'editMessageText'));
+    assert.ok(!apiCalls.some((call) => call.method === 'sendMessage'));
+  });
+
+  it('uses saved status names in client-facing repair-order details when status ids match', async () => {
     const deps = createDependencies();
     deps.statuses.push({
       ...toRecord(crmStatus()),

@@ -148,6 +148,22 @@ const developerCallback = (updateId: number, data: string) =>
   }) as any;
 
 describe('Developer endpoint localization flow', () => {
+  it('lets a developer-only user continue registration after logout language selection', async () => {
+    const deps = createDependencies();
+    const { bot, apiCalls } = createTestBot(deps);
+
+    await bot.handleUpdate(developerMessage(1, '/logout'));
+    apiCalls.length = 0;
+
+    await bot.handleUpdate(developerMessage(2, '🇺🇿 O‘zbekcha'));
+
+    const reply = apiCalls.find((call) => call.method === 'sendMessage');
+    assert.ok(reply);
+    assert.ok(String(reply.payload.text).includes('telefon raqamini ulashing'));
+    assert.equal(reply.payload.reply_markup.keyboard[0][0].request_contact, true);
+    assert.doesNotMatch(String(reply.payload.text), /Developer menyusi/);
+  });
+
   it('lets a configured developer create an endpoint location localization', async () => {
     const deps = createDependencies();
     const { bot, apiCalls } = createTestBot(deps);

@@ -89,7 +89,6 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       baseUrl: config.crm.baseUrl,
       username: config.crm.username,
       password: config.crm.password,
-      branchId: config.crm.repairStatusBranchId,
       timeoutMs: config.crm.requestTimeoutMs,
       maxRetries: config.crm.maxRetries,
     },

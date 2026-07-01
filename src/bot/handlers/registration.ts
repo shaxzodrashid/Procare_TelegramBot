@@ -224,7 +224,9 @@ export const registerRegistrationHandlers = (
     }
 
     const locale = text === t('ru', 'russian') ? 'ru' : 'uz';
-    if (hasRegisteredProfile(ctx.session)) {
+    const hasAccountProfile = Boolean(ctx.session.client || hasEmployeeMenuAccess(ctx.session));
+    const isSettingsLanguageChange = ctx.session.stage === 'settings_choosing_language';
+    if (hasRegisteredProfile(ctx.session) && (hasAccountProfile || isSettingsLanguageChange)) {
       try {
         const wasChoosingSettingsLanguage = ctx.session.stage === 'settings_choosing_language';
         await updateRegisteredLanguage(ctx, dependencies, locale);

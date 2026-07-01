@@ -260,21 +260,16 @@ export const adminTemplateTypeKeyboard = (locale: Locale): InlineKeyboard => {
 };
 
 export const adminStatusNameListKeyboard = (
-  statuses: Pick<
-    RepairOrderStatusNameRecord,
-    'id' | 'crm_name_uz' | 'crm_name_ru' | 'customer_code'
-  >[],
+  statuses: Pick<RepairOrderStatusNameRecord, 'id'>[],
   locale: Locale,
 ): InlineKeyboard => {
   const keyboard = new InlineKeyboard();
-  statuses.forEach((status) => {
-    const title = locale === 'ru' ? status.crm_name_ru : status.crm_name_uz;
-    const label = `${status.customer_code ?? '—'} · ${
-      title.length > 28 ? `${title.slice(0, 25).trimEnd()}...` : title
-    }`;
-    keyboard.text(label, `st:v:${status.id}`).row();
+  statuses.forEach((status, index) => {
+    keyboard.text(String(index + 1), `st:v:${status.id}`);
+    if ((index + 1) % 8 === 0) keyboard.row();
   });
   keyboard
+    .row()
     .text(t(locale, 'adminStatusNamesRefresh'), 'st:refresh')
     .row()
     .text(t(locale, 'adminTemplateBackToMenu'), 'admin:menu');

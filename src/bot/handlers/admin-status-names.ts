@@ -21,14 +21,12 @@ import { requireAdmin } from './admin-clients.js';
 type StatusWindowOptions = NonNullable<Parameters<BotContext['reply']>[1]> &
   NonNullable<Parameters<BotContext['editMessageText']>[1]>;
 
-const boolText = (value: boolean): string => (value ? 'yes' : 'no');
-
 const formatStatusList = (statuses: RepairOrderStatusNameRecord[], locale: 'uz' | 'ru'): string => {
   const rows = statuses.map((status, index) => {
     const crmName = locale === 'ru' ? status.crm_name_ru : status.crm_name_uz;
     const display = locale === 'ru' ? status.display_name_ru : status.display_name_uz;
     return `${index + 1}. <b>${escapeHtml(crmName)}</b>\n<code>${escapeHtml(
-      status.customer_code ?? 'no_customer_code',
+      status.crm_status_id,
     )}</code> → ${escapeHtml(display ?? '—')}`;
   });
 
@@ -43,10 +41,6 @@ const formatStatusDetail = (status: RepairOrderStatusNameRecord, locale: 'uz' | 
   t(locale, 'adminStatusNameDetail', {
     crmName: escapeHtml(locale === 'ru' ? status.crm_name_ru : status.crm_name_uz),
     crmStatusId: escapeHtml(status.crm_status_id),
-    customerCode: escapeHtml(status.customer_code ?? '—'),
-    canUserView: boolText(status.can_user_view),
-    isActive: boolText(status.is_active),
-    totalRepairOrders: String(status.total_repair_orders),
     displayUz: escapeHtml(status.display_name_uz ?? '—'),
     displayRu: escapeHtml(status.display_name_ru ?? '—'),
   });
@@ -61,23 +55,32 @@ const replyOrEdit = async (
     await ctx.reply(text, options);
     return;
   }
-  await ctx.editMessageText(text, options).catch(async () => {
+
+  try {
+    await ctx.editMessageText(text, options);
+  } catch (error) {
+    if (isMessageNotModifiedError(error)) return;
     await ctx.reply(text, options);
-  });
+  }
+};
+
+const isMessageNotModifiedError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+  const description =
+    'description' in error && typeof error.description === 'string'
+      ? error.description
+      : 'message' in error && typeof error.message === 'string'
+        ? error.message
+        : '';
+  return description.toLowerCase().includes('message is not modified');
 };
 
 const refreshStatusesFromCrm = async (dependencies: BotDependencies): Promise<void> => {
   if (!dependencies.repairOrderStatusService || !dependencies.repairOrderStatusNameStore) {
     throw new Error('Repair-order status dependencies are not configured');
   }
-  let offset = 0;
-  const limit = 100;
-  for (;;) {
-    const result = await dependencies.repairOrderStatusService.listStatuses({ limit, offset });
-    await dependencies.repairOrderStatusNameStore.upsertFromCrm(result.statuses);
-    offset += result.statuses.length;
-    if (offset >= result.pagination.total || result.statuses.length === 0) return;
-  }
+  const result = await dependencies.repairOrderStatusService.listStatuses();
+  await dependencies.repairOrderStatusNameStore.upsertFromCrm(result.statuses);
 };
 
 const showStatusList = async (

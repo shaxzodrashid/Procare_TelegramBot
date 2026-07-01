@@ -73,8 +73,7 @@ placeholders such as `{{ customer_name }}` and `{{ coupon_code }}`; rendered pla
 HTML-escaped, and coupon codes are wrapped in Telegram `<code>` tags for tap-to-copy behavior.
 
 Employees can also open `Status nomlari` / `Названия статусов` to refresh the CRM repair-order
-status catalog for `CRM_REPAIR_STATUS_BRANCH_ID` and set Uzbek/Russian names that clients see in
-Telegram repair-order lists, details, and direct-message repair-order cards.
+status catalog and set Uzbek/Russian names for the status IDs returned by CRM.
 
 Telegram IDs listed in `DEVELOPER_TELEGRAM_IDS` receive a Developer menu. Developers can view the
 upstream API endpoints used by the bot and create or update Uzbek/Russian localizations for each
@@ -321,7 +320,6 @@ All supported variables are listed in `.env.example`.
 | `CRM_BASE_URL`                     | none            | Required CRM/API base URL                         |
 | `TELEGRAM_BOT_BASIC_AUTH_USER`     | none            | Required CRM service username                     |
 | `TELEGRAM_BOT_BASIC_AUTH_PASSWORD` | none            | Required CRM service password                     |
-| `CRM_REPAIR_STATUS_BRANCH_ID`      | none            | Required branch UUID for CRM status-name sync     |
 | `CRM_REQUEST_TIMEOUT_MS`           | `10000`         | Upstream request timeout                          |
 | `CRM_MAX_RETRIES`                  | `2`             | Retry count for eligible upstream requests        |
 | `DB_HOST`                          | `localhost`     | PostgreSQL host                                   |
@@ -432,7 +430,7 @@ Authorization: Basic ...
 Employee status-name sync calls:
 
 ```http
-GET /api/v1/external/repair-order-statuses?branch_id={CRM_REPAIR_STATUS_BRANCH_ID}&limit=100&offset=0
+GET /api/v1/external/repair-order-statuses
 Authorization: Basic ...
 ```
 
@@ -458,6 +456,7 @@ See:
 
 - `Docs/TELEGRAM_CLIENT_REGISTRATION_API.md`
 - `Docs/TELEGRAM_CLIENT_REPAIR_ORDERS_API.md`
+- `Docs/REPAIR_ORDER_STATUS_CATALOG_API.md`
 - `Docs/PUBLIC_REPAIR_ORDER_AND_CALCULATOR_API_REFERENCE.md`
 
 ## Database And Migrations
@@ -487,9 +486,9 @@ ID, repair-order context, Telegram chat/message IDs, content type, text, and pho
 message API can use this durable mapping to send CRM employee responses as threaded Telegram replies
 when `support_reply.target_crm_comment_id` is provided.
 
-`repair_order_status_names` stores the latest CRM repair-order status snapshot plus employee-managed
-Uzbek/Russian client-facing names by `customer_code`. Client order presentation overlays only those
-display names while keeping the upstream contract intact.
+`repair_order_status_names` stores the latest CRM repair-order status-name snapshot, CRM response
+order, and employee-managed Uzbek/Russian display names by CRM status ID. Refreshes update CRM
+names and ordering without overwriting the employee-managed display names.
 
 `deployment_history` stores production deploy stop/start records. It captures exact database-server
 timestamps for `stopped_at` and `started_at`, the computed shutdown period, current Git commit SHA,

@@ -29,7 +29,6 @@ export interface AppConfig {
     baseUrl: string;
     username: string;
     password: string;
-    repairStatusBranchId: string;
     requestTimeoutMs: number;
     maxRetries: number;
   };
@@ -92,14 +91,6 @@ const readTelegramIdList = (value: string | undefined): string[] => {
   const invalid = ids.find((id) => !/^[1-9]\d{0,18}$/.test(id));
   if (invalid) throw new Error('must be a comma-separated list of Telegram numeric IDs');
   return [...new Set(ids)];
-};
-
-const readUuid = (value: string | undefined): string => {
-  const trimmed = value?.trim() ?? '';
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) {
-    throw new Error('must be a UUID');
-  }
-  return trimmed;
 };
 
 export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
@@ -206,11 +197,6 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
   if (!env.TELEGRAM_BOT_BASIC_AUTH_PASSWORD?.trim()) {
     issues.push('TELEGRAM_BOT_BASIC_AUTH_PASSWORD is required');
   }
-  const repairStatusBranchId = capture(
-    'CRM_REPAIR_STATUS_BRANCH_ID',
-    () => readUuid(env.CRM_REPAIR_STATUS_BRANCH_ID),
-    '',
-  );
   if (!env.DB_PASS) issues.push('DB_PASS is required');
   if (apiEnabled && !env.API_MESSAGE_SEND_TOKEN?.trim()) {
     issues.push('API_MESSAGE_SEND_TOKEN is required when API_ENABLED=true');
@@ -248,7 +234,6 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
       baseUrl: env.CRM_BASE_URL!.trim().replace(/\/+$/, ''),
       username: env.TELEGRAM_BOT_BASIC_AUTH_USER!.trim(),
       password: env.TELEGRAM_BOT_BASIC_AUTH_PASSWORD!,
-      repairStatusBranchId,
       requestTimeoutMs,
       maxRetries,
     },
