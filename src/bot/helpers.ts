@@ -119,6 +119,9 @@ export const registeredHelpKey = (sessionData: BotSession): MessageKey =>
         ? 'developerHelp'
         : 'help';
 
+export const registeredHelpParseMode = (sessionData: BotSession): 'HTML' | undefined =>
+  hasEmployeeMenuAccess(sessionData) || sessionData.client ? 'HTML' : undefined;
+
 export const currentReplyKeyboard = (sessionData: BotSession) =>
   sessionData.stage === 'settings'
     ? settingsKeyboard(sessionData.locale)

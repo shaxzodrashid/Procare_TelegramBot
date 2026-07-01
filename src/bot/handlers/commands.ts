@@ -6,6 +6,7 @@ import {
   hasDeveloperMenuAccess,
   adminDisplayName,
   registeredHelpKey,
+  registeredHelpParseMode,
   currentReplyKeyboard,
 } from '../helpers.js';
 import { clearUnknownFlow, resetSession } from '../session.js';
@@ -66,6 +67,7 @@ export const registerCommandHandlers = (
   bot.command('help', async (ctx) => {
     await ctx.reply(t(ctx.session.locale, registeredHelpKey(ctx.session)), {
       reply_markup: currentReplyKeyboard(ctx.session),
+      parse_mode: registeredHelpParseMode(ctx.session),
     });
   });
 

@@ -14,6 +14,7 @@ import {
   canRegisterWithManualPhone,
   currentReplyKeyboard,
   registeredHelpKey,
+  registeredHelpParseMode,
 } from '../helpers.js';
 import { clearSettingsFlow, clearUnknownFlow } from '../session.js';
 import {
@@ -298,6 +299,7 @@ export const registerRegistrationHandlers = (
         ),
         {
           reply_markup: currentReplyKeyboard(ctx.session),
+          parse_mode: ctx.session.client ? registeredHelpParseMode(ctx.session) : undefined,
         },
       );
       return;

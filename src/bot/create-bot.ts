@@ -15,7 +15,12 @@ import type { UnknownClientStore } from '../services/unknown-client.store.js';
 import type { Logger } from '../utils/logger.js';
 import type { BotContext } from './context.js';
 import { t } from './messages.js';
-import { hasRegisteredProfile, registeredHelpKey, currentReplyKeyboard } from './helpers.js';
+import {
+  hasRegisteredProfile,
+  registeredHelpKey,
+  registeredHelpParseMode,
+  currentReplyKeyboard,
+} from './helpers.js';
 import {
   initialSession,
   createTelegramApiLoggingTransformer,
@@ -139,6 +144,9 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
       ),
       {
         reply_markup: currentReplyKeyboard(ctx.session),
+        parse_mode: hasRegisteredProfile(ctx.session)
+          ? registeredHelpParseMode(ctx.session)
+          : undefined,
       },
     );
   };

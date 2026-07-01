@@ -275,4 +275,21 @@ describe('Admin Template Management Flow', () => {
     assert.ok(String(listEditCall.payload.text).includes('🧩 Xabar shablonlari'));
     assert.equal(listEditCall.payload.reply_markup.inline_keyboard[0][0].callback_data, 'atpd:10');
   });
+
+  it('renders the employee menu with HTML when returning from template management', async () => {
+    const deps = createMockDependencies();
+    const { bot, apiCalls } = createTestBot(deps);
+
+    await bot.handleUpdate(adminMessage(1, '/start'));
+    await bot.handleUpdate(adminMessage(2, '🧩 Xabar shablonlari'));
+    apiCalls.length = 0;
+
+    await bot.handleUpdate(adminCallback(3, 'admin:menu'));
+
+    const menuCall = apiCalls.find(
+      (call) => call.method === 'sendMessage' && String(call.payload.text).includes('WORKPLACE'),
+    );
+    assert.ok(menuCall);
+    assert.equal(menuCall.payload.parse_mode, 'HTML');
+  });
 });

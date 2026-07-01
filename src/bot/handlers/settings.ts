@@ -9,6 +9,7 @@ import {
   parseSettingsName,
   currentReplyKeyboard,
   registeredHelpKey,
+  registeredHelpParseMode,
   type SettingsName,
 } from '../helpers.js';
 import {
@@ -167,6 +168,7 @@ export const registerSettingsHandlers = (
     clearSettingsFlow(ctx.session);
     await ctx.reply(t(ctx.session.locale, registeredHelpKey(ctx.session)), {
       reply_markup: personalMenuKeyboard(ctx.session),
+      parse_mode: registeredHelpParseMode(ctx.session),
     });
   });
 
