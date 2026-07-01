@@ -186,9 +186,9 @@ const submitSupportComment = async (
     if (pendingMessage && ctx.chat) {
       await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
     }
-    clearSupportFlow(ctx.session);
+    draft.submitting = false;
     await ctx.reply(t(ctx.session.locale, result.created ? 'supportSent' : 'supportDuplicate'), {
-      reply_markup: personalMenuKeyboard(ctx.session),
+      reply_markup: supportCommentKeyboard(ctx.session.locale),
     });
   } catch (error) {
     draft.submitting = false;
@@ -320,9 +320,9 @@ export const registerSupportHandlers = (
       return next();
     }
 
-    if (ctx.message.text === t(ctx.session.locale, 'supportCancel')) {
+    if (ctx.message.text === t(ctx.session.locale, 'supportEndChat')) {
       clearSupportFlow(ctx.session);
-      await ctx.reply(t(ctx.session.locale, 'supportCancelled'), {
+      await ctx.reply(t(ctx.session.locale, 'supportEnded'), {
         reply_markup: personalMenuKeyboard(ctx.session),
       });
       return;

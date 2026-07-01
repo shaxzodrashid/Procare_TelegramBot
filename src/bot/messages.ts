@@ -98,7 +98,9 @@ const messages = {
     orderOffer: '📄 Ommaviy oferta',
     orderSupport: '💬 Xodimga yozish',
     supportPrompt:
-      '💬 #{{number}} buyurtma bo‘yicha xabaringizni yuboring. Matn yoki bitta rasm yuborishingiz mumkin.',
+      '💬 #{{number}} buyurtma bo‘yicha chat boshlandi. Har bir matn yoki rasm Procare xodimlariga yuboriladi.\n\nSuhbatni tugatish uchun pastdagi tugmani bosing.',
+    supportEndChat: '🔚 Suhbatni tugatish',
+    supportEnded: '✅ Suhbat tugatildi.',
     supportCancel: '✖️ Bekor qilish',
     supportCancelled: '✅ Xabar yuborish bekor qilindi.',
     supportEmpty: '⚠️ Xabar bo‘sh bo‘lmasligi kerak. Matn yoki rasm yuboring.',
@@ -278,7 +280,8 @@ const messages = {
     leaveRequestIntro: '🛠 Новая заявка на ремонт. Выберите тип телефона:',
     modelNotListed: 'Модели нет в списке',
     enterCustomModel: 'Пожалуйста, введите модель вашего телефона (например, iPhone 15 Pro Max):',
-    customModelTooLong: '⚠️ Название модели не должно превышать 200 символов. Отправьте более короткое название.',
+    customModelTooLong:
+      '⚠️ Название модели не должно превышать 200 символов. Отправьте более короткое название.',
     staleAction: '🔄 Эта кнопка устарела. Начните заново с помощью /start.',
     emptyProblems:
       '📝 Для этой модели нет готового списка неисправностей. Вы можете описать проблему в примечании.',
@@ -328,7 +331,9 @@ const messages = {
     orderOffer: '📄 Публичная оферта',
     orderSupport: '💬 Написать сотруднику',
     supportPrompt:
-      '💬 Отправьте сообщение по заказу #{{number}}. Можно отправить текст или одно фото.',
+      '💬 Чат по заказу #{{number}} начат. Каждый текст или фото будет отправлен сотрудникам Procare.\n\nЧтобы завершить чат, нажмите кнопку ниже.',
+    supportEndChat: '🔚 Завершить чат',
+    supportEnded: '✅ Чат завершён.',
     supportCancel: '✖️ Отмена',
     supportCancelled: '✅ Отправка сообщения отменена.',
     supportEmpty: '⚠️ Сообщение не должно быть пустым. Отправьте текст или фото.',

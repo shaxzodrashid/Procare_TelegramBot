@@ -211,7 +211,7 @@ export const repairOrderDetailKeyboard = (
 };
 
 export const supportCommentKeyboard = (locale: Locale): Keyboard =>
-  new Keyboard().text(t(locale, 'supportCancel')).resized().oneTime();
+  new Keyboard().text(t(locale, 'supportEndChat')).resized();
 
 export const adminTemplateListKeyboard = (
   templates: Pick<MessageTemplate, 'id' | 'title' | 'is_active'>[],

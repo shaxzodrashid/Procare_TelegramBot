@@ -118,11 +118,11 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
   });
 
   // Register feature handlers
+  registerSupportHandlers(bot, token, dependencies);
   registerCommandHandlers(bot, dependencies);
   registerRegistrationHandlers(bot, dependencies);
   registerSettingsHandlers(bot, dependencies);
   registerRepairOrdersHandlers(bot, dependencies);
-  registerSupportHandlers(bot, token, dependencies);
   registerDirectMessageHandlers(bot, dependencies);
   registerUnknownFlowHandlers(bot, dependencies);
   registerAdminClientsHandlers(bot, dependencies);

@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 
 import { createBot } from '../src/bot/create-bot.js';
 import type { BotDependencies } from '../src/bot/create-bot.js';
+import { t } from '../src/bot/messages.js';
 import type { CustomerRepairOrderDetail } from '../src/types/client-repair-order.js';
 import type { Logger } from '../src/utils/logger.js';
 
@@ -74,15 +75,23 @@ const detail: CustomerRepairOrderDetail = {
   status_history: [],
 };
 
-const createDependencies = (): BotDependencies & { dispatches: any[]; supportSaves: any[] } => {
+const createDependencies = (): BotDependencies & {
+  dispatches: any[];
+  supportSaves: any[];
+  supportRequests: any[];
+  listCalls: any[];
+} => {
   const dispatches: any[] = [];
   const supportSaves: any[] = [];
+  const supportRequests: any[] = [];
+  const listCalls: any[] = [];
 
   return {
     registrationService: {} as any,
     repairOrderService: {} as any,
     clientRepairOrderService: {
-      async listClientRepairOrders() {
+      async listClientRepairOrders(...args: any[]) {
+        listCalls.push(args);
         return {
           orders: [
             {
@@ -104,7 +113,8 @@ const createDependencies = (): BotDependencies & { dispatches: any[]; supportSav
       async getClientRepairOrder() {
         return detail;
       },
-      async registerClientSupportComment() {
+      async registerClientSupportComment(repairOrderId: string, request: any) {
+        supportRequests.push({ repairOrderId, request });
         return {
           created: true,
           comment: {
@@ -150,6 +160,8 @@ const createDependencies = (): BotDependencies & { dispatches: any[]; supportSav
     richMessagesEnabled: false,
     dispatches,
     supportSaves,
+    supportRequests,
+    listCalls,
   };
 };
 
@@ -270,5 +282,126 @@ describe('support admin notification flow', () => {
     assert.ok(notificationDispatch);
     assert.equal(notificationDispatch.status, 'sent');
     assert.equal(notificationDispatch.user_id, '301');
+  });
+
+  it('keeps support chat active and routes menu labels to CRM until the client ends it', async () => {
+    const deps = createDependencies();
+    deps.registeredUserStore = {
+      async findByTelegramId(telegramId: string) {
+        if (telegramId !== '700201') return null;
+        return {
+          user: {
+            id: '201',
+            telegram_id: '700201',
+            telegram_username: 'ali',
+            first_name: 'Ali',
+            last_name: 'Valiyev',
+            phone_number: '+998901234567',
+            locale: 'uz' as const,
+          },
+          client: {
+            crm_client_id: 'client-201',
+            customer_code: 'CC-201',
+            status: 'Active',
+            is_active: true,
+          },
+        };
+      },
+      async findActiveEmployeesByCrmAdminIds() {
+        return [];
+      },
+    } as any;
+    const bot = createBot('fake-token', deps);
+    const apiCalls: Array<{ method: string; payload: any }> = [];
+
+    bot.botInfo = {
+      id: 99999,
+      is_bot: true,
+      first_name: 'TestBot',
+      username: 'test_bot',
+    } as any;
+
+    bot.api.config.use(async (_prev, method, payload: any) => {
+      apiCalls.push({ method, payload });
+      if (method === 'answerCallbackQuery') return { ok: true, result: true } as any;
+      if (method === 'deleteMessage') return { ok: true, result: true } as any;
+      return {
+        ok: true,
+        result: {
+          message_id: 1000 + apiCalls.length,
+          date: Math.floor(Date.now() / 1000),
+          chat: { id: Number(payload.chat_id), type: 'private' },
+          text: payload.text,
+        },
+      } as any;
+    });
+
+    const baseMessage = {
+      message_id: 10,
+      date: Math.floor(Date.now() / 1000),
+      chat: { id: 700201, type: 'private' as const, first_name: 'Ali' },
+      from: { id: 700201, is_bot: false, first_name: 'Ali' },
+    };
+
+    await bot.handleUpdate({
+      update_id: 1,
+      message: { ...baseMessage, text: '📦 Mening buyurtmalarim' },
+    } as any);
+    await bot.handleUpdate({
+      update_id: 2,
+      callback_query: {
+        id: 'q2',
+        from: baseMessage.from,
+        chat_instance: 'instance_1',
+        data: 'ro:v:0:0',
+        message: baseMessage,
+      },
+    } as any);
+    await bot.handleUpdate({
+      update_id: 3,
+      callback_query: {
+        id: 'q3',
+        from: baseMessage.from,
+        chat_instance: 'instance_1',
+        data: 'ro:s',
+        message: baseMessage,
+      },
+    } as any);
+
+    await bot.handleUpdate({
+      update_id: 4,
+      message: { ...baseMessage, message_id: 11, text: 'First support message' },
+    } as any);
+    await bot.handleUpdate({
+      update_id: 5,
+      message: { ...baseMessage, message_id: 12, text: '📦 Mening buyurtmalarim' },
+    } as any);
+
+    assert.equal(deps.supportRequests.length, 2);
+    assert.equal(deps.supportRequests[0].repairOrderId, detail.id);
+    assert.equal(deps.supportRequests[0].request.text, 'First support message');
+    assert.equal(deps.supportRequests[1].request.text, '📦 Mening buyurtmalarim');
+    assert.equal(deps.listCalls.length, 1);
+
+    const supportReplies = apiCalls.filter(
+      (call) => call.method === 'sendMessage' && call.payload.text === t('uz', 'supportSent'),
+    );
+    assert.ok(supportReplies.length >= 2);
+    const latestSupportReply = supportReplies.at(-1);
+    assert.deepEqual(latestSupportReply?.payload.reply_markup?.keyboard, [
+      [{ text: t('uz', 'supportEndChat') }],
+    ]);
+
+    await bot.handleUpdate({
+      update_id: 6,
+      message: { ...baseMessage, message_id: 13, text: t('uz', 'supportEndChat') },
+    } as any);
+    await bot.handleUpdate({
+      update_id: 7,
+      message: { ...baseMessage, message_id: 14, text: '📦 Mening buyurtmalarim' },
+    } as any);
+
+    assert.equal(deps.supportRequests.length, 2);
+    assert.equal(deps.listCalls.length, 2);
   });
 });

@@ -46,7 +46,8 @@ PostgreSQL, including separate client and employee role rows.
        -> show profile confirmation
        -> fetch repair orders when "My orders" is opened
        -> open and explicitly refresh customer-safe order details
-       -> send a text or photo support comment from a selected order
+       -> start a support chat from a selected order
+          -> route each text or supported photo to CRM until the client ends the chat
   -> active CRM employee
        -> show employee-role confirmation
        -> manage transactional message templates
@@ -455,6 +456,9 @@ intentionally attempted once because the upstream endpoint is not idempotent and
 a duplicate order.
 Support comment submission is also attempted once by the bot. The CRM endpoint deduplicates
 identical successful submissions for a short window and returns `created=false` for duplicates.
+After a client starts `Xodimga yozish` / `Написать сотруднику` from an order detail card, the bot
+keeps only the end-chat reply button visible and routes each text or supported photo message to CRM
+until the client explicitly ends the chat.
 
 See:
 
