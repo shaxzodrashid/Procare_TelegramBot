@@ -411,6 +411,92 @@ describe('direct message API', () => {
     assert.equal(response.json<{ error: string }>().error, 'ServiceUnavailable');
   });
 
+  it('propagates the optional type parameter when valid', async () => {
+    const calls: Array<{ type?: string }> = [];
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(params) {
+          calls.push({ type: params.type });
+          return { status: 'sent' };
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Salom',
+        type: 'warranty',
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), { status: 'sent' });
+    assert.deepEqual(calls, [{ type: 'warranty' }]);
+  });
+
+  it('rejects invalid type parameter types or invalid values', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage() {
+          return { status: 'sent' };
+        },
+      },
+    });
+
+    // 1. type not a string
+    const res1 = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Salom',
+        type: 123,
+      },
+    });
+    assert.equal(res1.statusCode, 400);
+    assert.ok(res1.json<{ message: string }>().message.includes('type must be a string'));
+
+    // 2. type is empty
+    const res2 = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Salom',
+        type: '   ',
+      },
+    });
+    assert.equal(res2.statusCode, 400);
+    assert.ok(res2.json<{ message: string }>().message.includes('type must not be empty'));
+
+    // 3. type is invalid template type
+    const res3 = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Salom',
+        type: 'not_a_valid_type',
+      },
+    });
+    assert.equal(res3.statusCode, 400);
+    assert.ok(
+      res3
+        .json<{ message: string }>()
+        .message.includes('type must be a valid message template type'),
+    );
+
+    await app.close();
+  });
+
   describe('send file API', () => {
     it('normalizes the phone number and sends the file payload', async () => {
       const calls: Array<{

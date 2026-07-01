@@ -1,19 +1,11 @@
 import type { Locale } from './client.js';
 
 export const MESSAGE_TEMPLATE_TYPES = [
-  'store_visit',
-  'purchase',
-  'referral',
-  'payment_reminder_d2',
-  'payment_reminder_d1',
-  'payment_reminder_d0',
-  'payment_paid_on_time',
-  'payment_overdue',
-  'payment_paid_late',
-  'winner_notification',
   'warranty',
   'offerta',
   'checklist',
+  'problem_start',
+  'problem_finished',
 ] as const;
 
 export type MessageTemplateType = (typeof MESSAGE_TEMPLATE_TYPES)[number];

@@ -10,6 +10,7 @@ import type {
   DirectFileDeliveryResult,
 } from '../services/bot-notification.service.js';
 import type { Logger } from '../utils/logger.js';
+import type { MessageTemplateType } from '../types/message-template.js';
 import { isAuthorized } from './auth.js';
 import { parseSendMessageBody, parseSendFileBody } from './validators.js';
 
@@ -20,6 +21,7 @@ export interface DirectMessageSender {
     variables: DirectMessageVariables;
     inlineKeyboard?: DirectMessageInlineKeyboard;
     supportReply?: DirectMessageSupportReply;
+    type?: MessageTemplateType;
   }): Promise<DirectMessageDeliveryResult>;
 }
 
@@ -97,6 +99,7 @@ export const createApiServer = (
       variables: parsed.variables,
       inlineKeyboard: parsed.inlineKeyboard,
       supportReply: parsed.supportReply,
+      ...(parsed.type !== undefined ? { type: parsed.type } : {}),
     });
 
     if (result.status === 'sent') return reply.send({ status: 'sent' });

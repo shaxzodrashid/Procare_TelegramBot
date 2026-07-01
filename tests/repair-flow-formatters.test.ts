@@ -6,11 +6,12 @@ import {
   formatCategoryPage,
   formatClientRepairOrderDetail,
   formatClientRepairOrderList,
+  formatProblemList,
   formatRepairRequestSummary,
 } from '../src/bot/formatters.js';
 import { categoryKeyboard } from '../src/bot/keyboards.js';
 import type { RepairRequestDraft } from '../src/bot/context.js';
-import type { PhoneCategory } from '../src/types/repair-order.js';
+import type { PhoneCategory, ProblemCategory } from '../src/types/repair-order.js';
 
 const category = (index: number): PhoneCategory => ({
   id: `category-${index}`,
@@ -25,6 +26,19 @@ const category = (index: number): PhoneCategory => ({
   has_problems: true,
 });
 
+const problem = (index: number, cost: string): ProblemCategory => ({
+  id: `problem-${index}`,
+  name_uz: index === 1 ? 'Display Remove (Ekran Almashtirish)' : 'Battery (Batareyka)',
+  name_ru: index === 1 ? 'Замена экрана' : 'Батарея',
+  name_en: index === 1 ? 'Display Remove' : 'Battery',
+  parent_id: null,
+  price: cost,
+  cost,
+  estimated_minutes: 60,
+  warranty_period: 3,
+  sort: index,
+});
+
 describe('repair request presentation', () => {
   it('shows ten phone categories per page and uses their numbered order as buttons', () => {
     const categories = Array.from({ length: 12 }, (_, index) => category(index + 1));
@@ -36,6 +50,13 @@ describe('repair request presentation', () => {
     assert.deepEqual(
       keyboard.inline_keyboard.flat().map((button) => button.text),
       ['11', '12', '‹', 'Model ro‘yxatda yo‘q', '⬅️ Orqaga'],
+    );
+  });
+
+  it('formats problem prices as whole som amounts', () => {
+    assert.equal(
+      formatProblemList([problem(1, '3902500.00000000'), problem(2, '760005.00000000')], 'uz'),
+      "1. Display Remove (Ekran Almashtirish) (3 902 500 so'm)\n2. Battery (Batareyka) (760 005 so'm)",
     );
   });
 

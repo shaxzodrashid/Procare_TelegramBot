@@ -36,8 +36,8 @@ const AUTO_PLACEHOLDERS = new Set([
   'first_name',
   'last_name',
   'phone_number',
-  'client_id',
-  'customer_code',
+  'employee_name',
+  'problem_label',
 ]);
 
 const getTemplatePlaceholders = (content: string): string[] => {
@@ -294,13 +294,16 @@ const handleAdminClientTemplateSelect = async (
     const allPlaceholders = getTemplatePlaceholders(content);
 
     const fullName = `${clientState.user.first_name}${clientState.user.last_name ? ` ${clientState.user.last_name}` : ''}`;
+    const employeeFullName = ctx.session.admin
+      ? [ctx.session.admin.first_name, ctx.session.admin.last_name].filter(Boolean).join(' ')
+      : '';
     const promptedPlaceholders: Record<string, string> = {
       customer_name: fullName,
       first_name: clientState.user.first_name,
       last_name: clientState.user.last_name || '',
       phone_number: clientState.user.phone_number,
-      client_id: clientState.client?.crm_client_id || '',
-      customer_code: clientState.client?.customer_code || '',
+      employee_name: employeeFullName,
+      problem_label: '',
     };
 
     const remaining = allPlaceholders.filter((p) => !AUTO_PLACEHOLDERS.has(p));

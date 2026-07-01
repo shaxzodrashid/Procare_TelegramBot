@@ -8,16 +8,11 @@ export const up = async (knex: Knex): Promise<void> => {
       .enu(
         'template_type',
         [
-          'store_visit',
-          'purchase',
-          'referral',
-          'payment_reminder_d2',
-          'payment_reminder_d1',
-          'payment_reminder_d0',
-          'payment_paid_on_time',
-          'payment_overdue',
-          'payment_paid_late',
-          'winner_notification',
+          'warranty',
+          'offerta',
+          'checklist',
+          'problem_start',
+          'problem_finished',
         ],
         {
           useNative: true,

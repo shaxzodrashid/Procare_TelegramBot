@@ -17,9 +17,9 @@ const mockLogger: Logger = {
 
 const createTemplate = (overrides: Partial<MessageTemplate> = {}): MessageTemplate => ({
   id: '1',
-  template_key: 'store_visit_v1',
-  template_type: 'store_visit',
-  title: 'Store Visit',
+  template_key: 'warranty_v1',
+  template_type: 'warranty',
+  title: 'Warranty',
   content_uz: 'Assalomu alaykum, {{customer_name}}',
   content_ru: 'Здравствуйте, {{customer_name}}',
   channel: 'telegram_bot',
@@ -198,24 +198,24 @@ describe('Admin Template Management Flow', () => {
 
     apiCalls.length = 0;
 
-    await bot.handleUpdate(adminMessage(4, 'Visited Store'));
+    await bot.handleUpdate(adminMessage(4, 'Warranty Document'));
     assert.ok(apiCalls.some((call) => String(call.payload.text).includes('kalitini kiriting')));
 
     apiCalls.length = 0;
 
-    await bot.handleUpdate(adminMessage(5, 'visited_store_v1'));
+    await bot.handleUpdate(adminMessage(5, 'warranty_v1'));
     const typePromptCall = apiCalls.find((call) =>
       String(call.payload.text).includes('turini tanlang'),
     );
     assert.ok(typePromptCall);
     assert.equal(
       typePromptCall.payload.reply_markup.inline_keyboard[0][0].callback_data,
-      'atts:store_visit',
+      'atts:warranty',
     );
 
     apiCalls.length = 0;
 
-    await bot.handleUpdate(adminCallback(6, 'atts:store_visit'));
+    await bot.handleUpdate(adminCallback(6, 'atts:warranty'));
     assert.ok(apiCalls.some((call) => String(call.payload.text).includes('O‘zbekcha matn')));
 
     apiCalls.length = 0;
@@ -229,15 +229,15 @@ describe('Admin Template Management Flow', () => {
 
     assert.deepEqual(deps.createdInputs, [
       {
-        title: 'Visited Store',
-        template_key: 'visited_store_v1',
-        template_type: 'store_visit',
+        title: 'Warranty Document',
+        template_key: 'warranty_v1',
+        template_type: 'warranty',
         content_uz: 'Assalomu alaykum, {{customer_name}}',
         content_ru: 'Здравствуйте, {{customer_name}}',
       },
     ]);
     assert.ok(apiCalls.some((call) => String(call.payload.text).includes('Shablon yaratildi')));
-    assert.ok(apiCalls.some((call) => String(call.payload.text).includes('Visited Store')));
+    assert.ok(apiCalls.some((call) => String(call.payload.text).includes('Warranty Document')));
   });
 
   it('edits the template list message when opening details and returning to the list', async () => {

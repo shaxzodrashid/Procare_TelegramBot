@@ -47,8 +47,8 @@ const createMockDependencies = (): BotDependencies & {
   const templates: MessageTemplate[] = [
     {
       id: '10',
-      template_key: 'payment_reminder_uz_ru',
-      template_type: 'payment_reminder_d0',
+      template_key: 'warranty_uz_ru',
+      template_type: 'warranty',
       title: 'Payment Reminder',
       content_uz: 'Hurmatli {{customer_name}}, tolov muddati keldi. Kupon: {{coupon_code}}',
       content_ru: 'Уважаемый {{customer_name}}, пришло время оплаты. Купон: {{coupon_code}}',
@@ -442,5 +442,90 @@ describe('Employee Client Search and Messaging Flow', () => {
     assert.equal(tmplDispatch.status, 'sent');
     assert.equal(tmplDispatch.template_id, '10');
     assert.equal(tmplDispatch.user_id, '201');
+  });
+
+  it('auto-populates employee_name and problem_label instead of client_id and customer_code', async () => {
+    const deps = createMockDependencies();
+    deps.templates.push({
+      id: '11',
+      template_key: 'problem_start_uz_ru',
+      template_type: 'problem_start',
+      title: 'Problem Start',
+      content_uz: 'Xodim: {{employee_name}}, Muammo: {{problem_label}}, Mijoz: {{customer_name}}',
+      content_ru:
+        'Сотрудник: {{employee_name}}, Проблема: {{problem_label}}, Клиент: {{customer_name}}',
+      channel: 'telegram_bot',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    const { bot, apiCalls } = createTestBot(deps);
+
+    await bot.handleUpdate({
+      update_id: 1,
+      message: {
+        message_id: 101,
+        date: Date.now() / 1000,
+        chat: { id: 800100, type: 'private', first_name: 'Admin' },
+        from: { id: 800100, is_bot: false, first_name: 'Admin' },
+        text: '/start',
+        entities: [{ offset: 0, length: 6, type: 'bot_command' }],
+      },
+    } as any);
+
+    apiCalls.length = 0;
+
+    const mockCallbackMessage = {
+      message_id: 999,
+      date: Math.floor(Date.now() / 1000),
+      chat: { id: 800100, type: 'private' },
+      from: { id: 99999, is_bot: true, first_name: 'TestBot' },
+      text: 'mock_source_message',
+    };
+
+    await bot.handleUpdate({
+      update_id: 4,
+      callback_query: {
+        id: 'q4',
+        from: { id: 800100, is_bot: false, first_name: 'Admin' },
+        chat_instance: 'instance_1',
+        data: 'ac:v:900201',
+        message: mockCallbackMessage,
+      },
+    } as any);
+
+    apiCalls.length = 0;
+
+    await bot.handleUpdate({
+      update_id: 9,
+      callback_query: {
+        id: 'q9',
+        from: { id: 800100, is_bot: false, first_name: 'Admin' },
+        chat_instance: 'instance_1',
+        data: 'ac:tmpl_sel:900201:11',
+        message: mockCallbackMessage,
+      },
+    } as any);
+
+    const previewCall = apiCalls.find(
+      (c) =>
+        c.method === 'sendMessage' &&
+        typeof c.payload.text === 'string' &&
+        c.payload.text.includes('Shablon xabar oldindan ko‘rinishi'),
+    );
+    assert.ok(previewCall, 'Should show the preview screen directly');
+    assert.ok(
+      previewCall.payload.text.includes('Xodim: Admin User'),
+      'employee_name should be replaced with Admin User',
+    );
+    assert.ok(
+      previewCall.payload.text.includes('Muammo: ,'),
+      'problem_label should be replaced with empty string',
+    );
+    assert.ok(
+      previewCall.payload.text.includes('Mijoz: John Doe'),
+      'customer_name should be replaced with John Doe',
+    );
   });
 });

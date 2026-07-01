@@ -5,6 +5,7 @@ import {
   type DirectMessageVariables,
 } from '../services/bot-notification.service.js';
 import { normalizeUzPhone } from '../utils/phone.js';
+import { isMessageTemplateType, type MessageTemplateType } from '../types/message-template.js';
 
 export interface SendMessageRequestBody {
   phone_number?: unknown;
@@ -12,6 +13,7 @@ export interface SendMessageRequestBody {
   variables?: unknown;
   inline_keyboard?: unknown;
   support_reply?: unknown;
+  type?: unknown;
 }
 
 export interface SendFileRequestBody {
@@ -208,6 +210,7 @@ export const parseSendMessageBody = (
       variables: DirectMessageVariables;
       inlineKeyboard?: DirectMessageInlineKeyboard;
       supportReply?: DirectMessageSupportReply;
+      type?: MessageTemplateType;
     }
   | { ok: false; message: string } => {
   if (!isRecord(body)) return { ok: false, message: 'Request body must be a JSON object' };
@@ -218,6 +221,7 @@ export const parseSendMessageBody = (
     variables: rawVariables,
     inline_keyboard: rawInlineKeyboard,
     support_reply: rawSupportReply,
+    type: rawType,
   } = body as SendMessageRequestBody;
   if (typeof rawPhoneNumber !== 'string') {
     return { ok: false, message: 'phone_number must be a string' };
@@ -232,6 +236,21 @@ export const parseSendMessageBody = (
   if (!message) return { ok: false, message: 'message must not be empty' };
   if (message.length > TELEGRAM_TEXT_LIMIT) {
     return { ok: false, message: `message must be ${TELEGRAM_TEXT_LIMIT} characters or fewer` };
+  }
+
+  let type: MessageTemplateType | undefined;
+  if (rawType !== undefined) {
+    if (typeof rawType !== 'string') {
+      return { ok: false, message: 'type must be a string' };
+    }
+    const trimmedType = rawType.trim();
+    if (!trimmedType) {
+      return { ok: false, message: 'type must not be empty' };
+    }
+    if (!isMessageTemplateType(trimmedType)) {
+      return { ok: false, message: 'type must be a valid message template type' };
+    }
+    type = trimmedType;
   }
 
   const parsedVariables = parseVariables(rawVariables);
@@ -250,6 +269,7 @@ export const parseSendMessageBody = (
     variables: parsedVariables.variables,
     inlineKeyboard: parsedInlineKeyboard.inlineKeyboard,
     supportReply: parsedSupportReply.supportReply,
+    type,
   };
 };
 

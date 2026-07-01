@@ -169,7 +169,9 @@ describe('Developer endpoint localization flow', () => {
     const { bot, apiCalls } = createTestBot(deps);
 
     await bot.handleUpdate(developerMessage(1, '/start'));
-    assert.ok(apiCalls.some((call) => String(call.payload.text).includes('PROCARE DEVELOPER CORE')));
+    assert.ok(
+      apiCalls.some((call) => String(call.payload.text).includes('PROCARE DEVELOPER CORE')),
+    );
 
     apiCalls.length = 0;
     await bot.handleUpdate(developerMessage(2, '⚙️ API endpointlar'));

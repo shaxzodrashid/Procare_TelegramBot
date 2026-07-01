@@ -26,9 +26,9 @@ import type { SupportMessageReplyTarget } from '../src/types/support-message.js'
 
 const template = (overrides: Partial<MessageTemplate> = {}): MessageTemplate => ({
   id: '1',
-  template_key: 'purchase_default',
-  template_type: 'purchase',
-  title: 'Purchase',
+  template_key: 'warranty_default',
+  template_type: 'warranty',
+  title: 'Warranty',
   content_uz: 'Salom {{ customer_name }}. Kupon: {{ coupon_code }}',
   content_ru: 'Здравствуйте, {{ customer_name }}. Купон: {{ coupon_code }}',
   channel: 'telegram_bot',
@@ -199,7 +199,7 @@ describe('BotNotificationService', () => {
 
     const result = await service.sendTemplateMessage({
       user: { id: '7', telegram_id: '1001', language_code: 'uz' },
-      type: 'purchase',
+      type: 'warranty',
       placeholders: {},
     });
 
@@ -212,7 +212,7 @@ describe('BotNotificationService', () => {
   it('splits prize photos from long rendered text instead of using an oversized caption', async () => {
     const store = new MemoryTemplateStore(
       template({
-        template_type: 'winner_notification',
+        template_type: 'problem_start',
         content_uz: `Sovrin: {{ prize_name }}\n${'x'.repeat(1030)}`,
       }),
     );
@@ -221,7 +221,7 @@ describe('BotNotificationService', () => {
 
     const result = await service.sendTemplateMessage({
       user: { id: '7', telegram_id: '1001', language_code: 'uz' },
-      type: 'winner_notification',
+      type: 'problem_start',
       placeholders: { prize_name: 'Phone' },
       photo: { buffer: Buffer.from('image'), fileName: 'prize.jpg' },
     });
@@ -245,7 +245,7 @@ describe('BotNotificationService', () => {
 
     const result = await service.sendTemplateMessage({
       user: { id: '7', telegram_id: '1001', language_code: 'uz' },
-      type: 'purchase',
+      type: 'warranty',
       placeholders: {},
     });
 
@@ -486,6 +486,60 @@ describe('BotDirectMessageService', () => {
     assert.deepEqual(result, { status: 'failed' });
     assert.deepEqual(store.blockedUpdates, [{ telegramId: '1001', isBlocked: true }]);
     assert.equal(store.logs[0]?.status, 'failed');
+  });
+
+  it('uses active template if matching type is provided and exists', async () => {
+    const store = new MemoryTemplateStore(
+      template({
+        template_type: 'warranty',
+        content_uz: 'Salom {{ first_name }}. Xush kelibsiz! Kod: {{ code }}',
+      }),
+    );
+    const users = new MemoryRegisteredUserLookup(directMessageUser());
+    const { telegram, calls } = createTelegramDouble();
+    const service = new BotDirectMessageService(users, store, telegram);
+
+    const result = await service.sendDirectMessage({
+      phoneNumber: '+998901234567',
+      message: 'Default message',
+      type: 'warranty',
+      variables: { code: '12345' },
+    });
+
+    assert.deepEqual(result, { status: 'sent' });
+    assert.deepEqual(calls, [
+      {
+        method: 'sendMessage',
+        chatId: '1001',
+        text: 'Salom Ali. Xush kelibsiz! Kod: 12345',
+        options: undefined,
+      },
+    ]);
+    assert.equal(store.logs[0]?.dispatch_type, 'warranty');
+    assert.equal(store.logs[0]?.template_id, '1');
+    assert.equal(store.logs[0]?.status, 'sent');
+  });
+
+  it('falls back to raw message if matching type is provided but no active template exists', async () => {
+    const store = new MemoryTemplateStore(null);
+    const users = new MemoryRegisteredUserLookup(directMessageUser());
+    const { telegram, calls } = createTelegramDouble();
+    const service = new BotDirectMessageService(users, store, telegram);
+
+    const result = await service.sendDirectMessage({
+      phoneNumber: '+998901234567',
+      message: 'Fallback message {{ code }}',
+      type: 'warranty',
+      variables: { code: '12345' },
+    });
+
+    assert.deepEqual(result, { status: 'sent' });
+    assert.deepEqual(calls, [
+      { method: 'sendMessage', chatId: '1001', text: 'Fallback message 12345', options: undefined },
+    ]);
+    assert.equal(store.logs[0]?.dispatch_type, 'api_direct_message');
+    assert.equal(store.logs[0]?.template_id, null);
+    assert.equal(store.logs[0]?.status, 'sent');
   });
 
   describe('sendDirectFile', () => {

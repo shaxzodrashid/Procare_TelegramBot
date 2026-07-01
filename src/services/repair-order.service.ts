@@ -280,8 +280,7 @@ export class HttpRepairOrderService implements RepairOrderGateway {
       typeof envelope?.message === 'string'
         ? envelope.message
         : `Public repair API request failed with status ${response.status}`;
-    const location =
-      typeof envelope?.location === 'string' ? envelope.location : undefined;
+    const location = typeof envelope?.location === 'string' ? envelope.location : undefined;
 
     if (response.status === 400 || response.status === 409 || response.status === 422) {
       if (location === 'telegram_open_repair_order_duplicate') {

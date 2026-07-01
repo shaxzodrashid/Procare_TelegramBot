@@ -30,6 +30,7 @@ export interface SendDirectMessageParams {
   variables?: DirectMessageVariables;
   inlineKeyboard?: DirectMessageInlineKeyboard;
   supportReply?: DirectMessageSupportReply;
+  type?: MessageTemplateType;
 }
 
 export interface DirectMessageDeliveryResult {
@@ -342,27 +343,57 @@ export class BotDirectMessageService {
     const user = await this.users.findByPhoneNumber(params.phoneNumber);
     if (!user) return { status: 'not_found' };
 
+    const template = params.type
+      ? await this.templates.findActiveTemplateByType(params.type)
+      : null;
+
+    const dispatchType = template ? params.type! : DIRECT_MESSAGE_DISPATCH_TYPE;
+
     if (user.is_blocked) {
       await this.templates.logDispatch({
         user_id: user.id,
-        template_id: null,
-        dispatch_type: DIRECT_MESSAGE_DISPATCH_TYPE,
+        template_id: template?.id ?? null,
+        dispatch_type: dispatchType,
         status: 'failed',
         error_message: 'Telegram user is marked as blocked',
       });
       return { status: 'blocked' };
     }
 
-    const rendered = renderDirectMessage(params.message, {
-      ...params.variables,
-      first_name: user.first_name,
-      last_name: user.last_name,
-      full_name: [user.first_name, user.last_name].filter(Boolean).join(' '),
-      phone_number: user.phone_number,
-      telegram_username: user.telegram_username,
-      locale: user.locale,
-    });
-    if (!rendered.ok) return { status: 'invalid_message', message: rendered.message };
+    let messageText: string;
+    if (template) {
+      const placeholders = {
+        ...params.variables,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        full_name: [user.first_name, user.last_name].filter(Boolean).join(' '),
+        phone_number: user.phone_number,
+        telegram_username: user.telegram_username,
+        locale: user.locale,
+      };
+      messageText = MessageTemplateRenderer.render(template, user.locale ?? 'uz', placeholders);
+      if (!messageText.trim()) {
+        return { status: 'invalid_message', message: 'message must not be empty after rendering' };
+      }
+      if (messageText.length > TELEGRAM_TEXT_LIMIT) {
+        return {
+          status: 'invalid_message',
+          message: `message must be ${TELEGRAM_TEXT_LIMIT} characters or fewer after rendering`,
+        };
+      }
+    } else {
+      const rendered = renderDirectMessage(params.message, {
+        ...params.variables,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        full_name: [user.first_name, user.last_name].filter(Boolean).join(' '),
+        phone_number: user.phone_number,
+        telegram_username: user.telegram_username,
+        locale: user.locale,
+      });
+      if (!rendered.ok) return { status: 'invalid_message', message: rendered.message };
+      messageText = rendered.message;
+    }
 
     try {
       const replyMarkup = buildDirectMessageInlineKeyboard(params.inlineKeyboard, user.locale);
@@ -375,22 +406,22 @@ export class BotDirectMessageService {
       try {
         await this.telegram.sendMessage(
           replyTarget?.telegram_chat_id ?? user.telegram_id,
-          rendered.message,
+          messageText,
           directMessageOptions(replyMarkup, replyTarget ?? null),
         );
       } catch (error) {
         if (!replyTarget || !isTelegramReplyTargetError(error)) throw error;
         await this.telegram.sendMessage(
           user.telegram_id,
-          rendered.message,
+          messageText,
           directMessageOptions(replyMarkup, null),
         );
       }
       await this.templates.setUserBlocked(user.telegram_id, false);
       await this.templates.logDispatch({
         user_id: user.id,
-        template_id: null,
-        dispatch_type: DIRECT_MESSAGE_DISPATCH_TYPE,
+        template_id: template?.id ?? null,
+        dispatch_type: dispatchType,
         status: 'sent',
         error_message: null,
       });
@@ -401,8 +432,8 @@ export class BotDirectMessageService {
       }
       await this.templates.logDispatch({
         user_id: user.id,
-        template_id: null,
-        dispatch_type: DIRECT_MESSAGE_DISPATCH_TYPE,
+        template_id: template?.id ?? null,
+        dispatch_type: dispatchType,
         status: 'failed',
         error_message: errorMessage(error),
       });

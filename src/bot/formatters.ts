@@ -56,6 +56,26 @@ const formatMoney = (value: string | null, currency: string, locale: Locale): st
   }
 };
 
+const formatSomAmount = (value: string): string => {
+  const trimmed = value.trim();
+  const match = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(trimmed);
+  if (!match) return `${value} so'm`;
+
+  const sign = match[1] ?? '';
+  const integerPart = match[2];
+  const fractionPart = match[3] ?? '';
+  if (!integerPart) return `${value} so'm`;
+
+  const normalizedInteger = integerPart.replace(/^0+(?=\d)/, '');
+  const groupedInteger = normalizedInteger.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const normalizedFraction = fractionPart.replace(/0+$/, '');
+  const amount = normalizedFraction
+    ? `${sign}${groupedInteger}.${normalizedFraction}`
+    : `${sign}${groupedInteger}`;
+
+  return `${amount} so'm`;
+};
+
 const statusIcon = (code: CustomerRepairOrderListItem['status']['code']): string => {
   if (code === 'COMPLETED') return '✅';
   if (code === 'READY') return '🟢';
@@ -312,7 +332,7 @@ export const formatProblemList = (problems: ProblemCategory[], locale: Locale): 
   problems
     .map(
       (problem, index) =>
-        `${index + 1}. ${localizedCatalogName(problem, locale)} (${problem.cost})`,
+        `${index + 1}. ${localizedCatalogName(problem, locale)} (${formatSomAmount(problem.cost)})`,
     )
     .join('\n');
 
