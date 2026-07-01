@@ -225,7 +225,7 @@ describe('support admin notification flow', () => {
 
     await bot.handleUpdate({
       update_id: 1,
-      message: { ...clientMessage, text: '🧾 Buyurtmalarim' },
+      message: { ...clientMessage, text: '📦 Mening buyurtmalarim' },
     } as any);
     await bot.handleUpdate({
       update_id: 2,

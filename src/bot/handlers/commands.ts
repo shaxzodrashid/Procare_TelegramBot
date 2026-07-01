@@ -30,7 +30,10 @@ export const registerCommandHandlers = (
         t(ctx.session.locale, 'adminRegistered', {
           name: adminDisplayName(ctx),
         }),
-        { reply_markup: personalMenuKeyboard(ctx.session) },
+        {
+          reply_markup: personalMenuKeyboard(ctx.session),
+          parse_mode: 'HTML',
+        },
       );
       return;
     }
@@ -39,7 +42,10 @@ export const registerCommandHandlers = (
         t(ctx.session.locale, 'registered', {
           name: ctx.session.client.first_name || ctx.from?.first_name || 'Procare',
         }),
-        { reply_markup: personalMenuKeyboard(ctx.session) },
+        {
+          reply_markup: personalMenuKeyboard(ctx.session),
+          parse_mode: 'HTML',
+        },
       );
       return;
     }

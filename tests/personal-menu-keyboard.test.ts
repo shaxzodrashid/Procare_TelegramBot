@@ -22,7 +22,10 @@ describe('personal menu keyboard', () => {
       client: { account_type: 'client' },
     });
 
-    assert.deepEqual(keyboardLabels(keyboard), [['🧾 Buyurtmalarim'], ['🛠 Ariza qoldirish'], ['⚙️ Sozlamalar']]);
+    assert.deepEqual(keyboardLabels(keyboard), [
+      ['📦 Mening buyurtmalarim', '✍️ Ariza qoldirish'],
+      ['⚙️ Sozlamalar'],
+    ]);
   });
 
   it('shows employee-only sections for employees', () => {
@@ -33,8 +36,7 @@ describe('personal menu keyboard', () => {
 
     assert.deepEqual(keyboardLabels(keyboard), [
       ['🔍 Поиск клиентов', '🧩 Шаблоны сообщений'],
-      ['🏷 Названия статусов'],
-      ['📤 Excel экспорт'],
+      ['🏷 Названия статусов', '📊 Excel экспорт'],
       ['⚙️ Настройки'],
     ]);
   });
@@ -48,8 +50,7 @@ describe('personal menu keyboard', () => {
 
     assert.deepEqual(keyboardLabels(keyboard), [
       ['🔍 Поиск клиентов', '🧩 Шаблоны сообщений'],
-      ['🏷 Названия статусов'],
-      ['📤 Excel экспорт'],
+      ['🏷 Названия статусов', '📊 Excel экспорт'],
       ['⚙️ Настройки'],
     ]);
   });
@@ -60,7 +61,7 @@ describe('personal menu keyboard', () => {
       developer: { is_active: true },
     });
 
-    assert.deepEqual(keyboardLabels(keyboard), [['🛠 API endpointlar'], ['⚙️ Sozlamalar']]);
+    assert.deepEqual(keyboardLabels(keyboard), [['⚙️ API endpointlar', '⚙️ Sozlamalar']]);
   });
 
   it('adds developer tools alongside client sections', () => {
@@ -71,10 +72,8 @@ describe('personal menu keyboard', () => {
     });
 
     assert.deepEqual(keyboardLabels(keyboard), [
-      ['🧾 Buyurtmalarim'],
-      ['🛠 Ariza qoldirish'],
-      ['🛠 API endpointlar'],
-      ['⚙️ Sozlamalar'],
+      ['📦 Mening buyurtmalarim', '✍️ Ariza qoldirish'],
+      ['⚙️ API endpointlar', '⚙️ Sozlamalar'],
     ]);
   });
 
@@ -87,10 +86,8 @@ describe('personal menu keyboard', () => {
 
     assert.deepEqual(keyboardLabels(keyboard), [
       ['🔍 Поиск клиентов', '🧩 Шаблоны сообщений'],
-      ['🏷 Названия статусов'],
-      ['📤 Excel экспорт'],
-      ['🛠 API endpoints'],
-      ['⚙️ Настройки'],
+      ['🏷 Названия статусов', '📊 Excel экспорт'],
+      ['⚙️ API endpoints', '⚙️ Настройки'],
     ]);
   });
 

@@ -405,7 +405,10 @@ export const registerUnknownFlowHandlers = (
           t(ctx.session.locale, 'registered', {
             name: ctx.session.client.first_name || ctx.from?.first_name || 'Procare',
           }),
-          { reply_markup: personalMenuKeyboard(ctx.session) },
+          {
+            reply_markup: personalMenuKeyboard(ctx.session),
+            parse_mode: 'HTML',
+          },
         );
         clearUnknownFlow(ctx.session);
         delete ctx.session.stage;
@@ -458,7 +461,10 @@ export const registerUnknownFlowHandlers = (
           t(ctx.session.locale, 'registered', {
             name: ctx.session.client.first_name || ctx.from?.first_name || 'Procare',
           }),
-          { reply_markup: personalMenuKeyboard(ctx.session) },
+          {
+            reply_markup: personalMenuKeyboard(ctx.session),
+            parse_mode: 'HTML',
+          },
         );
       } else {
         await ctx.reply(t(ctx.session.locale, 'requestDeclined'), {
@@ -486,7 +492,10 @@ export const registerUnknownFlowHandlers = (
             t(ctx.session.locale, 'registered', {
               name: ctx.session.client.first_name || ctx.from?.first_name || 'Procare',
             }),
-            { reply_markup: personalMenuKeyboard(ctx.session) },
+            {
+              reply_markup: personalMenuKeyboard(ctx.session),
+              parse_mode: 'HTML',
+            },
           );
         } else {
           await ctx.reply(t(ctx.session.locale, 'requestDeclined'), {

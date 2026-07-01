@@ -10,9 +10,9 @@ const messages = {
       '📌 Iltimos, xavfsizlik uchun tugma orqali o‘zingizning telefon raqamingizni ulashing.',
     registering: '🔎 Ma’lumotlaringiz tekshirilmoqda...',
     registered:
-      '✅ {{name}}, profilingiz topildi.\n\nMenyudan buyurtmalaringiz va profil sozlamalarini boshqarishingiz mumkin.',
+      '✨ <b>PROCARE CLIENT PORTAL</b> ✨\n\n👋 Assalomu alaykum, <b>{{name}}</b>!\nProcare xizmatlaridan foydalanayotganingizdan mamnunmiz.\n\n📋 <b>Menyu orqali quyidagi amallarni bajarishingiz mumkin:</b>\n ├ 📦 <b>Mening buyurtmalarim</b> — faol va yakunlangan buyurtmalar holatini ko‘rish\n ├ ✍️ <b>Ariza qoldirish</b> — yangi ta’mirlash uchun tezkor ariza yuborish\n └ ⚙️ <b>Sozlamalar</b> — profilingiz ma’lumotlarini yangilash\n\n👇 Kerakli bo‘limni tanlang:',
     adminRegistered:
-      '🛡 Xush kelibsiz, {{name}}.\n\nRol: Procare xodimi\nXodim menyusida xabar shablonlari va profil sozlamalari mavjud.',
+      '🛡️ <b>PROCARE WORKPLACE</b> 🛡️\n\n👋 Assalomu alaykum, <b>{{name}}</b>!\nSiz tizimga <b>Xodim</b> roli bilan kirdingiz.\n\n🛠️ <b>Ishchi vositalar:</b>\n ├ 🔍 <b>Mijozlar qidiruvi</b> — mijozlarni qidirish va xabarlar yuborish\n ├ 🧩 <b>Xabar shablonlari</b> — xabar shablonlarini boshqarish va yaratish\n ├ 🏷 <b>Status nomlari</b> — buyurtma statuslarining mijozga ko‘rinadigan nomlarini tahrirlash\n ├ 📤 <b>Excel eksport</b> — hisobotlarni Excel formatida yuklab olish\n └ ⚙️ <b>Sozlamalar</b> — shaxsiy ma’lumotlarni tahrirlash\n\n👇 Boshlash uchun bo‘limni tanlang:',
     notFound:
       '🔎 Bu raqam bo‘yicha faol mijoz topilmadi. Yangi ta’mir arizasini hoziroq qoldiramizmi?',
     leaveRequest: '🛠 Ariza qoldirish',
@@ -41,7 +41,7 @@ const messages = {
     requestRateLimited: '⏱ Juda ko‘p urinish bo‘ldi. Bir ozdan keyin qayta urinib ko‘ring.',
     requestDuplicate:
       '⚠️ Ushbu telefon raqami va model bo‘yicha faol ariza allaqachon mavjud. Avvalgi arizangiz ko‘rib chiqilishini kuting.',
-    leaveRequestMenu: '🛠 Ariza qoldirish',
+    leaveRequestMenu: '✍️ Ariza qoldirish',
     leaveRequestIntro: '🛠 Yangi ta‘mir arizasi. Telefoningizning turini tanlang:',
     modelNotListed: 'Model ro‘yxatda yo‘q',
     enterCustomModel: 'Iltimos, telefoningiz modelini yozib yuboring (masalan, iPhone 15 Pro Max):',
@@ -56,10 +56,10 @@ const messages = {
       '🛠 Procare bot qisqa texnik yangilanish uchun vaqtincha to‘xtatilmoqda.\n\nNoqulaylik uchun uzr so‘raymiz. Bot qayta ishga tushgach, sizga xabar beramiz.',
     serviceStartupNotice:
       '✅ Procare bot qayta ishga tushdi.\n\nSessiyani yangilash va menyuni qayta ochish uchun /start buyrug‘ini yuboring.',
-    orders: '🧾 Buyurtmalarim',
+    orders: '📦 Mening buyurtmalarim',
     adminTemplates: '🧩 Xabar shablonlari',
     adminStatusNames: '🏷 Status nomlari',
-    adminExport: '📤 Excel eksport',
+    adminExport: '📊 Excel eksport',
     settings: '⚙️ Sozlamalar',
     settingsTitle: '⚙️ Sozlamalar bo‘limi. Qaysi ma’lumotni boshqaramiz?',
     settingsCurrent:
@@ -117,9 +117,9 @@ const messages = {
     registerFirst: '📲 Avval /start buyrug‘i orqali telefon raqamingizni ulang.',
     help: '💬 Yordam kerakmi? Telefon raqamingizni ulashing yoki /start buyrug‘ini yuboring.',
     clientHelp:
-      'Menyudan buyurtmalaringizni ko‘rishingiz va profil sozlamalarini yangilashingiz mumkin.',
+      '✨ <b>PROCARE CLIENT PORTAL</b> ✨\n\n📋 <b>Menyu orqali quyidagi amallarni bajarishingiz mumkin:</b>\n ├ 📦 <b>Mening buyurtmalarim</b> — faol va yakunlangan buyurtmalar holatini ko‘rish\n ├ ✍️ <b>Ariza qoldirish</b> — yangi ta’mirlash uchun tezkor ariza yuborish\n └ ⚙️ <b>Sozlamalar</b> — profilingiz ma’lumotlarini yangilash\n\n👇 Kerakli bo‘limni tanlang:',
     employeeHelp:
-      'Xodim menyusi: xabar shablonlari, status nomlari va profil sozlamalarini boshqarishingiz mumkin.',
+      '🛡️ <b>PROCARE WORKPLACE</b> 🛡️\n\n🛠️ <b>Ishchi vositalar:</b>\n ├ 🔍 <b>Mijozlar qidiruvi</b> — mijozlarni qidirish va xabarlar yuborish\n ├ 🧩 <b>Xabar shablonlari</b> — xabar shablonlarini boshqarish va yaratish\n ├ 🏷 <b>Status nomlari</b> — buyurtma statuslarining mijozga ko‘rinadigan nomlarini tahrirlash\n ├ 📤 <b>Excel eksport</b> — hisobotlarni Excel formatida yuklab olish\n └ ⚙️ <b>Sozlamalar</b> — shaxsiy ma’lumotlarni tahrirlash\n\n👇 Boshlash uchun bo‘limni tanlang:',
     logoutSuccess: '👋 Siz tizimdan chiqdingiz. Qayta boshlash uchun /start buyrug‘ini yuboring.',
     logoutFailed: '⚠️ Hozir tizimdan chiqib bo‘lmadi. Iltimos, keyinroq urinib ko‘ring.',
     commandStart: 'Procare botini boshlash yoki qayta boshlash',
@@ -175,7 +175,7 @@ const messages = {
     adminStatusNameCancelled: '✅ Status nomini tahrirlash bekor qilindi.',
     adminStatusNameUnavailable:
       '⚠️ Statuslarni hozir yuklab yoki saqlab bo‘lmadi. Keyinroq urinib ko‘ring.',
-    adminClients: '🔍 Mijozlarni qidirish',
+    adminClients: '🔍 Mijozlar qidiruvi',
     adminClientSearchPrompt:
       '🔍 Mijozning ismi, familiyasi, username yoki telefon raqamini yozib yuboring (masalan: Ali yoki +998...):',
     adminClientListTitle: '👥 Topilgan mijozlar:',
@@ -206,9 +206,9 @@ const messages = {
     adminExportUnavailable: '⚠️ Excel eksportni hozir tayyorlab bo‘lmadi. Keyinroq urinib ko‘ring.',
     adminExportCancel: '✖️ Bekor qilish',
     adminExportCancelled: '✅ Excel eksport bekor qilindi.',
-    developerApiEndpoints: '🛠 API endpointlar',
+    developerApiEndpoints: '⚙️ API endpointlar',
     developerHelp:
-      'Developer menyusi: bot ishlatayotgan API endpointlarni ko‘rishingiz va endpoint location xatolari uchun lokalizatsiyalarni boshqarishingiz mumkin.',
+      '⚙️ <b>PROCARE DEVELOPER CORE</b> ⚙️\n\n💻 Salom, <b>Tuzuvchi</b>!\nTizim to‘liq nazorat ostida. API va sozlashlar paneli tayyor.\n\n🛠️ <b>Ishchi menyu:</b>\n ├ ⚙️ <b>API endpointlar</b> — integratsiya nuqtalari va xatoliklar\n ├ ⚙️ <b>Sozlamalar</b> — shaxsiy sozlamalar\n └ <i>Hamda faollashtirilgan mijoz/xodim boshqaruv tugmalari</i>\n\n👇 Kerakli vositani tanlang:',
     developerEndpointsTitle: '🛠 Bot ishlatayotgan API endpointlar:',
     developerEndpointTitle:
       '<b>{{title}}</b>\n\n<code>{{method}} {{path}}</code>\nAuth: <code>{{auth}}</code>\n\n{{description}}\n\nLocation lokalizatsiyalari: {{count}}',
@@ -243,9 +243,9 @@ const messages = {
     phoneOnly: '📌 Пожалуйста, для безопасности отправьте свой номер телефона с помощью кнопки.',
     registering: '🔎 Проверяем ваши данные...',
     registered:
-      '✅ {{name}}, ваш профиль найден.\n\nВ меню доступны ваши заказы и настройки профиля.',
+      '✨ <b>PROCARE CLIENT PORTAL</b> ✨\n\n👋 Здравствуйте, <b>{{name}}</b>!\nМы рады, что вы пользуетесь услугами нашего сервиса.\n\n📋 <b>Через меню вы можете выполнить следующие действия:</b>\n ├ 📦 <b>Мои заказы</b> — просмотр статуса активных и завершенных заказов\n ├ ✍️ <b>Оставить заявку</b> — быстрая отправка новой заявки на ремонт\n └ ⚙️ <b>Настройки</b> — редактирование информации вашего профиля\n\n👇 Выберите нужный раздел:',
     adminRegistered:
-      '🛡 Добро пожаловать, {{name}}.\n\nРоль: сотрудник Procare\nВ меню сотрудника доступны шаблоны сообщений и настройки профиля.',
+      '🛡️ <b>PROCARE WORKPLACE</b> 🛡️\n\n👋 Здравствуйте, <b>{{name}}</b>!\nВы авторизованы с ролью <b>Сотрудник</b>.\n\n🛠️ <b>Рабочие инструменты:</b>\n ├ 🔍 <b>Поиск клиентов</b> — поиск пользователей и отправка сообщений\n ├ 🧩 <b>Шаблоны сообщений</b> — управление шаблонами рассылок\n ├ 🏷 <b>Названия статусов</b> — локализация статусов заказов\n ├ 📤 <b>Экспорт в Excel</b> — выгрузка отчетов по периодам\n └ ⚙️ <b>Настройки</b> — параметры личного профиля\n\n👇 Выберите инструмент для работы:',
     notFound:
       '🔎 Активный клиент с таким номером не найден. Оформим новую заявку на ремонт прямо сейчас?',
     leaveRequest: '🛠 Оставить заявку',
@@ -274,7 +274,7 @@ const messages = {
     requestRateLimited: '⏱ Слишком много попыток. Повторите немного позже.',
     requestDuplicate:
       '⚠️ Активная заявка для этого номера телефона и модели уже существует. Дождитесь рассмотрения предыдущей заявки.',
-    leaveRequestMenu: '🛠 Оставить заявку',
+    leaveRequestMenu: '✍️ Оставить заявку',
     leaveRequestIntro: '🛠 Новая заявка на ремонт. Выберите тип телефона:',
     modelNotListed: 'Модели нет в списке',
     enterCustomModel: 'Пожалуйста, введите модель вашего телефона (например, iPhone 15 Pro Max):',
@@ -289,10 +289,10 @@ const messages = {
       '🛠 Procare bot временно останавливается для короткого технического обновления.\n\nПриносим извинения за неудобства. Когда бот снова запустится, мы отправим уведомление.',
     serviceStartupNotice:
       '✅ Procare bot снова запущен.\n\nЧтобы обновить сессию и открыть меню заново, отправьте команду /start.',
-    orders: '🧾 Мои заказы',
+    orders: '📦 Мои заказы',
     adminTemplates: '🧩 Шаблоны сообщений',
     adminStatusNames: '🏷 Названия статусов',
-    adminExport: '📤 Excel экспорт',
+    adminExport: '📊 Excel экспорт',
     settings: '⚙️ Настройки',
     settingsTitle: '⚙️ Раздел настроек. Что хотите изменить?',
     settingsCurrent:
@@ -345,9 +345,10 @@ const messages = {
       '💬 По заказу #{{number}} есть новое сообщение от клиента.\nID: <code>{{id}}</code>\n\nПожалуйста, проверьте в CRM.',
     registerFirst: '📲 Сначала отправьте номер телефона через команду /start.',
     help: '💬 Нужна помощь? Поделитесь номером телефона или отправьте команду /start.',
-    clientHelp: 'В меню можно смотреть свои заказы и обновлять настройки профиля.',
+    clientHelp:
+      '✨ <b>PROCARE CLIENT PORTAL</b> ✨\n\n📋 <b>Через меню вы можете выполнить следующие действия:</b>\n ├ 📦 <b>Мои заказы</b> — просмотр статуса активных и завершенных заказов\n ├ ✍️ <b>Оставить заявку</b> — быстрая отправка новой заявки на ремонт\n └ ⚙️ <b>Настройки</b> — редактирование информации вашего профиля\n\n👇 Выберите нужный раздел:',
     employeeHelp:
-      'Меню сотрудника: можно управлять шаблонами сообщений, названиями статусов и настройками профиля.',
+      '🛡️ <b>PROCARE WORKPLACE</b> 🛡️\n\n🛠️ <b>Рабочие инструменты:</b>\n ├ 🔍 <b>Поиск клиентов</b> — поиск пользователей и отправка сообщений\n ├ 🧩 <b>Шаблоны сообщений</b> — управление шаблонами рассылок\n ├ 🏷 <b>Названия статусов</b> — локализация статусов заказов\n ├ 📤 <b>Экспорт в Excel</b> — выгрузка отчетов по периодам\n └ ⚙️ <b>Настройки</b> — параметры личного профиля\n\n👇 Выберите инструмент для работы:',
     logoutSuccess: '👋 Вы вышли из системы. Чтобы начать заново, отправьте /start.',
     logoutFailed: '⚠️ Сейчас не удалось выйти из системы. Попробуйте позже.',
     commandStart: 'Начать или перезапустить Procare',
@@ -434,9 +435,9 @@ const messages = {
     adminExportUnavailable: '⚠️ Сейчас не удалось подготовить Excel-экспорт. Попробуйте позже.',
     adminExportCancel: '✖️ Отмена',
     adminExportCancelled: '✅ Excel-экспорт отменён.',
-    developerApiEndpoints: '🛠 API endpoints',
+    developerApiEndpoints: '⚙️ API endpoints',
     developerHelp:
-      'Меню Developer: можно смотреть API endpoints, которые использует бот, и управлять локализациями ошибок по endpoint location.',
+      '⚙️ <b>PROCARE DEVELOPER CORE</b> ⚙️\n\n💻 Привет, <b>Разработчик</b>!\nСистема под полным контролем. Панель API и конфигураций готова.\n\n🛠️ <b>Рабочее меню:</b>\n ├ ⚙️ <b>API эндпоинты</b> — точки интеграции и локализация ошибок\n ├ ⚙️ <b>Настройки</b> — личные параметры\n └ <i>А также активные кнопки клиента/сотрудника</i>\n\n👇 Выберите инструмент для работы:',
     developerEndpointsTitle: '🛠 API endpoints, которые использует бот:',
     developerEndpointTitle:
       '<b>{{title}}</b>\n\n<code>{{method}} {{path}}</code>\nAuth: <code>{{auth}}</code>\n\n{{description}}\n\nЛокализаций location: {{count}}',

@@ -191,7 +191,7 @@ describe('client repair-order navigation', () => {
   it('edits the order window for list loading, detail, and back navigation', async () => {
     const { bot, apiCalls } = createTestBot();
 
-    await bot.handleUpdate(clientMessage(1, '🧾 Buyurtmalarim'));
+    await bot.handleUpdate(clientMessage(1, '📦 Mening buyurtmalarim'));
 
     const loadingSend = apiCalls.find((call) => call.method === 'sendMessage');
     assert.ok(loadingSend);

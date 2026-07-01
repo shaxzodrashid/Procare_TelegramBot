@@ -150,7 +150,10 @@ export const registerByPhone = async (
         t(ctx.session.locale, 'adminRegistered', {
           name: adminDisplayName(ctx),
         }),
-        { reply_markup: personalMenuKeyboard(ctx.session) },
+        {
+          reply_markup: personalMenuKeyboard(ctx.session),
+          parse_mode: 'HTML',
+        },
       );
       return;
     }
@@ -170,7 +173,10 @@ export const registerByPhone = async (
       t(ctx.session.locale, 'registered', {
         name: registration.first_name || ctx.from.first_name,
       }),
-      { reply_markup: personalMenuKeyboard(ctx.session) },
+      {
+        reply_markup: personalMenuKeyboard(ctx.session),
+        parse_mode: 'HTML',
+      },
     );
   } catch (error) {
     await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
@@ -243,7 +249,10 @@ export const registerRegistrationHandlers = (
                     name: ctx.session.client.first_name || ctx.from?.first_name || 'Procare',
                   })
                 : t(ctx.session.locale, 'developerHelp'),
-          { reply_markup: personalMenuKeyboard(ctx.session) },
+          {
+            reply_markup: personalMenuKeyboard(ctx.session),
+            parse_mode: 'HTML',
+          },
         );
       } catch (error) {
         dependencies.logger.error('Failed to update Telegram user language settings', error);
@@ -275,7 +284,10 @@ export const registerRegistrationHandlers = (
           t(ctx.session.locale, 'adminRegistered', {
             name: adminDisplayName(ctx),
           }),
-          { reply_markup: personalMenuKeyboard(ctx.session) },
+          {
+            reply_markup: personalMenuKeyboard(ctx.session),
+            parse_mode: 'HTML',
+          },
         );
         return;
       }
@@ -296,7 +308,10 @@ export const registerRegistrationHandlers = (
         t(ctx.session.locale, 'adminRegistered', {
           name: adminDisplayName(ctx),
         }),
-        { reply_markup: personalMenuKeyboard(ctx.session) },
+        {
+          reply_markup: personalMenuKeyboard(ctx.session),
+          parse_mode: 'HTML',
+        },
       );
       return;
     }

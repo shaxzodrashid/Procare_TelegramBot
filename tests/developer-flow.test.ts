@@ -161,7 +161,7 @@ describe('Developer endpoint localization flow', () => {
     assert.ok(reply);
     assert.ok(String(reply.payload.text).includes('telefon raqamini ulashing'));
     assert.equal(reply.payload.reply_markup.keyboard[0][0].request_contact, true);
-    assert.doesNotMatch(String(reply.payload.text), /Developer menyusi/);
+    assert.doesNotMatch(String(reply.payload.text), /PROCARE DEVELOPER CORE/);
   });
 
   it('lets a configured developer create an endpoint location localization', async () => {
@@ -169,10 +169,10 @@ describe('Developer endpoint localization flow', () => {
     const { bot, apiCalls } = createTestBot(deps);
 
     await bot.handleUpdate(developerMessage(1, '/start'));
-    assert.ok(apiCalls.some((call) => String(call.payload.text).includes('Developer menyusi')));
+    assert.ok(apiCalls.some((call) => String(call.payload.text).includes('PROCARE DEVELOPER CORE')));
 
     apiCalls.length = 0;
-    await bot.handleUpdate(developerMessage(2, '🛠 API endpointlar'));
+    await bot.handleUpdate(developerMessage(2, '⚙️ API endpointlar'));
     const listCall = apiCalls.find((call) => call.method === 'sendMessage');
     assert.ok(listCall);
     assert.ok(String(listCall.payload.text).includes('API endpointlar'));

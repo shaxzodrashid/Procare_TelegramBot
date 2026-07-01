@@ -17,12 +17,18 @@ export const replySmart = async (
     replyMarkup?: InlineKeyboard;
   },
 ): Promise<void> => {
-  if (options.enabled) {
+  const chatId = ctx.chat?.id;
+
+  if (options.enabled && chatId) {
     try {
-      await ctx.replyWithRichMessage(
-        { html: content.richHtml, skip_entity_detection: true },
-        { reply_markup: options.replyMarkup },
-      );
+      await (ctx.api.raw as any).sendRichMessage({
+        chat_id: chatId,
+        rich_message: {
+          html: content.richHtml,
+          skip_entity_detection: true,
+        },
+        reply_markup: options.replyMarkup,
+      });
       return;
     } catch (error) {
       options.logger.warn('Telegram rich message failed; using HTML fallback', error);

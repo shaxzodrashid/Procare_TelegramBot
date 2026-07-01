@@ -18,9 +18,19 @@ describe('replySmart', () => {
   it('uses grammY rich messages when enabled', async () => {
     const calls: string[] = [];
     const ctx = {
-      async replyWithRichMessage() {
-        calls.push('rich');
-        return {};
+      chat: { id: 12345 },
+      api: {
+        raw: {
+          async sendRichMessage(payload: any) {
+            calls.push('rich');
+            assert.equal(payload.chat_id, 12345);
+            assert.deepEqual(payload.rich_message, {
+              html: '<h1>Order</h1>',
+              skip_entity_detection: true,
+            });
+            return {};
+          },
+        },
       },
       async reply() {
         calls.push('fallback');
@@ -40,9 +50,14 @@ describe('replySmart', () => {
   it('falls back to classic HTML when Telegram rejects rich content', async () => {
     const calls: Array<{ method: string; content: unknown; options?: unknown }> = [];
     const ctx = {
-      async replyWithRichMessage(content: unknown) {
-        calls.push({ method: 'rich', content });
-        throw new Error('Bad Request: rich messages unavailable');
+      chat: { id: 12345 },
+      api: {
+        raw: {
+          async sendRichMessage(payload: any) {
+            calls.push({ method: 'rich', content: payload.rich_message });
+            throw new Error('Bad Request: rich messages unavailable');
+          },
+        },
       },
       async reply(content: unknown, options: unknown) {
         calls.push({ method: 'fallback', content, options });

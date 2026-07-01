@@ -7,19 +7,19 @@ describe('localized bot messages', () => {
   it('does not expose role wording to registered clients', () => {
     assert.equal(
       t('uz', 'registered', { name: 'Shaxzod' }),
-      '✅ Shaxzod, profilingiz topildi.\n\nMenyudan buyurtmalaringiz va profil sozlamalarini boshqarishingiz mumkin.',
+      '✨ <b>PROCARE CLIENT PORTAL</b> ✨\n\n👋 Assalomu alaykum, <b>Shaxzod</b>!\nProcare xizmatlaridan foydalanayotganingizdan mamnunmiz.\n\n📋 <b>Menyu orqali quyidagi amallarni bajarishingiz mumkin:</b>\n ├ 📦 <b>Mening buyurtmalarim</b> — faol va yakunlangan buyurtmalar holatini ko‘rish\n ├ ✍️ <b>Ariza qoldirish</b> — yangi ta’mirlash uchun tezkor ariza yuborish\n └ ⚙️ <b>Sozlamalar</b> — profilingiz ma’lumotlarini yangilash\n\n👇 Kerakli bo‘limni tanlang:',
     );
     assert.equal(
       t('ru', 'registered', { name: 'Шахзод' }),
-      '✅ Шахзод, ваш профиль найден.\n\nВ меню доступны ваши заказы и настройки профиля.',
+      '✨ <b>PROCARE CLIENT PORTAL</b> ✨\n\n👋 Здравствуйте, <b>Шахзод</b>!\nМы рады, что вы пользуетесь услугами нашего сервиса.\n\n📋 <b>Через меню вы можете выполнить следующие действия:</b>\n ├ 📦 <b>Мои заказы</b> — просмотр статуса активных и завершенных заказов\n ├ ✍️ <b>Оставить заявку</b> — быстрая отправка новой заявки на ремонт\n └ ⚙️ <b>Настройки</b> — редактирование информации вашего профиля\n\n👇 Выберите нужный раздел:',
     );
     assert.equal(
       t('uz', 'clientHelp'),
-      'Menyudan buyurtmalaringizni ko‘rishingiz va profil sozlamalarini yangilashingiz mumkin.',
+      '✨ <b>PROCARE CLIENT PORTAL</b> ✨\n\n📋 <b>Menyu orqali quyidagi amallarni bajarishingiz mumkin:</b>\n ├ 📦 <b>Mening buyurtmalarim</b> — faol va yakunlangan buyurtmalar holatini ko‘rish\n ├ ✍️ <b>Ariza qoldirish</b> — yangi ta’mirlash uchun tezkor ariza yuborish\n └ ⚙️ <b>Sozlamalar</b> — profilingiz ma’lumotlarini yangilash\n\n👇 Kerakli bo‘limni tanlang:',
     );
     assert.equal(
       t('ru', 'clientHelp'),
-      'В меню можно смотреть свои заказы и обновлять настройки профиля.',
+      '✨ <b>PROCARE CLIENT PORTAL</b> ✨\n\n📋 <b>Через меню вы можете выполнить следующие действия:</b>\n ├ 📦 <b>Мои заказы</b> — просмотр статуса активных и завершенных заказов\n ├ ✍️ <b>Оставить заявку</b> — быстрая отправка новой заявки на ремонт\n └ ⚙️ <b>Настройки</b> — редактирование информации вашего профиля\n\n👇 Выберите нужный раздел:',
     );
   });
 });

@@ -28,7 +28,6 @@ export interface PersonalMenuUser {
 const clientMenuKeyboard = (locale: Locale): Keyboard =>
   new Keyboard()
     .text(t(locale, 'orders'))
-    .row()
     .text(t(locale, 'leaveRequestMenu'))
     .row()
     .text(t(locale, 'settings'))
@@ -40,7 +39,6 @@ const employeeMenuKeyboard = (locale: Locale): Keyboard =>
     .text(t(locale, 'adminTemplates'))
     .row()
     .text(t(locale, 'adminStatusNames'))
-    .row()
     .text(t(locale, 'adminExport'))
     .row()
     .text(t(locale, 'settings'))
@@ -50,13 +48,14 @@ const developerMenuKeyboard = (user: PersonalMenuUser): Keyboard => {
   const keyboard = new Keyboard();
   if (user.admin?.is_active) {
     keyboard.text(t(user.locale, 'adminClients')).text(t(user.locale, 'adminTemplates')).row();
-    keyboard.text(t(user.locale, 'adminStatusNames')).row();
-    keyboard.text(t(user.locale, 'adminExport')).row();
+    keyboard.text(t(user.locale, 'adminStatusNames')).text(t(user.locale, 'adminExport')).row();
+    keyboard.text(t(user.locale, 'developerApiEndpoints')).text(t(user.locale, 'settings'));
   } else if (user.client) {
-      keyboard.text(t(user.locale, 'orders')).row();
-      keyboard.text(t(user.locale, 'leaveRequestMenu')).row();
-    }
-  keyboard.text(t(user.locale, 'developerApiEndpoints')).row().text(t(user.locale, 'settings'));
+    keyboard.text(t(user.locale, 'orders')).text(t(user.locale, 'leaveRequestMenu')).row();
+    keyboard.text(t(user.locale, 'developerApiEndpoints')).text(t(user.locale, 'settings'));
+  } else {
+    keyboard.text(t(user.locale, 'developerApiEndpoints')).text(t(user.locale, 'settings'));
+  }
   return keyboard.resized();
 };
 

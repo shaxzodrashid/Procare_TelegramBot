@@ -149,6 +149,9 @@ export const replyWithAdminRegistration = async (ctx: BotContext): Promise<void>
     t(ctx.session.locale, 'adminRegistered', {
       name: adminDisplayName(ctx),
     }),
-    { reply_markup: personalMenuKeyboard(ctx.session) },
+    {
+      reply_markup: personalMenuKeyboard(ctx.session),
+      parse_mode: 'HTML',
+    },
   );
 };

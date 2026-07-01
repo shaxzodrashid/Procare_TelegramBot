@@ -214,11 +214,11 @@ describe('Employee Client Search and Messaging Flow', () => {
 
     const startCall = apiCalls.find((c) => c.method === 'sendMessage');
     assert.ok(startCall);
-    assert.ok(startCall.payload.text.includes('🛡 Xush kelibsiz'));
+    assert.ok(startCall.payload.text.includes('PROCARE WORKPLACE'));
 
     apiCalls.length = 0;
 
-    // 2. Click "🔍 Mijozlarni qidirish" (simulated via hears text)
+    // 2. Click "🔍 Mijozlar qidiruvi" (simulated via hears text)
     await bot.handleUpdate({
       update_id: 2,
       message: {
@@ -226,7 +226,7 @@ describe('Employee Client Search and Messaging Flow', () => {
         date: Date.now() / 1000,
         chat: { id: 800100, type: 'private', first_name: 'Admin' },
         from: { id: 800100, is_bot: false, first_name: 'Admin' },
-        text: '🔍 Mijozlarni qidirish',
+        text: '🔍 Mijozlar qidiruvi',
       },
     } as any);
 
