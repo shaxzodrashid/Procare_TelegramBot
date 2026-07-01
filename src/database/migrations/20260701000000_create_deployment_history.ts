@@ -1,6 +1,9 @@
 import type { Knex } from 'knex';
 
 export const up = async (knex: Knex): Promise<void> => {
+  const exists = await knex.schema.hasTable('deployment_history');
+  if (exists) return;
+
   await knex.schema.createTable('deployment_history', (table) => {
     table.bigIncrements('id').primary();
     table.timestamp('stopped_at', { useTz: true }).nullable();
