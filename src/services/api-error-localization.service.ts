@@ -69,7 +69,7 @@ export const API_ENDPOINTS: readonly ApiEndpointDescriptor[] = [
   {
     key: 'public_repair_order_open',
     method: 'POST',
-    path: '/api/v1/repair-orders/open',
+    path: '/api/v1/repair-orders/open/telegram',
     auth: 'none',
     title: 'Public repair-order creation',
     description: 'Creates a public repair request for an unknown Telegram client.',

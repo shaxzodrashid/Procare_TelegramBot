@@ -17,9 +17,11 @@ import {
   confirmationKeyboard,
   noteKeyboard,
   osTypesKeyboard,
+  personalMenuKeyboard,
   problemsKeyboard,
 } from '../keyboards.js';
 import { localizedCatalogName } from '../../types/repair-order.js';
+import { clearUnknownFlow } from '../session.js';
 
 const CATEGORY_PAGE_SIZE = 10;
 
@@ -47,7 +49,7 @@ const categoryMessage = (draft: RepairRequestDraft, locale: Locale): string => {
 const showConfirmation = async (ctx: BotContext): Promise<void> => {
   const unknown = ctx.session.unknownClient;
   const draft = ctx.session.repairDraft;
-  if (!unknown || !draft || !draft.selectedCategory) {
+  if (!unknown || !draft || (!draft.selectedCategory && !draft.customCategory)) {
     await ctx.reply(t(ctx.session.locale, 'staleAction'));
     return;
   }
@@ -113,7 +115,10 @@ export const registerUnknownFlowHandlers = (
 ): void => {
   bot.callbackQuery('request:accept', async (ctx) => {
     await ctx.answerCallbackQuery();
-    if (ctx.session.stage !== 'offering_request' || !ctx.session.unknownClient) {
+    const isUnknownOffer =
+      ctx.session.stage === 'offering_request' && Boolean(ctx.session.unknownClient);
+    const isClientRequest = ctx.session.stage === 'client_repair_request';
+    if (!isUnknownOffer && !isClientRequest) {
       await ctx.reply(t(ctx.session.locale, 'staleAction'));
       return;
     }
@@ -253,6 +258,18 @@ export const registerUnknownFlowHandlers = (
     }
   });
 
+  bot.callbackQuery('category:unlisted', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const draft = ctx.session.repairDraft;
+    if (ctx.session.stage !== 'choosing_category' || !draft) {
+      await ctx.reply(t(ctx.session.locale, 'staleAction'));
+      return;
+    }
+
+    ctx.session.stage = 'awaiting_custom_category';
+    await ctx.editMessageText(t(ctx.session.locale, 'enterCustomModel'));
+  });
+
   bot.callbackQuery(/^category:(\d+)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
     const draft = ctx.session.repairDraft;
@@ -382,9 +399,26 @@ export const registerUnknownFlowHandlers = (
     }
 
     try {
-      await saveUnknownClient(ctx, dependencies, 'cancelled_confirmation');
-      ctx.session.stage = 'request_declined';
-      await ctx.editMessageText(t(ctx.session.locale, 'requestCancelled'));
+      if (ctx.session.client) {
+        await ctx.editMessageText(t(ctx.session.locale, 'requestCancelled'));
+        await ctx.reply(
+          t(ctx.session.locale, 'registered', {
+            name: ctx.session.client.first_name || ctx.from?.first_name || 'Procare',
+          }),
+          { reply_markup: personalMenuKeyboard(ctx.session) },
+        );
+        clearUnknownFlow(ctx.session);
+        delete ctx.session.stage;
+      } else {
+        await saveUnknownClient(ctx, dependencies, 'cancelled_confirmation');
+        ctx.session.stage = 'request_declined';
+        await ctx.editMessageText(t(ctx.session.locale, 'requestCancelled'));
+        await ctx.reply(t(ctx.session.locale, 'requestDeclined'), {
+          reply_markup: { remove_keyboard: true },
+        });
+        clearUnknownFlow(ctx.session);
+        delete ctx.session.stage;
+      }
     } catch (error) {
       dependencies.logger.error('Failed to persist cancelled unknown client', error);
       await ctx.reply(t(ctx.session.locale, 'requestUnavailable'));
@@ -398,7 +432,7 @@ export const registerUnknownFlowHandlers = (
     if (
       ctx.session.stage !== 'confirming_request' ||
       !unknown ||
-      !draft?.selectedCategory ||
+      (!draft?.selectedCategory && !draft?.customCategory) ||
       draft.submitting
     ) {
       await ctx.reply(t(ctx.session.locale, 'staleAction'));
@@ -411,16 +445,59 @@ export const registerUnknownFlowHandlers = (
       const result = await dependencies.repairOrderService.createOpenRepairOrder({
         name: fullTelegramName(ctx),
         phone_number: unknown.phoneNumber,
-        phone_category: draft.selectedCategory.id,
+        phone_category: draft.customCategory || draft.selectedCategory!.id,
         description: buildRepairDescription(draft, ctx.session.locale),
       });
       ctx.session.stage = 'request_submitted';
       await ctx.editMessageText(
         t(ctx.session.locale, 'requestCreated', { number: result.number_id }),
       );
+
+      if (ctx.session.client) {
+        await ctx.reply(
+          t(ctx.session.locale, 'registered', {
+            name: ctx.session.client.first_name || ctx.from?.first_name || 'Procare',
+          }),
+          { reply_markup: personalMenuKeyboard(ctx.session) },
+        );
+      } else {
+        await ctx.reply(t(ctx.session.locale, 'requestDeclined'), {
+          reply_markup: { remove_keyboard: true },
+        });
+      }
+      clearUnknownFlow(ctx.session);
+      delete ctx.session.stage;
     } catch (error) {
       draft.submitting = false;
       dependencies.logger.error('Failed to create public repair order', error);
+
+      if (error instanceof RepairOrderError && error.code === 'duplicate') {
+        // Duplicate open order: inform the user clearly, no retry keyboard
+        await ctx.editMessageText(
+          `${t(ctx.session.locale, 'requestDuplicate')}\n\n${formatRepairRequestSummary(
+            unknown,
+            draft,
+            ctx.session.locale,
+          )}`,
+          { parse_mode: 'HTML' },
+        );
+        if (ctx.session.client) {
+          await ctx.reply(
+            t(ctx.session.locale, 'registered', {
+              name: ctx.session.client.first_name || ctx.from?.first_name || 'Procare',
+            }),
+            { reply_markup: personalMenuKeyboard(ctx.session) },
+          );
+        } else {
+          await ctx.reply(t(ctx.session.locale, 'requestDeclined'), {
+            reply_markup: { remove_keyboard: true },
+          });
+        }
+        clearUnknownFlow(ctx.session);
+        delete ctx.session.stage;
+        return;
+      }
+
       const messageKey =
         error instanceof RepairOrderError
           ? error.code === 'rate_limited'
@@ -441,6 +518,35 @@ export const registerUnknownFlowHandlers = (
         },
       );
     }
+  });
+
+  // Awaiting custom category text handler
+  bot.on('message:text', async (ctx, next) => {
+    if (ctx.session.stage !== 'awaiting_custom_category') {
+      return next();
+    }
+    const draft = ctx.session.repairDraft;
+    if (!draft) {
+      await ctx.reply(t(ctx.session.locale, 'staleAction'));
+      return;
+    }
+    const text = ctx.message.text.trim();
+    if (!text) {
+      await ctx.reply(t(ctx.session.locale, 'enterCustomModel'));
+      return;
+    }
+    if (text.length > 200) {
+      await ctx.reply(t(ctx.session.locale, 'customModelTooLong'));
+      return;
+    }
+
+    draft.customCategory = text;
+    draft.problems = [];
+    draft.selectedProblemIds = [];
+    ctx.session.stage = 'awaiting_note';
+    await ctx.reply(t(ctx.session.locale, 'enterNote'), {
+      reply_markup: noteKeyboard(ctx.session.locale),
+    });
   });
 
   // Awaiting note text handler

@@ -159,7 +159,7 @@ export const registerByPhone = async (
       throw new Error('CRM returned a non-client registration without admin privileges');
     }
 
-    ctx.session.client = registration;
+    ctx.session.client = { ...registration, phone_number: normalizedPhone };
     if (mode === 'settings_phone') {
       await ctx.reply(t(ctx.session.locale, 'settingsPhoneUpdated'), {
         reply_markup: personalMenuKeyboard(ctx.session),

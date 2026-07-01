@@ -18,6 +18,7 @@ export interface ClientProfile {
   client_id: string;
   first_name: string | null;
   last_name: string | null;
+  phone_number?: string | null;
   language: string | null;
   has_repair_orders: boolean;
   is_admin: boolean;

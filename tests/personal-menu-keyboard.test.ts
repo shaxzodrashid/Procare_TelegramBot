@@ -22,7 +22,7 @@ describe('personal menu keyboard', () => {
       client: { account_type: 'client' },
     });
 
-    assert.deepEqual(keyboardLabels(keyboard), [['🧾 Buyurtmalarim'], ['⚙️ Sozlamalar']]);
+    assert.deepEqual(keyboardLabels(keyboard), [['🧾 Buyurtmalarim'], ['🛠 Ariza qoldirish'], ['⚙️ Sozlamalar']]);
   });
 
   it('shows employee-only sections for employees', () => {
@@ -72,6 +72,7 @@ describe('personal menu keyboard', () => {
 
     assert.deepEqual(keyboardLabels(keyboard), [
       ['🧾 Buyurtmalarim'],
+      ['🛠 Ariza qoldirish'],
       ['🛠 API endpointlar'],
       ['⚙️ Sozlamalar'],
     ]);

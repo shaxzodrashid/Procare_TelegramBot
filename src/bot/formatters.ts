@@ -346,10 +346,12 @@ export const formatRepairRequestSummary = (
     .filter((problem) => draft.selectedProblemIds.includes(problem.id))
     .map((problem) => localizedCatalogName(problem, locale))
     .join(', ');
-  const modelPath = [...draft.categoryPath, draft.selectedCategory]
-    .filter((item): item is PhoneCategory => Boolean(item))
-    .map((item) => localizedCatalogName(item, locale))
-    .join(' → ');
+  const modelPath = draft.customCategory
+    ? draft.customCategory
+    : [...draft.categoryPath, draft.selectedCategory]
+        .filter((item): item is PhoneCategory => Boolean(item))
+        .map((item) => localizedCatalogName(item, locale))
+        .join(' → ');
 
   return [
     `<b>${labels.name}:</b> ${escapeHtml(fullName)}`,

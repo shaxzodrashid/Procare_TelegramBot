@@ -16,7 +16,7 @@ describe('API error localization service', () => {
         (endpoint) => endpoint.path === '/api/v1/repair-orders/register-comment/{repairOrderId}',
       ),
     );
-    assert.ok(API_ENDPOINTS.some((endpoint) => endpoint.path === '/api/v1/repair-orders/open'));
+    assert.ok(API_ENDPOINTS.some((endpoint) => endpoint.path === '/api/v1/repair-orders/open/telegram'));
   });
 
   it('validates endpoint-specific location localization input', () => {

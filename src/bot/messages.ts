@@ -39,6 +39,13 @@ const messages = {
     requestCancelled: '✅ Ariza bekor qilindi va ma’lumotlaringiz saqlandi.',
     requestUnavailable: '⚠️ Arizani hozir yuborib bo‘lmadi. Iltimos, keyinroq urinib ko‘ring.',
     requestRateLimited: '⏱ Juda ko‘p urinish bo‘ldi. Bir ozdan keyin qayta urinib ko‘ring.',
+    requestDuplicate:
+      '⚠️ Ushbu telefon raqami va model bo‘yicha faol ariza allaqachon mavjud. Avvalgi arizangiz ko‘rib chiqilishini kuting.',
+    leaveRequestMenu: '🛠 Ariza qoldirish',
+    leaveRequestIntro: '🛠 Yangi ta‘mir arizasi. Telefoningizning turini tanlang:',
+    modelNotListed: 'Model ro‘yxatda yo‘q',
+    enterCustomModel: 'Iltimos, telefoningiz modelini yozib yuboring (masalan, iPhone 15 Pro Max):',
+    customModelTooLong: '⚠️ Model nomi 200 belgidan oshmasligi kerak. Qisqaroq nom yuboring.',
     staleAction: '🔄 Bu tugma eskirgan. /start orqali jarayonni qayta boshlang.',
     emptyProblems:
       '📝 Ushbu model uchun tayyor muammolar ro‘yxati yo‘q. Muammoni izohda yozishingiz mumkin.',
@@ -265,6 +272,13 @@ const messages = {
     requestCancelled: '✅ Заявка отменена, ваши данные сохранены.',
     requestUnavailable: '⚠️ Сейчас не удалось отправить заявку. Попробуйте позже.',
     requestRateLimited: '⏱ Слишком много попыток. Повторите немного позже.',
+    requestDuplicate:
+      '⚠️ Активная заявка для этого номера телефона и модели уже существует. Дождитесь рассмотрения предыдущей заявки.',
+    leaveRequestMenu: '🛠 Оставить заявку',
+    leaveRequestIntro: '🛠 Новая заявка на ремонт. Выберите тип телефона:',
+    modelNotListed: 'Модели нет в списке',
+    enterCustomModel: 'Пожалуйста, введите модель вашего телефона (например, iPhone 15 Pro Max):',
+    customModelTooLong: '⚠️ Название модели не должно превышать 200 символов. Отправьте более короткое название.',
     staleAction: '🔄 Эта кнопка устарела. Начните заново с помощью /start.',
     emptyProblems:
       '📝 Для этой модели нет готового списка неисправностей. Вы можете описать проблему в примечании.',

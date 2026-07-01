@@ -35,7 +35,7 @@ describe('repair request presentation', () => {
     assert.equal(text, '11. Model 11\n12. Model 12');
     assert.deepEqual(
       keyboard.inline_keyboard.flat().map((button) => button.text),
-      ['11', '12', '‹', '⬅️ Orqaga'],
+      ['11', '12', '‹', 'Model ro‘yxatda yo‘q', '⬅️ Orqaga'],
     );
   });
 
@@ -87,6 +87,41 @@ describe('repair request presentation', () => {
       ),
       /Model 1 → Model 2/,
     );
+  });
+
+  it('builds a summary with a custom category', () => {
+    const draft: RepairRequestDraft = {
+      osTypes: [],
+      selectedOs: {
+        id: 'os-id',
+        name_uz: 'Android',
+        name_ru: 'Android',
+        name_en: 'Android',
+        sort: 1,
+      },
+      categoryPath: [],
+      categories: [],
+      categoryPage: 0,
+      customCategory: 'Sony Xperia 1 V',
+      problems: [],
+      selectedProblemIds: [],
+      note: 'Plata ta’mirlash',
+      submitting: false,
+    };
+
+    assert.equal(buildRepairDescription(draft, 'uz'), 'Izoh: Plata ta’mirlash');
+    const summary = formatRepairRequestSummary(
+      {
+        phoneNumber: '+998901234567',
+        firstName: 'Ali',
+        lastName: 'Valiyev',
+        username: 'ali',
+      },
+      draft,
+      'uz',
+    );
+    assert.match(summary, /Sony Xperia 1 V/);
+    assert.match(summary, /Izoh:.*Plata/);
   });
 });
 

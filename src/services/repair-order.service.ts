@@ -16,6 +16,7 @@ import type { Logger } from '../utils/logger.js';
 
 export type RepairOrderFailureCode =
   | 'invalid_request'
+  | 'duplicate'
   | 'rate_limited'
   | 'maintenance'
   | 'unavailable'
@@ -26,6 +27,7 @@ export class RepairOrderError extends Error {
     public readonly code: RepairOrderFailureCode,
     message: string,
     public readonly status?: number,
+    public readonly location?: string,
   ) {
     super(message);
     this.name = 'RepairOrderError';
@@ -41,6 +43,7 @@ export interface RepairOrderGateway {
 
 interface ErrorEnvelope {
   message?: string;
+  location?: string;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -187,7 +190,7 @@ export class HttpRepairOrderService implements RepairOrderGateway {
 
   createOpenRepairOrder(input: OpenRepairOrderInput): Promise<OpenRepairOrderResult> {
     return this.request(
-      '/api/v1/repair-orders/open',
+      '/api/v1/repair-orders/open/telegram',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -272,20 +275,26 @@ export class HttpRepairOrderService implements RepairOrderGateway {
       return payload;
     }
 
+    const envelope = isObject(payload) ? payload : null;
     const message =
-      isObject(payload) && typeof payload.message === 'string'
-        ? payload.message
+      typeof envelope?.message === 'string'
+        ? envelope.message
         : `Public repair API request failed with status ${response.status}`;
+    const location =
+      typeof envelope?.location === 'string' ? envelope.location : undefined;
 
     if (response.status === 400 || response.status === 409 || response.status === 422) {
-      throw new RepairOrderError('invalid_request', message, response.status);
+      if (location === 'telegram_open_repair_order_duplicate') {
+        throw new RepairOrderError('duplicate', message, response.status, location);
+      }
+      throw new RepairOrderError('invalid_request', message, response.status, location);
     }
     if (response.status === 429) {
-      throw new RepairOrderError('rate_limited', message, response.status);
+      throw new RepairOrderError('rate_limited', message, response.status, location);
     }
     if (response.status === 503) {
-      throw new RepairOrderError('maintenance', message, response.status);
+      throw new RepairOrderError('maintenance', message, response.status, location);
     }
-    throw new RepairOrderError('unavailable', message, response.status);
+    throw new RepairOrderError('unavailable', message, response.status, location);
   }
 }

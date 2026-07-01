@@ -9,11 +9,13 @@ import { replySmart } from '../rich-messages.js';
 import { formatClientRepairOrderDetail, formatClientRepairOrderList } from '../formatters.js';
 import {
   languageKeyboard,
+  osTypesKeyboard,
   personalMenuKeyboard,
   repairOrderDetailKeyboard,
   repairOrdersKeyboard,
 } from '../keyboards.js';
 import { ClientRepairOrderError } from '../../services/client-repair-order.service.js';
+import { RepairOrderError } from '../../services/repair-order.service.js';
 import type {
   CustomerRepairOrderDetail,
   CustomerRepairOrderList,
@@ -291,6 +293,78 @@ export const registerRepairOrdersHandlers = (
     }
     clearSupportFlow(ctx.session);
     await showClientRepairOrders(ctx, dependencies, 0, true);
+  });
+
+  bot.hears([t('uz', 'leaveRequestMenu'), t('ru', 'leaveRequestMenu')], async (ctx) => {
+    const client = ctx.session.client;
+    if (!client) {
+      if (hasEmployeeMenuAccess(ctx.session)) {
+        await replyWithAdminRegistration(ctx);
+      } else {
+        await ctx.reply(t(ctx.session.locale, 'registerFirst'), {
+          reply_markup: languageKeyboard(),
+        });
+      }
+      return;
+    }
+
+    if (!client.phone_number) {
+      await ctx.reply(t(ctx.session.locale, 'requestUnavailable'), {
+        reply_markup: personalMenuKeyboard(ctx.session),
+      });
+      return;
+    }
+
+    // Populate unknownClient from the registered profile so the shared flow works
+    ctx.session.unknownClient = {
+      phoneNumber: client.phone_number,
+      firstName: client.first_name ?? ctx.from?.first_name ?? 'Telegram user',
+      lastName: client.last_name ?? null,
+      username: ctx.from?.username ?? null,
+    };
+    ctx.session.stage = 'client_repair_request';
+
+    try {
+      const osTypes = await dependencies.repairOrderService.getOsTypes();
+      if (osTypes.length === 0) {
+        delete ctx.session.unknownClient;
+        delete ctx.session.stage;
+        await ctx.reply(t(ctx.session.locale, 'noOsTypes'), {
+          reply_markup: personalMenuKeyboard(ctx.session),
+        });
+        return;
+      }
+      ctx.session.repairDraft = {
+        osTypes,
+        categoryPath: [],
+        categories: [],
+        categoryPage: 0,
+        problems: [],
+        selectedProblemIds: [],
+        note: '',
+        submitting: false,
+      };
+      ctx.session.stage = 'choosing_os';
+      await ctx.reply(t(ctx.session.locale, 'leaveRequestIntro'), {
+        reply_markup: personalMenuKeyboard(ctx.session),
+      });
+      await ctx.reply(t(ctx.session.locale, 'chooseOs'), {
+        reply_markup: osTypesKeyboard(osTypes, ctx.session.locale),
+      });
+    } catch (error) {
+      dependencies.logger.error('Failed to load OS types for client repair request', error);
+      delete ctx.session.unknownClient;
+      delete ctx.session.stage;
+      await ctx.reply(
+        t(
+          ctx.session.locale,
+          error instanceof RepairOrderError && error.code === 'maintenance'
+            ? 'maintenance'
+            : 'requestUnavailable',
+        ),
+        { reply_markup: personalMenuKeyboard(ctx.session) },
+      );
+    }
   });
 
   bot.callbackQuery(/^ro:p:(\d+)$/, async (ctx) => {

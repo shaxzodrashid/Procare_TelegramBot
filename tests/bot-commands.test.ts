@@ -333,6 +333,7 @@ describe('session restoration middleware', () => {
       client_id: 'client-123',
       first_name: 'John',
       last_name: 'Doe',
+      phone_number: '+998901234567',
       language: 'ru',
       has_repair_orders: true,
       is_admin: false,

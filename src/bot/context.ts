@@ -9,8 +9,10 @@ export type RegistrationStage =
   | 'choosing_language'
   | 'awaiting_phone'
   | 'offering_request'
+  | 'client_repair_request'
   | 'choosing_os'
   | 'choosing_category'
+  | 'awaiting_custom_category'
   | 'choosing_problems'
   | 'awaiting_note'
   | 'confirming_request'
@@ -45,6 +47,7 @@ export interface RepairRequestDraft {
   categories: PhoneCategory[];
   categoryPage: number;
   selectedCategory?: PhoneCategory;
+  customCategory?: string;
   problems: ProblemCategory[];
   selectedProblemIds: string[];
   note: string;

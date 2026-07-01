@@ -387,6 +387,7 @@ export const createSessionRestorationMiddleware = (dependencies: {
               client_id: registrationState.client.crm_client_id,
               first_name: registrationState.user.first_name,
               last_name: registrationState.user.last_name,
+              phone_number: registrationState.user.phone_number,
               language: registrationState.user.locale,
               has_repair_orders: true,
               is_admin: false,

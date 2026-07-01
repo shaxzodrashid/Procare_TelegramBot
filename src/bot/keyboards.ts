@@ -26,7 +26,13 @@ export interface PersonalMenuUser {
 }
 
 const clientMenuKeyboard = (locale: Locale): Keyboard =>
-  new Keyboard().text(t(locale, 'orders')).row().text(t(locale, 'settings')).resized();
+  new Keyboard()
+    .text(t(locale, 'orders'))
+    .row()
+    .text(t(locale, 'leaveRequestMenu'))
+    .row()
+    .text(t(locale, 'settings'))
+    .resized();
 
 const employeeMenuKeyboard = (locale: Locale): Keyboard =>
   new Keyboard()
@@ -47,8 +53,9 @@ const developerMenuKeyboard = (user: PersonalMenuUser): Keyboard => {
     keyboard.text(t(user.locale, 'adminStatusNames')).row();
     keyboard.text(t(user.locale, 'adminExport')).row();
   } else if (user.client) {
-    keyboard.text(t(user.locale, 'orders')).row();
-  }
+      keyboard.text(t(user.locale, 'orders')).row();
+      keyboard.text(t(user.locale, 'leaveRequestMenu')).row();
+    }
   keyboard.text(t(user.locale, 'developerApiEndpoints')).row().text(t(user.locale, 'settings'));
   return keyboard.resized();
 };
@@ -121,6 +128,7 @@ export const categoryKeyboard = (
 
   if (page > 0) keyboard.text('‹', `category-page:${page - 1}`);
   if (end < totalItems) keyboard.text('›', `category-page:${page + 1}`);
+  keyboard.row().text(t(locale, 'modelNotListed'), 'category:unlisted');
   keyboard.row().text(t(locale, 'back'), 'category:back');
   return keyboard;
 };
