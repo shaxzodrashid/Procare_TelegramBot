@@ -21,7 +21,11 @@ describe('replySmart', () => {
       chat: { id: 12345 },
       api: {
         raw: {
-          async sendRichMessage(payload: any) {
+          async sendRichMessage(payload: {
+            chat_id: number;
+            rich_message: { html: string; skip_entity_detection: boolean };
+            reply_markup?: unknown;
+          }) {
             calls.push('rich');
             assert.equal(payload.chat_id, 12345);
             assert.deepEqual(payload.rich_message, {
@@ -53,7 +57,11 @@ describe('replySmart', () => {
       chat: { id: 12345 },
       api: {
         raw: {
-          async sendRichMessage(payload: any) {
+          async sendRichMessage(payload: {
+            chat_id: number;
+            rich_message: { html: string; skip_entity_detection: boolean };
+            reply_markup?: unknown;
+          }) {
             calls.push({ method: 'rich', content: payload.rich_message });
             throw new Error('Bad Request: rich messages unavailable');
           },

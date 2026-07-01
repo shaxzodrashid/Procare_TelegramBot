@@ -57,6 +57,15 @@ export const migrateDatabase = async (database: Knex): Promise<void> => {
   const migrationsDirectory = join(__dirname, 'migrations');
   const extension = extname(__filename);
 
+  const hasTable = await database.schema.hasTable('knex_migrations');
+  if (hasTable) {
+    await database('knex_migrations')
+      .where('name', 'like', '%.js')
+      .update({
+        name: database.raw("replace(name, '.js', '.ts')"),
+      });
+  }
+
   await database.migrate.latest({
     tableName: 'knex_migrations',
     migrationSource: createStableMigrationSource(migrationsDirectory, extension.slice(1)),

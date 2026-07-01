@@ -21,7 +21,11 @@ export const replySmart = async (
 
   if (options.enabled && chatId) {
     try {
-      await (ctx.api.raw as any).sendRichMessage({
+      await (
+        ctx.api.raw as unknown as {
+          sendRichMessage: (args: Record<string, unknown>) => Promise<unknown>;
+        }
+      ).sendRichMessage({
         chat_id: chatId,
         rich_message: {
           html: content.richHtml,
