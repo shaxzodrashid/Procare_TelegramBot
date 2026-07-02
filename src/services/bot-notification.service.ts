@@ -6,6 +6,7 @@ import type { SupportMessageReplyTarget } from '../types/support-message.js';
 import type { RegisteredUserStore } from './registered-user.store.js';
 import { MessageTemplateRenderer, type MessageTemplateStore } from './message-template.service.js';
 import type { SupportMessageStore } from './support-message.store.js';
+import type { Logger } from '../utils/logger.js';
 
 export interface TemplatePhoto {
   buffer: Buffer | Uint8Array;
@@ -31,6 +32,9 @@ export interface SendDirectMessageParams {
   inlineKeyboard?: DirectMessageInlineKeyboard;
   supportReply?: DirectMessageSupportReply;
   type?: MessageTemplateType;
+  crmCommentId?: string;
+  repairOrderUuid?: string;
+  orderNumber?: string;
 }
 
 export interface DirectMessageDeliveryResult {
@@ -221,6 +225,7 @@ export class BotNotificationService {
 
 export class BotDirectMessageService {
   private readonly fetchImpl: typeof fetch;
+  private readonly logger?: Logger;
 
   constructor(
     private readonly users: Pick<RegisteredUserStore, 'findByPhoneNumber'>,
@@ -229,10 +234,14 @@ export class BotDirectMessageService {
       'logDispatch' | 'setUserBlocked' | 'findActiveTemplateByType'
     >,
     private readonly telegram: TelegramDirectMessageApi,
-    private readonly supportMessages?: Pick<SupportMessageStore, 'findReplyTargetByCrmCommentId'>,
-    options?: { fetchImpl?: typeof fetch },
+    private readonly supportMessages?: Pick<
+      SupportMessageStore,
+      'findReplyTargetByCrmCommentId' | 'save'
+    >,
+    options?: { fetchImpl?: typeof fetch; logger?: Logger },
   ) {
     this.fetchImpl = options?.fetchImpl ?? fetch;
+    this.logger = options?.logger;
   }
 
   async sendDirectFile(params: SendDirectFileParams): Promise<DirectFileDeliveryResult> {
@@ -403,20 +412,57 @@ export class BotDirectMessageService {
             user.telegram_id,
           )
         : null;
+      let sentMessage;
       try {
-        await this.telegram.sendMessage(
+        sentMessage = await this.telegram.sendMessage(
           replyTarget?.telegram_chat_id ?? user.telegram_id,
           messageText,
           directMessageOptions(replyMarkup, replyTarget ?? null),
         );
       } catch (error) {
         if (!replyTarget || !isTelegramReplyTargetError(error)) throw error;
-        await this.telegram.sendMessage(
+        sentMessage = await this.telegram.sendMessage(
           user.telegram_id,
           messageText,
           directMessageOptions(replyMarkup, null),
         );
       }
+
+      if (params.crmCommentId && this.supportMessages && user.crm_client_id) {
+        const repairOrderId = replyTarget?.repair_order_id ?? params.repairOrderUuid;
+        const orderNumber = replyTarget?.order_number ?? params.orderNumber;
+        if (repairOrderId && orderNumber) {
+          try {
+            await this.supportMessages.save({
+              crm_comment_id: params.crmCommentId,
+              crm_client_id: user.crm_client_id,
+              repair_order_id: repairOrderId,
+              order_number: orderNumber,
+              user_id: user.id,
+              telegram_id: user.telegram_id,
+              telegram_chat_id: String(sentMessage.chat.id),
+              telegram_message_id: sentMessage.message_id,
+              telegram_message_date: new Date(sentMessage.date * 1000),
+              sender_type: 'employee',
+              direction: 'outbound',
+              content_type: 'text',
+              text: messageText,
+              photo_count: 0,
+              reply_to_support_message_id: replyTarget?.id ?? null,
+            });
+          } catch (saveError) {
+            this.logger?.error(
+              'Failed to save outbound direct support message to database',
+              saveError,
+              {
+                crm_comment_id: params.crmCommentId,
+                telegram_message_id: sentMessage.message_id,
+              },
+            );
+          }
+        }
+      }
+
       await this.templates.setUserBlocked(user.telegram_id, false);
       await this.templates.logDispatch({
         user_id: user.id,

@@ -25,4 +25,7 @@ export interface SupportMessageReplyTarget {
   telegram_id: string;
   telegram_chat_id: string;
   telegram_message_id: number;
+  repair_order_id: string;
+  order_number: string;
+  crm_client_id: string;
 }

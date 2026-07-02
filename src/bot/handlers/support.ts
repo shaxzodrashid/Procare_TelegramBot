@@ -5,6 +5,7 @@ import { t } from '../messages.js';
 import {
   CUSTOMER_SUPPORT_PHOTO_MIME_TYPES,
   type CustomerSupportPhotoUpload,
+  type CustomerSupportReplyTargetType,
 } from '../../types/client-repair-order.js';
 import type { SupportMessageContentType } from '../../types/support-message.js';
 import { ClientRepairOrderError } from '../../services/client-repair-order.service.js';
@@ -36,6 +37,7 @@ const startSupportComment = async (ctx: BotContext): Promise<void> => {
   };
   await ctx.reply(t(ctx.session.locale, 'supportPrompt', { number: orderNumber }), {
     reply_markup: supportCommentKeyboard(ctx.session.locale),
+    parse_mode: 'HTML',
   });
 };
 
@@ -104,6 +106,8 @@ const submitSupportComment = async (
   input: {
     text?: string;
     photos?: CustomerSupportPhotoUpload[];
+    replyTargetType?: CustomerSupportReplyTargetType;
+    replyTargetId?: string;
     telegramMessage?: {
       chatId: string;
       messageId: number;
@@ -134,18 +138,32 @@ const submitSupportComment = async (
     return;
   }
 
+  // Trigger chat action to provide visual feedback in chat header
+  const isPhoto = photos.length > 0;
+  await ctx.replyWithChatAction(isPhoto ? 'upload_photo' : 'typing').catch(() => undefined);
+
   draft.submitting = true;
-  const pendingMessage = ctx.chat ? await ctx.reply(t(ctx.session.locale, 'supportSending')) : null;
   try {
     const result = await dependencies.clientRepairOrderService.registerClientSupportComment(
       draft.repairOrderId,
       {
         text,
         photos,
+        replyTargetType: input.replyTargetType,
+        replyTargetId: input.replyTargetId,
       },
     );
     if (input.telegramMessage && ctx.from) {
       try {
+        let replyToId: string | null = null;
+        if (input.replyTargetId) {
+          const targetRow = await dependencies.supportMessageStore.findReplyTargetByCrmCommentId(
+            input.replyTargetId,
+            String(ctx.from.id),
+          );
+          if (targetRow) replyToId = targetRow.id;
+        }
+
         await dependencies.supportMessageStore.save({
           crm_comment_id: result.comment.id,
           crm_client_id: ctx.session.client.client_id,
@@ -160,6 +178,7 @@ const submitSupportComment = async (
           content_type: input.telegramMessage.contentType,
           text: text ?? null,
           photo_count: photos.length,
+          reply_to_support_message_id: replyToId,
         });
       } catch (storageError) {
         dependencies.logger.error('Failed to store support message mapping', storageError, {
@@ -183,19 +202,29 @@ const submitSupportComment = async (
         );
       }
     }
-    if (pendingMessage && ctx.chat) {
-      await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
-    }
     draft.submitting = false;
-    await ctx.reply(t(ctx.session.locale, result.created ? 'supportSent' : 'supportDuplicate'), {
-      reply_markup: supportCommentKeyboard(ctx.session.locale),
-    });
+
+    // React with 👍 emoji to confirm successful delivery
+    if (ctx.chat) {
+      await ctx.api
+        .setMessageReaction(ctx.chat.id, input.telegramMessage?.messageId ?? ctx.message!.message_id, [
+          { type: 'emoji', emoji: '👍' },
+        ])
+        .catch(() => undefined);
+    }
   } catch (error) {
     draft.submitting = false;
-    if (pendingMessage && ctx.chat) {
-      await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
-    }
     dependencies.logger.error('Failed to register client support comment', error);
+
+    // React with 👎 emoji to show failure
+    if (ctx.chat) {
+      await ctx.api
+        .setMessageReaction(ctx.chat.id, input.telegramMessage?.messageId ?? ctx.message!.message_id, [
+          { type: 'emoji', emoji: '👎' },
+        ])
+        .catch(() => undefined);
+    }
+
     const key =
       error instanceof ClientRepairOrderError && error.code === 'not_found'
         ? 'supportOrderUnavailable'
@@ -268,6 +297,100 @@ const downloadTelegramSupportPhoto = async (
   return { data: buffer, fileName, mimeType };
 };
 
+interface MediaGroupBuffer {
+  mediaGroupId: string;
+  chatId: string;
+  timer: NodeJS.Timeout | null;
+  downloads: Promise<{ photo: CustomerSupportPhotoUpload | null; error: any }>[];
+  captions: string[];
+  messageIds: number[];
+  dates: number[];
+}
+
+const mediaGroupBuffers = new Map<string, MediaGroupBuffer>();
+
+const handleCompletedMediaGroup = async (
+  ctx: BotContext,
+  buffer: MediaGroupBuffer,
+  dependencies: BotDependencies,
+  token: string,
+) => {
+  const draft = ctx.session.supportComment;
+  if (ctx.session.stage !== 'support_comment_input' || !draft || !ctx.session.client) {
+    return;
+  }
+
+  await ctx.replyWithChatAction('upload_photo').catch(() => undefined);
+
+  const results = await Promise.all(buffer.downloads);
+  const photos: CustomerSupportPhotoUpload[] = [];
+  let hasLargePhotoError = false;
+
+  for (const res of results) {
+    if (res.photo) {
+      photos.push(res.photo);
+    } else if (
+      res.error instanceof ClientRepairOrderError &&
+      res.error.code === 'invalid_request'
+    ) {
+      hasLargePhotoError = true;
+    }
+  }
+
+  if (hasLargePhotoError) {
+    await ctx.reply(t(ctx.session.locale, 'supportPhotoTooLarge'), {
+      reply_markup: supportCommentKeyboard(ctx.session.locale),
+    });
+    return;
+  }
+
+  if (photos.length === 0) {
+    await ctx.reply(t(ctx.session.locale, 'supportPhotoUnavailable'), {
+      reply_markup: supportCommentKeyboard(ctx.session.locale),
+    });
+    return;
+  }
+
+  let finalPhotos = photos;
+  if (photos.length > 5) {
+    finalPhotos = photos.slice(0, 5);
+    await ctx.reply(t(ctx.session.locale, 'supportPhotosTruncated'), {
+      reply_markup: supportCommentKeyboard(ctx.session.locale),
+    });
+  }
+
+  const text = buffer.captions.find(Boolean);
+
+  let replyTargetType: CustomerSupportReplyTargetType | undefined;
+  let replyTargetId: string | undefined;
+
+  if (ctx.message?.reply_to_message) {
+    const replyTarget = await dependencies.supportMessageStore.findByTelegramMessageId(
+      ctx.message.reply_to_message.message_id,
+      String(ctx.chat!.id),
+    );
+    if (replyTarget) {
+      replyTargetType = 'comment';
+      replyTargetId = replyTarget.crm_comment_id;
+    }
+  }
+
+  const lastMessageId = buffer.messageIds[buffer.messageIds.length - 1]!;
+
+  await submitSupportComment(ctx, dependencies, {
+    text,
+    photos: finalPhotos,
+    replyTargetType,
+    replyTargetId,
+    telegramMessage: {
+      chatId: buffer.chatId,
+      messageId: lastMessageId,
+      date: buffer.dates[0] ? new Date(buffer.dates[0] * 1000) : null,
+      contentType: 'photo',
+    },
+  });
+};
+
 export const registerSupportHandlers = (
   bot: Bot<BotContext>,
   token: string,
@@ -283,7 +406,41 @@ export const registerSupportHandlers = (
       return next();
     }
 
+    const mediaGroupId = ctx.message.media_group_id;
+    if (mediaGroupId) {
+      let buffer = mediaGroupBuffers.get(mediaGroupId);
+      if (!buffer) {
+        buffer = {
+          mediaGroupId,
+          chatId: String(ctx.chat!.id),
+          timer: null,
+          downloads: [],
+          captions: [],
+          messageIds: [],
+          dates: [],
+        };
+        mediaGroupBuffers.set(mediaGroupId, buffer);
+      }
+
+      if (ctx.message.caption) buffer.captions.push(ctx.message.caption);
+      buffer.messageIds.push(ctx.message.message_id);
+      if (ctx.message.date) buffer.dates.push(ctx.message.date);
+
+      const downloadPromise = downloadTelegramSupportPhoto(ctx, token)
+        .then((photo) => ({ photo, error: null }))
+        .catch((err) => ({ photo: null, error: err }));
+      buffer.downloads.push(downloadPromise);
+
+      if (buffer.timer) clearTimeout(buffer.timer);
+      buffer.timer = setTimeout(async () => {
+        mediaGroupBuffers.delete(mediaGroupId);
+        await handleCompletedMediaGroup(ctx, buffer!, dependencies, token);
+      }, 800);
+      return;
+    }
+
     try {
+      await ctx.replyWithChatAction('upload_photo').catch(() => undefined);
       const photo = await downloadTelegramSupportPhoto(ctx, token);
       if (!photo) {
         await ctx.reply(t(ctx.session.locale, 'supportPhotoUnavailable'), {
@@ -291,9 +448,25 @@ export const registerSupportHandlers = (
         });
         return;
       }
+
+      let replyTargetType: CustomerSupportReplyTargetType | undefined;
+      let replyTargetId: string | undefined;
+      if (ctx.message.reply_to_message) {
+        const replyTarget = await dependencies.supportMessageStore.findByTelegramMessageId(
+          ctx.message.reply_to_message.message_id,
+          String(ctx.chat.id),
+        );
+        if (replyTarget) {
+          replyTargetType = 'comment';
+          replyTargetId = replyTarget.crm_comment_id;
+        }
+      }
+
       await submitSupportComment(ctx, dependencies, {
         text: ctx.message.caption,
         photos: [photo],
+        replyTargetType,
+        replyTargetId,
         telegramMessage: {
           chatId: String(ctx.chat.id),
           messageId: ctx.message.message_id,
@@ -328,8 +501,23 @@ export const registerSupportHandlers = (
       return;
     }
 
+    let replyTargetType: CustomerSupportReplyTargetType | undefined;
+    let replyTargetId: string | undefined;
+    if (ctx.message.reply_to_message) {
+      const replyTarget = await dependencies.supportMessageStore.findByTelegramMessageId(
+        ctx.message.reply_to_message.message_id,
+        String(ctx.chat.id),
+      );
+      if (replyTarget) {
+        replyTargetType = 'comment';
+        replyTargetId = replyTarget.crm_comment_id;
+      }
+    }
+
     await submitSupportComment(ctx, dependencies, {
       text: ctx.message.text,
+      replyTargetType,
+      replyTargetId,
       telegramMessage: {
         chatId: String(ctx.chat.id),
         messageId: ctx.message.message_id,

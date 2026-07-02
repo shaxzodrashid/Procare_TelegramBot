@@ -112,7 +112,10 @@ describe('direct message API', () => {
     const app = createApiServer(config, logger, {
       directMessageSender: {
         async sendDirectMessage(params) {
-          calls.push(params);
+          const cleaned = Object.fromEntries(
+            Object.entries(params).filter(([_, v]) => v !== undefined)
+          );
+          calls.push(cleaned as any);
           return { status: 'sent' };
         },
       },

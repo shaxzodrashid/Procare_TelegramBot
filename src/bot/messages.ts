@@ -98,7 +98,7 @@ const messages = {
     orderOffer: '📄 Ommaviy oferta',
     orderSupport: '💬 Xodimga yozish',
     supportPrompt:
-      '💬 #{{number}} buyurtma bo‘yicha chat boshlandi. Har bir matn yoki rasm Procare xodimlariga yuboriladi.\n\nSuhbatni tugatish uchun pastdagi tugmani bosing.',
+      '💬 #{{number}} buyurtma bo‘yicha chat boshlandi.\n\n📋 <b>Suhbat qoidalari:</b>\n ├ ✍️ <b>Matn yoki rasm</b> — xabarlaringiz avtomatik tarzda xodimlarga yuboriladi.\n ├ 📎 <b>Rasmlar</b> — bir vaqtda 5 tagacha rasm yuborish mumkin (har biri max 5 MB).\n ├ ↩️ <b>Javob qaytarish</b> — xodimning xabariga reply (javob) yuborishingiz mumkin.\n └ 👍 <b>Tasdiqlash</b> — xabar yetkazilganda bot unga avtomatik 👍 reaksiyasini qoldiradi.\n\n👇 Xabaringizni yozib qoldiring yoki suhbatni yakunlash uchun tugmani bosing:',
     supportEndChat: '🔚 Suhbatni tugatish',
     supportEnded: '✅ Suhbat tugatildi.',
     supportCancel: '✖️ Bekor qilish',
@@ -106,6 +106,7 @@ const messages = {
     supportEmpty: '⚠️ Xabar bo‘sh bo‘lmasligi kerak. Matn yoki rasm yuboring.',
     supportTooLong: '⚠️ Xabar 4000 belgidan oshmasligi kerak. Qisqaroq matn yuboring.',
     supportPhotoTooLarge: '⚠️ Rasm hajmi 5 MB dan oshmasligi kerak.',
+    supportPhotosTruncated: '⚠️ Tizim cheklovlari tufayli faqat birinchi 5 ta rasm yuborildi.',
     supportPhotoUnavailable:
       '⚠️ Rasmni hozir yuklab bo‘lmadi. Iltimos, qayta yuboring yoki matn yozing.',
     supportSending: '📨 Xabaringiz yuborilmoqda...',
@@ -331,7 +332,7 @@ const messages = {
     orderOffer: '📄 Публичная оферта',
     orderSupport: '💬 Написать сотруднику',
     supportPrompt:
-      '💬 Чат по заказу #{{number}} начат. Каждый текст или фото будет отправлен сотрудникам Procare.\n\nЧтобы завершить чат, нажмите кнопку ниже.',
+      '💬 Чат по заказу #{{number}} начат.\n\n📋 <b>Правила чата:</b>\n ├ ✍️ <b>Текст или фото</b> — ваши сообщения автоматически отправляются сотрудникам.\n ├ 📎 <b>Фотографии</b> — можно отправить до 5 фото за один раз (каждое макс. 5 МБ).\n ├ ↩️ <b>Ответы</b> — вы можете отвечать прямо на сообщения сотрудников (через reply).\n └ 👍 <b>Подтверждение</b> — при успешной доставке бот автоматически ставит реакцию 👍.\n\n👇 Напишите ваше сообщение или нажмите кнопку ниже для завершения чата:',
     supportEndChat: '🔚 Завершить чат',
     supportEnded: '✅ Чат завершён.',
     supportCancel: '✖️ Отмена',
@@ -339,6 +340,7 @@ const messages = {
     supportEmpty: '⚠️ Сообщение не должно быть пустым. Отправьте текст или фото.',
     supportTooLong: '⚠️ Сообщение не должно превышать 4000 символов. Отправьте короче.',
     supportPhotoTooLarge: '⚠️ Размер фото не должен превышать 5 МБ.',
+    supportPhotosTruncated: '⚠️ Из-за ограничений системы были отправлены только первые 5 фото.',
     supportPhotoUnavailable:
       '⚠️ Сейчас не удалось загрузить фото. Отправьте его ещё раз или напишите текстом.',
     supportSending: '📨 Отправляем сообщение...',

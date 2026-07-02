@@ -383,12 +383,18 @@ describe('support admin notification flow', () => {
     assert.equal(deps.supportRequests[1].request.text, '📦 Mening buyurtmalarim');
     assert.equal(deps.listCalls.length, 1);
 
-    const supportReplies = apiCalls.filter(
-      (call) => call.method === 'sendMessage' && call.payload.text === t('uz', 'supportSent'),
+    const supportReactions = apiCalls.filter(
+      (call) =>
+        call.method === 'setMessageReaction' &&
+        call.payload.reaction?.[0]?.emoji === '👍',
     );
-    assert.ok(supportReplies.length >= 2);
-    const latestSupportReply = supportReplies.at(-1);
-    assert.deepEqual(latestSupportReply?.payload.reply_markup?.keyboard, [
+    assert.equal(supportReactions.length, 2);
+
+    const keyboardMessage = apiCalls.find(
+      (call) => call.method === 'sendMessage' && call.payload.reply_markup?.keyboard,
+    );
+    assert.ok(keyboardMessage);
+    assert.deepEqual(keyboardMessage.payload.reply_markup.keyboard, [
       [{ text: t('uz', 'supportEndChat') }],
     ]);
 

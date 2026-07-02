@@ -136,6 +136,7 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       messageTemplateStore,
       bot.api,
       supportMessageStore,
+      { logger },
     );
     if (config.lifecycleNotifications.enabled) {
       lifecycleNotificationService = new BotLifecycleNotificationService(

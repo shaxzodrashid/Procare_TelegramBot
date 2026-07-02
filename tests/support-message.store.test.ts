@@ -27,6 +27,9 @@ describe('PostgresSupportMessageStore', () => {
             telegram_id: '777',
             telegram_chat_id: '777',
             telegram_message_id: 123,
+            repair_order_id: '11111111-1111-4111-8111-111111111111',
+            order_number: '123456',
+            crm_client_id: '999',
           });
         },
       };
@@ -43,6 +46,9 @@ describe('PostgresSupportMessageStore', () => {
       'telegram_id',
       'telegram_chat_id',
       'telegram_message_id',
+      'repair_order_id',
+      'order_number',
+      'crm_client_id',
     ]);
     assert.deepEqual(wherePayload, {
       crm_comment_id: '22222222-2222-4222-8222-222222222222',
@@ -53,6 +59,9 @@ describe('PostgresSupportMessageStore', () => {
       telegram_id: '777',
       telegram_chat_id: '777',
       telegram_message_id: 123,
+      repair_order_id: '11111111-1111-4111-8111-111111111111',
+      order_number: '123456',
+      crm_client_id: '999',
     });
   });
 

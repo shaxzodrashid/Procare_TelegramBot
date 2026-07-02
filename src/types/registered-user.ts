@@ -39,6 +39,7 @@ export interface RegisteredUserMessageTarget {
   phone_number: string;
   locale: Locale;
   is_blocked: boolean;
+  crm_client_id?: string | null;
 }
 
 export interface RegisteredEmployeeMessageTarget {

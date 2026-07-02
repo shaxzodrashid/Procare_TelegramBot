@@ -143,6 +143,10 @@ class MemorySupportMessageLookup {
     }
     return null;
   }
+
+  async save(): Promise<void> {
+    return;
+  }
 }
 
 const directMessageUser = (
@@ -342,6 +346,9 @@ describe('BotDirectMessageService', () => {
       telegram_id: '1001',
       telegram_chat_id: '1001',
       telegram_message_id: 321,
+      repair_order_id: '11111111-1111-4111-8111-111111111111',
+      order_number: '123456',
+      crm_client_id: '999',
     });
     const { telegram, calls } = createTelegramDouble();
     const service = new BotDirectMessageService(users, store, telegram, supportMessages);
@@ -399,6 +406,9 @@ describe('BotDirectMessageService', () => {
       telegram_id: '1001',
       telegram_chat_id: '1001',
       telegram_message_id: 321,
+      repair_order_id: '11111111-1111-4111-8111-111111111111',
+      order_number: '123456',
+      crm_client_id: '999',
     });
     const { telegram, calls } = createTelegramDouble([
       {

@@ -22,6 +22,9 @@ export interface DirectMessageSender {
     inlineKeyboard?: DirectMessageInlineKeyboard;
     supportReply?: DirectMessageSupportReply;
     type?: MessageTemplateType;
+    crmCommentId?: string;
+    repairOrderUuid?: string;
+    orderNumber?: string;
   }): Promise<DirectMessageDeliveryResult>;
 }
 
@@ -99,6 +102,9 @@ export const createApiServer = (
       variables: parsed.variables,
       inlineKeyboard: parsed.inlineKeyboard,
       supportReply: parsed.supportReply,
+      crmCommentId: parsed.crmCommentId,
+      repairOrderUuid: parsed.repairOrderUuid,
+      orderNumber: parsed.orderNumber,
       ...(parsed.type !== undefined ? { type: parsed.type } : {}),
     });
 

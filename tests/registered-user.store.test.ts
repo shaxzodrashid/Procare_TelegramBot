@@ -47,6 +47,10 @@ const createDatabaseDouble = (
           calls.push({ table, action: 'where', payload });
           return this;
         },
+        leftJoin(joinTable: string, firstColumn: string, secondColumn: string) {
+          calls.push({ table, action: 'leftJoin', payload: { joinTable, firstColumn, secondColumn } });
+          return this;
+        },
         delete() {
           calls.push({ table, action: 'delete' });
           return Promise.resolve(1);
@@ -184,6 +188,7 @@ describe('PostgresRegisteredUserStore', () => {
       phone_number: '+998901234567',
       language_code: 'ru',
       is_blocked: false,
+      crm_client_id: 1234,
     });
     const store = new PostgresRegisteredUserStore(database);
 
@@ -198,23 +203,33 @@ describe('PostgresRegisteredUserStore', () => {
       phone_number: '+998901234567',
       locale: 'ru',
       is_blocked: false,
+      crm_client_id: '1234',
     });
     assert.deepEqual(
       calls.find((call) => call.table === 'users' && call.action === 'select')?.payload,
       [
-        'id',
-        'telegram_id',
-        'telegram_username',
-        'first_name',
-        'last_name',
-        'phone_number',
-        'language_code',
-        'is_blocked',
+        'users.id',
+        'users.telegram_id',
+        'users.telegram_username',
+        'users.first_name',
+        'users.last_name',
+        'users.phone_number',
+        'users.language_code',
+        'users.is_blocked',
+        'clients.crm_client_id',
       ],
     );
     assert.deepEqual(
+      calls.find((call) => call.table === 'users' && call.action === 'leftJoin')?.payload,
+      {
+        joinTable: 'clients',
+        firstColumn: 'users.id',
+        secondColumn: 'clients.user_id',
+      },
+    );
+    assert.deepEqual(
       calls.find((call) => call.table === 'users' && call.action === 'where')?.payload,
-      { phone_number: '+998901234567' },
+      { 'users.phone_number': '+998901234567' },
     );
   });
 

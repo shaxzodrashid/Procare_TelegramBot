@@ -119,18 +119,22 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
 
   async findByPhoneNumber(phoneNumber: string): Promise<RegisteredUserMessageTarget | null> {
     const row = (await this.database('users')
+      .leftJoin('clients', 'users.id', 'clients.user_id')
       .select(
-        'id',
-        'telegram_id',
-        'telegram_username',
-        'first_name',
-        'last_name',
-        'phone_number',
-        'language_code',
-        'is_blocked',
+        'users.id',
+        'users.telegram_id',
+        'users.telegram_username',
+        'users.first_name',
+        'users.last_name',
+        'users.phone_number',
+        'users.language_code',
+        'users.is_blocked',
+        'clients.crm_client_id',
       )
-      .where({ phone_number: phoneNumber })
-      .first()) as UserMessageTargetRow | undefined;
+      .where({ 'users.phone_number': phoneNumber })
+      .first()) as
+      | (UserMessageTargetRow & { crm_client_id?: string | null })
+      | undefined;
 
     if (!row) return null;
 
@@ -143,6 +147,7 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
       phone_number: row.phone_number,
       locale: row.language_code === 'ru' ? 'ru' : 'uz',
       is_blocked: row.is_blocked,
+      crm_client_id: row.crm_client_id ? String(row.crm_client_id) : undefined,
     };
   }
 

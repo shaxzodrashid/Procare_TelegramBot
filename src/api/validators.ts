@@ -14,6 +14,9 @@ export interface SendMessageRequestBody {
   inline_keyboard?: unknown;
   support_reply?: unknown;
   type?: unknown;
+  crm_comment_id?: unknown;
+  repair_order_uuid?: unknown;
+  order_number?: unknown;
 }
 
 export interface SendFileRequestBody {
@@ -211,6 +214,9 @@ export const parseSendMessageBody = (
       inlineKeyboard?: DirectMessageInlineKeyboard;
       supportReply?: DirectMessageSupportReply;
       type?: MessageTemplateType;
+      crmCommentId?: string;
+      repairOrderUuid?: string;
+      orderNumber?: string;
     }
   | { ok: false; message: string } => {
   if (!isRecord(body)) return { ok: false, message: 'Request body must be a JSON object' };
@@ -222,6 +228,9 @@ export const parseSendMessageBody = (
     inline_keyboard: rawInlineKeyboard,
     support_reply: rawSupportReply,
     type: rawType,
+    crm_comment_id: rawCrmCommentId,
+    repair_order_uuid: rawRepairOrderUuid,
+    order_number: rawOrderNumber,
   } = body as SendMessageRequestBody;
   if (typeof rawPhoneNumber !== 'string') {
     return { ok: false, message: 'phone_number must be a string' };
@@ -253,6 +262,30 @@ export const parseSendMessageBody = (
     type = trimmedType;
   }
 
+  let crmCommentId: string | undefined;
+  if (rawCrmCommentId !== undefined) {
+    if (typeof rawCrmCommentId !== 'string' || !UUID_PATTERN.test(rawCrmCommentId)) {
+      return { ok: false, message: 'crm_comment_id must be a valid UUID' };
+    }
+    crmCommentId = rawCrmCommentId;
+  }
+
+  let repairOrderUuid: string | undefined;
+  if (rawRepairOrderUuid !== undefined) {
+    if (typeof rawRepairOrderUuid !== 'string' || !UUID_PATTERN.test(rawRepairOrderUuid)) {
+      return { ok: false, message: 'repair_order_uuid must be a valid UUID' };
+    }
+    repairOrderUuid = rawRepairOrderUuid;
+  }
+
+  let orderNumber: string | undefined;
+  if (rawOrderNumber !== undefined) {
+    if (typeof rawOrderNumber !== 'string' || rawOrderNumber.trim().length === 0) {
+      return { ok: false, message: 'order_number must be a non-empty string' };
+    }
+    orderNumber = rawOrderNumber.trim();
+  }
+
   const parsedVariables = parseVariables(rawVariables);
   if (!parsedVariables.ok) return parsedVariables;
 
@@ -270,6 +303,9 @@ export const parseSendMessageBody = (
     inlineKeyboard: parsedInlineKeyboard.inlineKeyboard,
     supportReply: parsedSupportReply.supportReply,
     type,
+    crmCommentId,
+    repairOrderUuid,
+    orderNumber,
   };
 };
 
