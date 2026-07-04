@@ -98,6 +98,7 @@ The detail response adds:
 
 - Repair-order UUID as `id`, used by the support-comment endpoint
 - Active assigned admins with active role specs
+- Finalized repair problems as `final_problems[]`, including nested assigned repair parts
 - Customer-facing status messages
 - Last four IMEI digits
 - Estimated, final, paid, and remaining totals
@@ -127,6 +128,30 @@ Example:
           "id": "44444444-4444-4444-8444-444444444444",
           "name": "Master",
           "type": "Master"
+        }
+      ]
+    }
+  ],
+  "final_problems": [
+    {
+      "id": "55555555-5555-4555-8555-555555555555",
+      "problem_category_id": "66666666-6666-4666-8666-666666666666",
+      "name_uz": "Displey almashtirish",
+      "name_ru": "Замена дисплея",
+      "name_en": "Display replacement",
+      "price": "250000",
+      "estimated_minutes": 45,
+      "is_done": true,
+      "workflow_status": "finished",
+      "parts": [
+        {
+          "id": "77777777-7777-4777-8777-777777777777",
+          "repair_part_id": "88888888-8888-4888-8888-888888888888",
+          "part_name_uz": "OLED ekran",
+          "part_name_ru": "OLED экран",
+          "part_name_en": "OLED screen",
+          "quantity": 1,
+          "part_price": "100000"
         }
       ]
     }
@@ -209,6 +234,14 @@ Example:
 ```
 
 `payment_status` is one of `unpaid`, `partial`, `paid`, or `overpaid`.
+
+`final_problems` is always an array. Each item is a customer-safe finalized repair problem with
+localized names, `price`, `estimated_minutes`, `is_done`, `workflow_status`, and `parts[]`.
+`workflow_status` is one of `not_started`, `in_progress`, `paused`, `finished`,
+`legacy_finished`, or `null`. `parts[]` is an empty array when no repair parts are attached. Each
+part contains `id`, `repair_part_id`, localized part names, `quantity`, and `part_price`.
+The bot treats a missing `final_problems` field as an empty array for compatibility with staged CRM
+rollouts, but new CRM responses should send `[]` when no final problems exist.
 
 `assigned_admins` includes only active, open admins assigned to the repair order. Each admin includes
 active, open role specs as `roles[]` with `id`, `name`, and `type`. `type` is one of `SuperAdmin`,

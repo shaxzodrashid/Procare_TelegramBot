@@ -46,6 +46,7 @@ const detailOrder: CustomerRepairOrderDetail = {
   id: '11111111-1111-4111-8111-111111111111',
   updated_at: '2026-06-22T12:38:00.000Z',
   assigned_admins: [],
+  final_problems: [],
   device: { ...listOrder.device, imei_last4: null },
   status: {
     ...listOrder.status,

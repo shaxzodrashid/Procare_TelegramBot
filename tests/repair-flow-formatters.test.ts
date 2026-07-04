@@ -210,6 +210,30 @@ describe('client repair-order presentation', () => {
         id: '11111111-1111-4111-8111-111111111111',
         updated_at: '2026-06-18T10:00:00.000Z',
         assigned_admins: [],
+        final_problems: [
+          {
+            id: '55555555-5555-4555-8555-555555555555',
+            problem_category_id: '66666666-6666-4666-8666-666666666666',
+            name_uz: 'Displey almashtirish',
+            name_ru: 'Замена дисплея',
+            name_en: 'Display replacement',
+            price: '250000.00',
+            estimated_minutes: 45,
+            is_done: true,
+            workflow_status: 'finished',
+            parts: [
+              {
+                id: '77777777-7777-4777-8777-777777777777',
+                repair_part_id: '88888888-8888-4888-8888-888888888888',
+                part_name_uz: 'OLED ekran',
+                part_name_ru: 'OLED экран',
+                part_name_en: 'OLED screen',
+                quantity: 1,
+                part_price: '100000.00',
+              },
+            ],
+          },
+        ],
         device: { ...listOrder.device, imei_last4: '5678' },
         status: {
           ...status,
@@ -261,6 +285,10 @@ describe('client repair-order presentation', () => {
     assert.match(formatted.fallbackHtml, /Qurilmangiz ta’mirlanmoqda/);
     assert.match(formatted.fallbackHtml, /📱 Apple iPhone 14 Pro/);
     assert.match(formatted.fallbackHtml, /── Ta’mirlash ──/);
+    assert.match(formatted.fallbackHtml, /Xizmatlar/);
+    assert.match(formatted.fallbackHtml, /Displey almashtirish<\/b> — 350[^\d]*000/);
+    assert.match(formatted.fallbackHtml, /OLED ekran x1/);
+    assert.doesNotMatch(formatted.fallbackHtml, /100[^\d]*000/);
     assert.match(formatted.fallbackHtml, /•••• 5678/);
     assert.match(formatted.fallbackHtml, /3 oy/);
     assert.match(formatted.fallbackHtml, /09:00–18:00/);
@@ -276,6 +304,7 @@ describe('client repair-order presentation', () => {
         id: '11111111-1111-4111-8111-111111111111',
         updated_at: '2026-06-18T10:00:00.000Z',
         assigned_admins: [],
+        final_problems: [],
         device: { ...listOrder.device, imei_last4: null },
         status: {
           ...status,
@@ -336,6 +365,7 @@ describe('client repair-order presentation', () => {
         id: '11111111-1111-4111-8111-111111111111',
         updated_at: '2026-06-18T10:00:00.000Z',
         assigned_admins: [],
+        final_problems: [],
         device: { ...listOrder.device, imei_last4: null },
         status: {
           ...status,

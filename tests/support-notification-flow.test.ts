@@ -29,6 +29,7 @@ const detail: CustomerRepairOrderDetail = {
       roles: [{ id: '44444444-4444-4444-8444-444444444444', name: 'Master', type: 'Master' }],
     },
   ],
+  final_problems: [],
   device: { brand: 'Apple', model: 'iPhone 14 Pro', imei_last4: '5678' },
   status: {
     code: 'IN_REPAIR',
@@ -384,9 +385,7 @@ describe('support admin notification flow', () => {
     assert.equal(deps.listCalls.length, 1);
 
     const supportReactions = apiCalls.filter(
-      (call) =>
-        call.method === 'setMessageReaction' &&
-        call.payload.reaction?.[0]?.emoji === '👍',
+      (call) => call.method === 'setMessageReaction' && call.payload.reaction?.[0]?.emoji === '👍',
     );
     assert.equal(supportReactions.length, 2);
 

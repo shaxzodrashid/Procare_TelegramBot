@@ -23,6 +23,12 @@ export type CustomerAssignedAdminRoleType =
   | 'Specialist'
   | 'Master'
   | 'Courier';
+export type CustomerRepairProblemWorkflowStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'paused'
+  | 'finished'
+  | 'legacy_finished';
 
 export interface LocalizedCustomerText {
   name_uz: string | null;
@@ -138,10 +144,34 @@ export interface CustomerAssignedAdmin {
   roles: CustomerAssignedAdminRole[];
 }
 
+export interface CustomerRepairProblemPart {
+  id: string;
+  repair_part_id: string;
+  part_name_uz: string;
+  part_name_ru: string;
+  part_name_en: string | null;
+  quantity: number;
+  part_price: string;
+}
+
+export interface CustomerRepairFinalProblem extends LocalizedCustomerText {
+  id: string;
+  problem_category_id: string;
+  name_uz: string;
+  name_ru: string;
+  name_en: string;
+  price: string;
+  estimated_minutes: number;
+  is_done: boolean;
+  workflow_status: CustomerRepairProblemWorkflowStatus | null;
+  parts: CustomerRepairProblemPart[];
+}
+
 export interface CustomerRepairOrderDetail extends CustomerRepairOrderListItem {
   id: string;
   updated_at: string;
   assigned_admins: CustomerAssignedAdmin[];
+  final_problems?: CustomerRepairFinalProblem[];
   device: CustomerRepairDevice & {
     imei_last4: string | null;
   };

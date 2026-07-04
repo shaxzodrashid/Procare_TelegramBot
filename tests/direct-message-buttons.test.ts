@@ -22,6 +22,7 @@ const detail: CustomerRepairOrderDetail = {
   id: repairOrderUuid,
   order_number: '1024',
   assigned_admins: [],
+  final_problems: [],
   device: { brand: 'Apple', model: 'iPhone 14 Pro', imei_last4: '5678' },
   status: {
     code: 'IN_REPAIR',

@@ -1,7 +1,9 @@
 import type {
+  CustomerRepairFinalProblem,
   CustomerRepairOrderDetail,
   CustomerRepairOrderList,
   CustomerRepairOrderListItem,
+  CustomerRepairProblemPart,
   LocalizedCustomerSummary,
   LocalizedCustomerText,
 } from '../types/client-repair-order.js';
@@ -23,6 +25,13 @@ const localizedCustomerSummary = (
   locale: Locale,
   fallback = '—',
 ): string => value?.[locale === 'ru' ? 'ru' : 'uz'] ?? value?.en ?? fallback;
+
+const localizedProblemPartName = (
+  value: CustomerRepairProblemPart,
+  locale: Locale,
+  fallback = '—',
+): string =>
+  value[locale === 'ru' ? 'part_name_ru' : 'part_name_uz'] ?? value.part_name_en ?? fallback;
 
 const localizedStatusName = (
   status: CustomerRepairOrderListItem['status'],
@@ -55,6 +64,9 @@ const formatMoney = (value: string | null, currency: string, locale: Locale): st
     return `${value} ${currency}`;
   }
 };
+
+const sumMoney = (values: number[]): string =>
+  values.reduce((total, value) => total + value, 0).toFixed(2);
 
 const formatSomAmount = (value: string): string => {
   const trimmed = value.trim();
@@ -92,6 +104,32 @@ const progressBar = (step: number, totalSteps: number): string => {
   const width = 7;
   const completed = Math.max(1, Math.min(width, Math.round((step / totalSteps) * width)));
   return `${'●'.repeat(completed)}${'○'.repeat(width - completed)} ${step}/${totalSteps}`;
+};
+
+const formatFinalProblem = (
+  problem: CustomerRepairFinalProblem,
+  locale: Locale,
+  currency: string,
+  labels: { parts: string },
+): string => {
+  const name = localizedCustomerText(problem, locale);
+  const totalPrice = sumMoney([
+    Number(problem.price),
+    ...problem.parts.map((part) => Number(part.part_price) * part.quantity),
+  ]);
+  const price = formatMoney(totalPrice, currency, locale);
+  const parts = problem.parts
+    .map((part) => {
+      const partName = localizedProblemPartName(part, locale);
+      const quantity = Number.isInteger(part.quantity)
+        ? String(part.quantity)
+        : String(part.quantity);
+      return `${escapeHtml(partName)} x${escapeHtml(quantity)}`;
+    })
+    .join(', ');
+
+  const problemLine = `${problem.is_done ? '✅' : '▫️'} <b>${escapeHtml(name)}</b> — ${escapeHtml(price)}`;
+  return parts ? `${problemLine}\n   ↳ ${labels.parts}: ${parts}` : problemLine;
 };
 
 export const formatClientRepairOrderList = (
@@ -183,6 +221,8 @@ export const formatClientRepairOrderDetail = (
           updated: 'Обновлён',
           estimatedReady: 'Ориентировочно готов',
           problem: 'Неисправность',
+          services: 'Услуги',
+          parts: 'запчасти',
           repair: 'Ремонт',
           service: 'Работы',
           repairTotal: 'Стоимость ремонта',
@@ -201,6 +241,8 @@ export const formatClientRepairOrderDetail = (
           updated: 'Yangilandi',
           estimatedReady: 'Taxminiy tayyor',
           problem: 'Muammo',
+          services: 'Xizmatlar',
+          parts: 'qismlar',
           repair: 'Ta’mirlash',
           service: 'Xizmat',
           repairTotal: 'Ta’mirlash summasi',
@@ -263,8 +305,18 @@ export const formatClientRepairOrderDetail = (
       : null,
   ].filter((line): line is string => Boolean(line));
 
+  const finalProblems = order.final_problems ?? [];
+
   const repairLines = [
-    problem ? `🔧 <b>${labels.problem}:</b> ${escapeHtml(problem)}` : null,
+    finalProblems.length > 0
+      ? `🛠 <b>${labels.services}:</b>\n${finalProblems
+          .map((finalProblem) =>
+            formatFinalProblem(finalProblem, locale, order.pricing.currency, labels),
+          )
+          .join('\n')}`
+      : problem
+        ? `🔧 <b>${labels.problem}:</b> ${escapeHtml(problem)}`
+        : null,
     service ? `🛠 <b>${labels.service}:</b> ${escapeHtml(service)}` : null,
     order.completed_at
       ? `✅ <b>${labels.completed}:</b> ${formatDateTime(order.completed_at, locale)}`

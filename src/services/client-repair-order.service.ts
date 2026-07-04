@@ -5,9 +5,11 @@ import {
   type CustomerAssignedAdminRole,
   type CustomerRepairBranch,
   type CustomerRepairDocuments,
+  type CustomerRepairFinalProblem,
   type CustomerSupportCommentRequest,
   type CustomerSupportCommentResponse,
   type CustomerSupportPhotoUpload,
+  type CustomerRepairProblemPart,
   type CustomerRepairOrderDetail,
   type CustomerRepairOrderList,
   type CustomerRepairOrderListItem,
@@ -69,6 +71,13 @@ const ASSIGNED_ADMIN_ROLE_TYPES = new Set<string>([
   'Specialist',
   'Master',
   'Courier',
+]);
+const REPAIR_PROBLEM_WORKFLOW_STATUSES = new Set<string>([
+  'not_started',
+  'in_progress',
+  'paused',
+  'finished',
+  'legacy_finished',
 ]);
 const SUPPORT_PHOTO_MIME_TYPES = new Set<string>(CUSTOMER_SUPPORT_PHOTO_MIME_TYPES);
 const DECIMAL_PATTERN = /^-?\d+(?:\.\d+)?$/;
@@ -255,6 +264,40 @@ const isAssignedAdmin = (value: unknown): value is CustomerAssignedAdmin =>
   Array.isArray(value.roles) &&
   value.roles.every(isAssignedAdminRole);
 
+const isFinalProblemPart = (value: unknown): value is CustomerRepairProblemPart =>
+  isRecord(value) &&
+  isUuid(value.id) &&
+  isUuid(value.repair_part_id) &&
+  typeof value.part_name_uz === 'string' &&
+  value.part_name_uz.length > 0 &&
+  typeof value.part_name_ru === 'string' &&
+  value.part_name_ru.length > 0 &&
+  isNullableString(value.part_name_en) &&
+  typeof value.quantity === 'number' &&
+  Number.isFinite(value.quantity) &&
+  value.quantity > 0 &&
+  isDecimalString(value.part_price);
+
+const isFinalProblem = (value: unknown): value is CustomerRepairFinalProblem =>
+  isRecord(value) &&
+  isUuid(value.id) &&
+  isUuid(value.problem_category_id) &&
+  typeof value.name_uz === 'string' &&
+  value.name_uz.length > 0 &&
+  typeof value.name_ru === 'string' &&
+  value.name_ru.length > 0 &&
+  typeof value.name_en === 'string' &&
+  value.name_en.length > 0 &&
+  isDecimalString(value.price) &&
+  typeof value.estimated_minutes === 'number' &&
+  Number.isInteger(value.estimated_minutes) &&
+  value.estimated_minutes >= 0 &&
+  typeof value.is_done === 'boolean' &&
+  (value.workflow_status === null ||
+    REPAIR_PROBLEM_WORKFLOW_STATUSES.has(String(value.workflow_status))) &&
+  Array.isArray(value.parts) &&
+  value.parts.every(isFinalProblemPart);
+
 const isCustomerRepairOrderDetail = (value: unknown): value is CustomerRepairOrderDetail => {
   if (!isRecord(value) || !isListItem(value)) return false;
   return (
@@ -262,6 +305,8 @@ const isCustomerRepairOrderDetail = (value: unknown): value is CustomerRepairOrd
     isIsoUtcTimestamp(value.updated_at) &&
     Array.isArray(value.assigned_admins) &&
     value.assigned_admins.every(isAssignedAdmin) &&
+    (value.final_problems === undefined ||
+      (Array.isArray(value.final_problems) && value.final_problems.every(isFinalProblem))) &&
     isRecord(value.device) &&
     isNullableString(value.device.imei_last4) &&
     isCustomerStatus(value.status, true) &&
@@ -345,6 +390,7 @@ const summarizePayload = (payload: unknown): unknown => {
       repair_order_id: payload.id,
       order_number: payload.order_number,
       assigned_admins_count: payload.assigned_admins.length,
+      final_problems_count: payload.final_problems?.length ?? 0,
       status_code: payload.status.code,
       status_history_count: payload.status_history.length,
       payments_count: payload.pricing.payments.length,

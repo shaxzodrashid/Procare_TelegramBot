@@ -59,6 +59,30 @@ const detail = {
       ],
     },
   ],
+  final_problems: [
+    {
+      id: '55555555-5555-4555-8555-555555555555',
+      problem_category_id: '66666666-6666-4666-8666-666666666666',
+      name_uz: 'Displey almashtirish',
+      name_ru: 'Замена дисплея',
+      name_en: 'Display replacement',
+      price: '250000.00',
+      estimated_minutes: 45,
+      is_done: true,
+      workflow_status: 'finished',
+      parts: [
+        {
+          id: '77777777-7777-4777-8777-777777777777',
+          repair_part_id: '88888888-8888-4888-8888-888888888888',
+          part_name_uz: 'OLED ekran',
+          part_name_ru: 'OLED экран',
+          part_name_en: 'OLED screen',
+          quantity: 1,
+          part_price: '100000.00',
+        },
+      ],
+    },
+  ],
   device: { ...listItem.device, imei_last4: '5678' },
   status: {
     ...status,
@@ -175,7 +199,29 @@ describe('HttpClientRepairOrderService', () => {
     assert.equal(result.warranty.period_months, 3);
     assert.equal(result.documents.checklist_url, 'https://crm.test/documents/checklist/1024');
     assert.equal(result.assigned_admins[0]?.roles[0]?.type, 'Master');
+    assert.equal(result.final_problems?.[0]?.parts[0]?.part_name_en, 'OLED screen');
     assert.equal(result.status_history[0]?.progress_type, 'linear');
+  });
+
+  it('treats a missing final_problems field as an empty rollout-safe detail state', async () => {
+    const detailWithoutFinalProblems: Record<string, unknown> = { ...detail };
+    delete detailWithoutFinalProblems.final_problems;
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () => Response.json(detailWithoutFinalProblems),
+      },
+      logger,
+    );
+
+    const result = await service.getClientRepairOrder('client-id', '8225');
+
+    assert.equal(result.order_number, '1024');
+    assert.equal(result.final_problems, undefined);
   });
 
   it('rejects invalid pagination before making a request', async () => {
@@ -331,6 +377,35 @@ describe('HttpClientRepairOrderService', () => {
               {
                 ...detail.assigned_admins[0],
                 roles: [{ id: '44444444-4444-4444-8444-444444444444', name: '', type: 'Master' }],
+              },
+            ],
+          }),
+      },
+      logger,
+    );
+
+    await assert.rejects(
+      service.getClientRepairOrder('client-id', '1024'),
+      (error: unknown) =>
+        error instanceof ClientRepairOrderError && error.code === 'invalid_response',
+    );
+  });
+
+  it('rejects malformed final problem part metadata', async () => {
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () =>
+          Response.json({
+            ...detail,
+            final_problems: [
+              {
+                ...detail.final_problems[0],
+                parts: [{ ...detail.final_problems[0]?.parts[0], quantity: 0 }],
               },
             ],
           }),

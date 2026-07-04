@@ -214,6 +214,7 @@ const detailOrder = (): CustomerRepairOrderDetail =>
     updated_at: '2026-06-30T12:00:00.000Z',
     estimated_ready_at: null,
     assigned_admins: [],
+    final_problems: [],
     pricing: {
       currency: 'UZS',
       final_total: null,
