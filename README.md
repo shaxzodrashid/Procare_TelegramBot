@@ -432,6 +432,11 @@ POST /api/v1/repair-orders/register-comment/{repair_order_id}
 Authorization: Basic ...
 ```
 
+The detail response includes `final_problems[]`; each finalized problem carries its own
+`warranty_period` in months and any assigned repair parts. The bot renders those per-problem
+warranty periods in the customer repair-order card and keeps the older order-level warranty object
+only as compatibility/expiry metadata.
+
 Employee status-name sync calls:
 
 ```http

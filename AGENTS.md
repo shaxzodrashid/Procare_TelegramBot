@@ -226,6 +226,9 @@ Rules:
 - Fetch the list on every “My orders” action; do not treat `has_repair_orders` as authorization or
   as a reason to suppress the request.
 - Validate list, detail, progress, money, timestamp, and nullable-field contracts at runtime.
+- Detail `final_problems[]` rows include per-problem `warranty_period` values in months and nested
+  `parts[]`; render those warranty periods from the final problem rows rather than from a general
+  order-level warranty period.
 - Retry only maintenance and availability failures.
 - Map ownership-hidden and visibility-hidden `404` responses to the same user-safe not-found state.
 - Never log complete detail responses, full IMEI values, payment details, or authorization headers.

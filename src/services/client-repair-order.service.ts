@@ -288,6 +288,9 @@ const isFinalProblem = (value: unknown): value is CustomerRepairFinalProblem =>
   value.name_ru.length > 0 &&
   typeof value.name_en === 'string' &&
   value.name_en.length > 0 &&
+  typeof value.warranty_period === 'number' &&
+  Number.isInteger(value.warranty_period) &&
+  value.warranty_period >= 0 &&
   isDecimalString(value.price) &&
   typeof value.estimated_minutes === 'number' &&
   Number.isInteger(value.estimated_minutes) &&

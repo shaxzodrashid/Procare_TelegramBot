@@ -26,6 +26,14 @@ const localizedCustomerSummary = (
   fallback = '—',
 ): string => value?.[locale === 'ru' ? 'ru' : 'uz'] ?? value?.en ?? fallback;
 
+const optionalLocalizedCustomerSummary = (
+  value: LocalizedCustomerSummary | undefined,
+  locale: Locale,
+): string | null => {
+  const summary = value?.[locale === 'ru' ? 'ru' : 'uz'] ?? value?.en ?? null;
+  return summary && summary.trim().length > 0 ? summary : null;
+};
+
 const localizedProblemPartName = (
   value: CustomerRepairProblemPart,
   locale: Locale,
@@ -106,11 +114,14 @@ const progressBar = (step: number, totalSteps: number): string => {
   return `${'●'.repeat(completed)}${'○'.repeat(width - completed)} ${step}/${totalSteps}`;
 };
 
+const detailRow = (label: string, value: string): string =>
+  `<tr><th>${escapeHtml(label)}</th><td>${value}</td></tr>`;
+
 const formatFinalProblem = (
   problem: CustomerRepairFinalProblem,
   locale: Locale,
   currency: string,
-  labels: { parts: string },
+  labels: { parts: string; warranty: string; months: string },
 ): string => {
   const name = localizedCustomerText(problem, locale);
   const totalPrice = sumMoney([
@@ -129,7 +140,12 @@ const formatFinalProblem = (
     .join(', ');
 
   const problemLine = `${problem.is_done ? '✅' : '▫️'} <b>${escapeHtml(name)}</b> — ${escapeHtml(price)}`;
-  return parts ? `${problemLine}\n   ↳ ${labels.parts}: ${parts}` : problemLine;
+  const details = [
+    `${escapeHtml(labels.warranty)}: ${problem.warranty_period} ${escapeHtml(labels.months)}`,
+    parts ? `${escapeHtml(labels.parts)}: ${parts}` : null,
+  ].filter((line): line is string => Boolean(line));
+
+  return details.length > 0 ? `${problemLine}\n   ↳ ${details.join('\n   ↳ ')}` : problemLine;
 };
 
 export const formatClientRepairOrderList = (
@@ -264,7 +280,7 @@ export const formatClientRepairOrderDetail = (
     ? localizedCustomerSummary(order.problem_summary, locale)
     : null;
   const service = order.service_summary
-    ? localizedCustomerSummary(order.service_summary, locale)
+    ? optionalLocalizedCustomerSummary(order.service_summary, locale)
     : null;
   const branch = localizedCustomerText(order.branch, locale);
   const branchAddress =
@@ -277,8 +293,9 @@ export const formatClientRepairOrderDetail = (
     order.status.total_steps !== null
       ? progressBar(order.status.step, order.status.total_steps)
       : null;
+  const finalProblems = order.final_problems ?? [];
   const warranty = [
-    order.warranty.period_months !== null
+    finalProblems.length === 0 && order.warranty.period_months !== null
       ? `${order.warranty.period_months} ${labels.months}`
       : null,
     order.warranty.warranty_until
@@ -304,8 +321,6 @@ export const formatClientRepairOrderDetail = (
       ? `🔐 <b>${labels.imei}:</b> •••• ${escapeHtml(order.device.imei_last4)}`
       : null,
   ].filter((line): line is string => Boolean(line));
-
-  const finalProblems = order.final_problems ?? [];
 
   const repairLines = [
     finalProblems.length > 0
@@ -355,13 +370,31 @@ export const formatClientRepairOrderDetail = (
     branchLines.length > 0 ? `<h2>📍 ${labels.branch}</h2><p>${branchLines.join('<br/>')}</p>` : '';
   const repairSection =
     repairLines.length > 0 ? `<h2>🛠 ${labels.repair}</h2><p>${repairLines.join('<br/>')}</p>` : '';
+  const factRows = [
+    detailRow(labels.order, `<code>#${escapeHtml(order.order_number)}</code>`),
+    detailRow(labels.accepted, formatDate(order.created_at, locale)),
+    detailRow(labels.updated, formatDateTime(order.status.updated_at, locale)),
+    order.estimated_ready_at
+      ? detailRow(labels.estimatedReady, formatDate(order.estimated_ready_at, locale))
+      : null,
+    order.device.imei_last4
+      ? detailRow(labels.imei, `•••• ${escapeHtml(order.device.imei_last4)}`)
+      : null,
+    order.pricing.final_total !== null
+      ? detailRow(
+          labels.repairTotal,
+          escapeHtml(formatMoney(order.pricing.final_total, order.pricing.currency, locale)),
+        )
+      : null,
+  ].filter((row): row is string => Boolean(row));
 
   return {
     richHtml: `<h1>📱 ${escapeHtml(deviceName(order))}</h1>
-<p><code>${labels.order} #${escapeHtml(order.order_number)}</code></p>
-<p>${commonLines.join('<br/>')}</p>
+<p>${statusIcon(order.status.code)} <b>${escapeHtml(status)}</b>${message ? `<br/><i>${escapeHtml(message)}</i>` : ''}${
+      progress ? `<br/><code>${escapeHtml(progress)}</code>` : ''
+    }</p>
+<table>${factRows.join('')}</table>
 ${repairSection}
-${repairTotal ? `<p>${repairTotal}</p>` : ''}
 ${branchSection}`,
     fallbackHtml: fallbackSections.join('\n\n'),
   };

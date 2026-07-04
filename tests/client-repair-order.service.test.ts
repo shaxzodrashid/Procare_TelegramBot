@@ -66,6 +66,7 @@ const detail = {
       name_uz: 'Displey almashtirish',
       name_ru: 'Замена дисплея',
       name_en: 'Display replacement',
+      warranty_period: 6,
       price: '250000.00',
       estimated_minutes: 45,
       is_done: true,
@@ -199,6 +200,7 @@ describe('HttpClientRepairOrderService', () => {
     assert.equal(result.warranty.period_months, 3);
     assert.equal(result.documents.checklist_url, 'https://crm.test/documents/checklist/1024');
     assert.equal(result.assigned_admins[0]?.roles[0]?.type, 'Master');
+    assert.equal(result.final_problems?.[0]?.warranty_period, 6);
     assert.equal(result.final_problems?.[0]?.parts[0]?.part_name_en, 'OLED screen');
     assert.equal(result.status_history[0]?.progress_type, 'linear');
   });
@@ -406,6 +408,35 @@ describe('HttpClientRepairOrderService', () => {
               {
                 ...detail.final_problems[0],
                 parts: [{ ...detail.final_problems[0]?.parts[0], quantity: 0 }],
+              },
+            ],
+          }),
+      },
+      logger,
+    );
+
+    await assert.rejects(
+      service.getClientRepairOrder('client-id', '1024'),
+      (error: unknown) =>
+        error instanceof ClientRepairOrderError && error.code === 'invalid_response',
+    );
+  });
+
+  it('rejects malformed final problem warranty metadata', async () => {
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () =>
+          Response.json({
+            ...detail,
+            final_problems: [
+              {
+                ...detail.final_problems[0],
+                warranty_period: -1,
               },
             ],
           }),

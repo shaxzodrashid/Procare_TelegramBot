@@ -217,6 +217,7 @@ describe('client repair-order presentation', () => {
             name_uz: 'Displey almashtirish',
             name_ru: 'Замена дисплея',
             name_en: 'Display replacement',
+            warranty_period: 6,
             price: '250000.00',
             estimated_minutes: 45,
             is_done: true,
@@ -287,14 +288,19 @@ describe('client repair-order presentation', () => {
     assert.match(formatted.fallbackHtml, /── Ta’mirlash ──/);
     assert.match(formatted.fallbackHtml, /Xizmatlar/);
     assert.match(formatted.fallbackHtml, /Displey almashtirish<\/b> — 350[^\d]*000/);
+    assert.match(formatted.fallbackHtml, /Kafolat: 6 oy/);
     assert.match(formatted.fallbackHtml, /OLED ekran x1/);
     assert.doesNotMatch(formatted.fallbackHtml, /100[^\d]*000/);
     assert.match(formatted.fallbackHtml, /•••• 5678/);
-    assert.match(formatted.fallbackHtml, /3 oy/);
+    assert.doesNotMatch(formatted.fallbackHtml, /Kafolat:<\/b> 3 oy/);
     assert.match(formatted.fallbackHtml, /09:00–18:00/);
     assert.match(formatted.fallbackHtml, /Ta’mirlash summasi:<\/b> 350[^\d]*000/);
+    assert.match(formatted.richHtml, /<table>/);
+    assert.match(formatted.richHtml, /<th>Buyurtma<\/th><td><code>#1024<\/code><\/td>/);
+    assert.match(formatted.richHtml, /Kafolat: 6 oy/);
     assert.doesNotMatch(formatted.fallbackHtml, /To‘lov|To‘lanmagan|Taxminiy|To‘langan|Qoldiq/);
     assert.doesNotMatch(formatted.fallbackHtml, /\d{15}/);
+    assert.doesNotMatch(formatted.richHtml, /\d{15}/);
   });
 
   it('does not render status history in order details', () => {
@@ -356,6 +362,67 @@ describe('client repair-order presentation', () => {
 
     assert.doesNotMatch(formatted.fallbackHtml, /Holatlar tarixi|RECEIVED/);
     assert.doesNotMatch(formatted.richHtml, /Holatlar tarixi|RECEIVED/);
+  });
+
+  it('skips the service section when CRM sends no service summary text', () => {
+    const formatted = formatClientRepairOrderDetail(
+      {
+        ...listOrder,
+        id: '11111111-1111-4111-8111-111111111111',
+        updated_at: '2026-06-18T10:00:00.000Z',
+        assigned_admins: [],
+        final_problems: [],
+        device: { ...listOrder.device, imei_last4: null },
+        status: {
+          ...status,
+          customer_message_uz: null,
+          customer_message_ru: null,
+          customer_message_en: null,
+        },
+        problem_summary: {
+          uz: 'Displey shikastlangan',
+          ru: 'Повреждён дисплей',
+          en: 'Damaged display',
+        },
+        service_summary: {
+          uz: null,
+          ru: null,
+          en: null,
+        },
+        pricing: {
+          ...listOrder.pricing,
+          estimated_total: null,
+          paid_amount: '0',
+          remaining_amount: '350000.00',
+          payments: [],
+        },
+        branch: {
+          name_uz: 'Chilonzor filiali',
+          name_ru: 'Чиланзарский филиал',
+          name_en: 'Chilanzar branch',
+          address_uz: null,
+          address_ru: null,
+          address_en: null,
+          telephone: null,
+          working_hours: { start: null, end: null },
+          map_url: null,
+        },
+        completed_at: null,
+        picked_up_at: null,
+        warranty: { period_months: null, warranty_until: null },
+        documents: {
+          checklist_url: null,
+          warranty_document_url: null,
+          offer_url: null,
+        },
+        status_history: [],
+      },
+      'uz',
+    );
+
+    assert.match(formatted.fallbackHtml, /Muammo:<\/b> Displey shikastlangan/);
+    assert.doesNotMatch(formatted.fallbackHtml, /Xizmat:<\/b> —|Xizmat:<\/b>/);
+    assert.doesNotMatch(formatted.richHtml, /Xizmat:<\/b> —|Xizmat:<\/b>/);
   });
 
   it('shows only the final repair total when payment rows are present', () => {

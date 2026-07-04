@@ -98,14 +98,15 @@ The detail response adds:
 
 - Repair-order UUID as `id`, used by the support-comment endpoint
 - Active assigned admins with active role specs
-- Finalized repair problems as `final_problems[]`, including nested assigned repair parts
+- Finalized repair problems as `final_problems[]`, including per-problem warranty periods and
+  nested assigned repair parts
 - Customer-facing status messages
 - Last four IMEI digits
 - Estimated, final, paid, and remaining totals
 - Customer-safe payment rows
 - Branch address, telephone, working hours, and map URL
 - Completion and pickup timestamps
-- Warranty period and expiry
+- Legacy order-level warranty expiry metadata
 - Optional checklist, warranty-document, and offer URLs
 - Customer-visible status history
 
@@ -139,6 +140,7 @@ Example:
       "name_uz": "Displey almashtirish",
       "name_ru": "Замена дисплея",
       "name_en": "Display replacement",
+      "warranty_period": 6,
       "price": "250000",
       "estimated_minutes": 45,
       "is_done": true,
@@ -236,12 +238,19 @@ Example:
 `payment_status` is one of `unpaid`, `partial`, `paid`, or `overpaid`.
 
 `final_problems` is always an array. Each item is a customer-safe finalized repair problem with
-localized names, `price`, `estimated_minutes`, `is_done`, `workflow_status`, and `parts[]`.
+localized names, `warranty_period`, `price`, `estimated_minutes`, `is_done`, `workflow_status`, and
+`parts[]`. `warranty_period` is the problem category's customer-visible warranty period in months;
+if the problem category has no configured warranty, the API returns `0`.
 `workflow_status` is one of `not_started`, `in_progress`, `paused`, `finished`,
 `legacy_finished`, or `null`. `parts[]` is an empty array when no repair parts are attached. Each
 part contains `id`, `repair_part_id`, localized part names, `quantity`, and `part_price`.
 The bot treats a missing `final_problems` field as an empty array for compatibility with staged CRM
 rollouts, but new CRM responses should send `[]` when no final problems exist.
+
+The bot renders warranty periods from `final_problems[].warranty_period` whenever finalized problems
+are present. The top-level `warranty` object remains accepted for compatibility and for order-level
+expiry metadata such as `warranty_until`, but it is no longer the primary source for per-repair
+warranty copy.
 
 `assigned_admins` includes only active, open admins assigned to the repair order. Each admin includes
 active, open role specs as `roles[]` with `id`, `name`, and `type`. `type` is one of `SuperAdmin`,

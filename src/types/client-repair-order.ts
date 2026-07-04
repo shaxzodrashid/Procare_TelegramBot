@@ -160,6 +160,7 @@ export interface CustomerRepairFinalProblem extends LocalizedCustomerText {
   name_uz: string;
   name_ru: string;
   name_en: string;
+  warranty_period: number;
   price: string;
   estimated_minutes: number;
   is_done: boolean;
