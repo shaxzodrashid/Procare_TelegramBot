@@ -161,6 +161,16 @@ describe('manual phone registration gate', () => {
     assert.equal(canRegisterWithManualPhone(session, false), false);
   });
 
+  it('allows typed phone numbers for developer-only sessions even outside development mode', () => {
+    const session: BotSession = {
+      locale: 'uz',
+      stage: 'awaiting_phone',
+      developer: { is_active: true },
+    };
+
+    assert.equal(canRegisterWithManualPhone(session, false), true);
+  });
+
   it('does not allow typed phone numbers for registered sessions', () => {
     const session: BotSession = {
       locale: 'uz',

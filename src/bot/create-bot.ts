@@ -86,7 +86,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
 
   bot.use(async (ctx, next) => {
     if (ctx.from && dependencies.developerTelegramIds?.has(String(ctx.from.id))) {
-      ctx.session.developer = { is_active: true };
+      ctx.session.developer = { ...ctx.session.developer, is_active: true };
     } else {
       delete ctx.session.developer;
     }

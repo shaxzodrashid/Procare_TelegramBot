@@ -212,6 +212,8 @@ const messages = {
     developerApiEndpoints: '⚙️ API endpointlar',
     developerHelp:
       '⚙️ <b>PROCARE DEVELOPER CORE</b> ⚙️\n\n💻 Salom, <b>Tuzuvchi</b>!\nTizim to‘liq nazorat ostida. API va sozlashlar paneli tayyor.\n\n🛠️ <b>Ishchi menyu:</b>\n ├ ⚙️ <b>API endpointlar</b> — integratsiya nuqtalari va xatoliklar\n ├ ⚙️ <b>Sozlamalar</b> — shaxsiy sozlamalar\n └ <i>Hamda faollashtirilgan mijoz/xodim boshqaruv tugmalari</i>\n\n👇 Kerakli vositani tanlang:',
+    developerPhoneAccepted:
+      '✅ Developer test rejimi yoqildi. Ushbu raqam test uchun qabul qilindi: <code>{{phone}}</code>.',
     developerEndpointsTitle: '🛠 Bot ishlatayotgan API endpointlar:',
     developerEndpointTitle:
       '<b>{{title}}</b>\n\n<code>{{method}} {{path}}</code>\nAuth: <code>{{auth}}</code>\n\n{{description}}\n\nLocation lokalizatsiyalari: {{count}}',
@@ -445,6 +447,8 @@ const messages = {
     developerApiEndpoints: '⚙️ API endpoints',
     developerHelp:
       '⚙️ <b>PROCARE DEVELOPER CORE</b> ⚙️\n\n💻 Привет, <b>Разработчик</b>!\nСистема под полным контролем. Панель API и конфигураций готова.\n\n🛠️ <b>Рабочее меню:</b>\n ├ ⚙️ <b>API эндпоинты</b> — точки интеграции и локализация ошибок\n ├ ⚙️ <b>Настройки</b> — личные параметры\n └ <i>А также активные кнопки клиента/сотрудника</i>\n\n👇 Выберите инструмент для работы:',
+    developerPhoneAccepted:
+      '✅ Developer test mode включён. Этот номер принят для теста: <code>{{phone}}</code>.',
     developerEndpointsTitle: '🛠 API endpoints, которые использует бот:',
     developerEndpointTitle:
       '<b>{{title}}</b>\n\n<code>{{method}} {{path}}</code>\nAuth: <code>{{auth}}</code>\n\n{{description}}\n\nЛокализаций location: {{count}}',

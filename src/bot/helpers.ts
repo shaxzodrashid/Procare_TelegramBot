@@ -89,7 +89,7 @@ export const canRegisterWithManualPhone = (
   sessionData: BotSession,
   allowManualPhoneEntry: boolean,
 ): boolean =>
-  allowManualPhoneEntry &&
+  (allowManualPhoneEntry || hasDeveloperMenuAccess(sessionData)) &&
   sessionData.stage === 'awaiting_phone' &&
   !sessionData.client &&
   !sessionData.admin;

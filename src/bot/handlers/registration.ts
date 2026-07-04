@@ -51,6 +51,36 @@ export const updateRegisteredLanguage = async (
 const registrationAdminProfile = (registration: RegistrationResult): AdminProfile | null =>
   registration.account_type === 'admin' ? registration.admin : registration.admin;
 
+const canUseDeveloperPhoneBypass = (ctx: BotContext, mode: 'registration' | 'settings_phone') =>
+  mode === 'registration' && Boolean(ctx.session.developer?.is_active);
+
+const completeDeveloperPhoneBypass = async (
+  ctx: BotContext,
+  phoneNumber: string,
+): Promise<void> => {
+  ctx.session.developer = {
+    ...ctx.session.developer,
+    is_active: true,
+    test_phone_number: phoneNumber,
+  };
+  delete ctx.session.client;
+  delete ctx.session.admin;
+  delete ctx.session.repairOrdersView;
+  clearUnknownFlow(ctx.session);
+  delete ctx.session.stage;
+
+  await ctx.reply(
+    `${t(ctx.session.locale, 'developerPhoneAccepted', { phone: phoneNumber })}\n\n${t(
+      ctx.session.locale,
+      'developerHelp',
+    )}`,
+    {
+      reply_markup: personalMenuKeyboard(ctx.session),
+      parse_mode: 'HTML',
+    },
+  );
+};
+
 const saveRegisteredUser = async (
   ctx: BotContext,
   dependencies: BotDependencies,
@@ -181,6 +211,21 @@ export const registerByPhone = async (
     );
   } catch (error) {
     await ctx.api.deleteMessage(ctx.chat.id, pendingMessage.message_id).catch(() => undefined);
+    if (canUseDeveloperPhoneBypass(ctx, mode)) {
+      if (error instanceof RegistrationError && error.code !== 'not_found') {
+        dependencies.logger.warn('Developer phone registration bypassed CRM registration failure', {
+          code: error.code,
+        });
+      } else if (!(error instanceof RegistrationError)) {
+        dependencies.logger.warn(
+          'Developer phone registration bypassed unexpected CRM failure',
+          error,
+        );
+      }
+      await completeDeveloperPhoneBypass(ctx, normalizedPhone);
+      return;
+    }
+
     if (error instanceof RegistrationError && error.code === 'not_found') {
       if (mode === 'settings_phone') {
         await ctx.reply(t(ctx.session.locale, 'settingsPhoneNotFound'), {
@@ -319,7 +364,7 @@ export const registerRegistrationHandlers = (
     }
 
     const contact = ctx.message.contact;
-    if (contact.user_id !== ctx.from.id) {
+    if (contact.user_id !== ctx.from.id && !ctx.session.developer?.is_active) {
       await ctx.reply(t(ctx.session.locale, 'phoneOnly'), {
         reply_markup: acceptsSettingsPhone
           ? settingsPhoneKeyboard(ctx.session.locale)

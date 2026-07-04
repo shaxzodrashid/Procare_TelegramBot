@@ -7,6 +7,7 @@ import {
   API_ENDPOINTS,
   type ApiErrorLocalizationStore,
 } from '../src/services/api-error-localization.service.js';
+import { RegistrationError } from '../src/services/client-registration.service.js';
 import type {
   ApiErrorLocalization,
   ApiErrorLocalizationInput,
@@ -162,6 +163,33 @@ describe('Developer endpoint localization flow', () => {
     assert.ok(String(reply.payload.text).includes('telefon raqamini ulashing'));
     assert.equal(reply.payload.reply_markup.keyboard[0][0].request_contact, true);
     assert.doesNotMatch(String(reply.payload.text), /PROCARE DEVELOPER CORE/);
+  });
+
+  it('lets a developer-only user type a test phone when manual phone entry is disabled', async () => {
+    const deps = createDependencies();
+    const registeredPhones: string[] = [];
+    deps.allowManualPhoneEntry = false;
+    deps.registrationService = {
+      async registerByPhone(phoneNumber: string) {
+        registeredPhones.push(phoneNumber);
+        throw new RegistrationError('not_found', 'Client not found', 404);
+      },
+    } as any;
+    const { bot, apiCalls } = createTestBot(deps);
+
+    await bot.handleUpdate(developerMessage(1, '/logout'));
+    await bot.handleUpdate(developerMessage(2, '🇺🇿 O‘zbekcha'));
+    apiCalls.length = 0;
+
+    await bot.handleUpdate(developerMessage(3, '+998 90 123 45 67'));
+
+    assert.deepEqual(registeredPhones, ['+998901234567']);
+    assert.ok(
+      apiCalls.some((call) => String(call.payload.text).includes('Developer test rejimi yoqildi')),
+    );
+    assert.ok(
+      apiCalls.some((call) => String(call.payload.text).includes('PROCARE DEVELOPER CORE')),
+    );
   });
 
   it('lets a configured developer create an endpoint location localization', async () => {

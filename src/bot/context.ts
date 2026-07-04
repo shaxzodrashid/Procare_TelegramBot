@@ -67,6 +67,7 @@ export interface BotSession {
   admin?: AdminProfile;
   developer?: {
     is_active: boolean;
+    test_phone_number?: string;
   };
   repairOrdersView?: {
     offset: number;
