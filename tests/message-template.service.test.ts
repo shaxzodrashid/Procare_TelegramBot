@@ -274,7 +274,12 @@ describe('BotDirectMessageService', () => {
 
     assert.deepEqual(result, { status: 'sent' });
     assert.deepEqual(calls, [
-      { method: 'sendMessage', chatId: '1001', text: 'Salom', options: undefined },
+      {
+        method: 'sendMessage',
+        chatId: '1001',
+        text: 'Salom',
+        options: { parse_mode: 'HTML' },
+      },
     ]);
     assert.deepEqual(store.blockedUpdates, [{ telegramId: '1001', isBlocked: false }]);
     assert.equal(store.logs[0]?.dispatch_type, 'api_direct_message');
@@ -295,6 +300,7 @@ describe('BotDirectMessageService', () => {
 
     assert.deepEqual(result, { status: 'sent' });
     assert.equal(calls[0]?.text, 'Salom Ali. Qurilma: iPhone 15 Pro');
+    assert.deepEqual(calls[0]?.options, { parse_mode: 'HTML' });
   });
 
   it('sends inline keyboards with URL and repair-order buttons', async () => {
@@ -335,6 +341,7 @@ describe('BotDirectMessageService', () => {
         },
         'uz',
       ),
+      parse_mode: 'HTML',
     });
   });
 
@@ -372,6 +379,7 @@ describe('BotDirectMessageService', () => {
             message_id: 321,
             allow_sending_without_reply: true,
           },
+          parse_mode: 'HTML',
         },
       },
     ]);
@@ -394,7 +402,12 @@ describe('BotDirectMessageService', () => {
 
     assert.deepEqual(result, { status: 'sent' });
     assert.deepEqual(calls, [
-      { method: 'sendMessage', chatId: '1001', text: 'Javob', options: undefined },
+      {
+        method: 'sendMessage',
+        chatId: '1001',
+        text: 'Javob',
+        options: { parse_mode: 'HTML' },
+      },
     ]);
   });
 
@@ -437,9 +450,15 @@ describe('BotDirectMessageService', () => {
             message_id: 321,
             allow_sending_without_reply: true,
           },
+          parse_mode: 'HTML',
         },
       },
-      { method: 'sendMessage', chatId: '1001', text: 'Javob', options: undefined },
+      {
+        method: 'sendMessage',
+        chatId: '1001',
+        text: 'Javob',
+        options: { parse_mode: 'HTML' },
+      },
     ]);
     assert.equal(store.logs[0]?.status, 'sent');
   });
@@ -522,7 +541,7 @@ describe('BotDirectMessageService', () => {
         method: 'sendMessage',
         chatId: '1001',
         text: 'Salom Ali. Xush kelibsiz! Kod: 12345',
-        options: undefined,
+        options: { parse_mode: 'HTML' },
       },
     ]);
     assert.equal(store.logs[0]?.dispatch_type, 'warranty');
@@ -545,7 +564,12 @@ describe('BotDirectMessageService', () => {
 
     assert.deepEqual(result, { status: 'sent' });
     assert.deepEqual(calls, [
-      { method: 'sendMessage', chatId: '1001', text: 'Fallback message 12345', options: undefined },
+      {
+        method: 'sendMessage',
+        chatId: '1001',
+        text: 'Fallback message 12345',
+        options: { parse_mode: 'HTML' },
+      },
     ]);
     assert.equal(store.logs[0]?.dispatch_type, 'api_direct_message');
     assert.equal(store.logs[0]?.template_id, null);

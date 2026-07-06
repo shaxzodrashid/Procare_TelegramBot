@@ -53,6 +53,7 @@ export const registerCommandHandlers = (
     if (hasDeveloperMenuAccess(ctx.session)) {
       await ctx.reply(t(ctx.session.locale, 'developerHelp'), {
         reply_markup: personalMenuKeyboard(ctx.session),
+        parse_mode: 'HTML',
       });
       return;
     }

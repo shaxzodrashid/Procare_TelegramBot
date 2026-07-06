@@ -252,6 +252,7 @@ export const registerDeveloperHandlers = (
     clearDeveloperFlow(ctx.session);
     await ctx.reply(t(ctx.session.locale, 'developerHelp'), {
       reply_markup: personalMenuKeyboard(ctx.session),
+      parse_mode: 'HTML',
     });
   });
 

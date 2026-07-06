@@ -61,6 +61,7 @@ type TelegramDirectMessageApi = Pick<Api, 'sendMessage' | 'sendDocument'>;
 
 const TELEGRAM_CAPTION_LIMIT = 1024;
 export const TELEGRAM_TEXT_LIMIT = 4096;
+const TELEGRAM_PARSE_MODE_HTML = 'HTML';
 const DIRECT_MESSAGE_DISPATCH_TYPE = 'api_direct_message';
 const DIRECT_MESSAGE_PLACEHOLDER_PATTERN = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
 
@@ -188,14 +189,18 @@ export class BotNotificationService {
         if (text.length <= TELEGRAM_CAPTION_LIMIT) {
           await this.telegram.sendPhoto(params.user.telegram_id, photo, {
             caption: text,
-            parse_mode: 'HTML',
+            parse_mode: TELEGRAM_PARSE_MODE_HTML,
           });
         } else {
           await this.telegram.sendPhoto(params.user.telegram_id, photo);
-          await this.telegram.sendMessage(params.user.telegram_id, text, { parse_mode: 'HTML' });
+          await this.telegram.sendMessage(params.user.telegram_id, text, {
+            parse_mode: TELEGRAM_PARSE_MODE_HTML,
+          });
         }
       } else {
-        await this.telegram.sendMessage(params.user.telegram_id, text, { parse_mode: 'HTML' });
+        await this.telegram.sendMessage(params.user.telegram_id, text, {
+          parse_mode: TELEGRAM_PARSE_MODE_HTML,
+        });
       }
 
       await this.templates.setUserBlocked(params.user.telegram_id, false);
@@ -417,14 +422,20 @@ export class BotDirectMessageService {
         sentMessage = await this.telegram.sendMessage(
           replyTarget?.telegram_chat_id ?? user.telegram_id,
           messageText,
-          directMessageOptions(replyMarkup, replyTarget ?? null),
+          {
+            ...directMessageOptions(replyMarkup, replyTarget ?? null),
+            parse_mode: TELEGRAM_PARSE_MODE_HTML,
+          },
         );
       } catch (error) {
         if (!replyTarget || !isTelegramReplyTargetError(error)) throw error;
         sentMessage = await this.telegram.sendMessage(
           user.telegram_id,
           messageText,
-          directMessageOptions(replyMarkup, null),
+          {
+            ...directMessageOptions(replyMarkup, null),
+            parse_mode: TELEGRAM_PARSE_MODE_HTML,
+          },
         );
       }
 
