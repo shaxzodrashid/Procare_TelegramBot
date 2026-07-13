@@ -6,10 +6,12 @@ import type {
   DirectMessageInlineKeyboard,
   DirectMessageSupportReply,
   DirectMessageVariables,
+  DirectMessageLocalizedVariables,
   DirectMessageLocalizedMessages,
   DirectMessageDeliveryResult,
   DirectFileDeliveryResult,
 } from '../services/bot-notification.service.js';
+import type { TelegramParseMode } from '../utils/telegram-formatting.js';
 import type { Logger } from '../utils/logger.js';
 import type { MessageTemplateType } from '../types/message-template.js';
 import { isAuthorized } from './auth.js';
@@ -21,6 +23,8 @@ export interface DirectMessageSender {
     message?: string;
     localizedMessages?: DirectMessageLocalizedMessages;
     variables: DirectMessageVariables;
+    localizedVariables: DirectMessageLocalizedVariables;
+    parseMode: TelegramParseMode;
     inlineKeyboard?: DirectMessageInlineKeyboard;
     supportReply?: DirectMessageSupportReply;
     type?: MessageTemplateType;
@@ -103,6 +107,8 @@ export const createApiServer = (
       message: parsed.message,
       localizedMessages: parsed.localizedMessages,
       variables: parsed.variables,
+      localizedVariables: parsed.localizedVariables,
+      parseMode: parsed.parseMode,
       inlineKeyboard: parsed.inlineKeyboard,
       supportReply: parsed.supportReply,
       crmCommentId: parsed.crmCommentId,

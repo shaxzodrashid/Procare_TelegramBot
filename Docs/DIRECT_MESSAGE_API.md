@@ -29,6 +29,7 @@ It normalizes Uzbek phone formats to `+998XXXXXXXXX` before lookup.
 | `message`               | Conditional                          | string         | Legacy one-message fallback. Required only when `localized_messages` is absent.                                                                     |
 | `variables`             | No                                   | object         | Extra primitive placeholder values. Values may be string, number, boolean, or null.                                                                 |
 | `localized_variables`   | No                                   | object         | Extra locale-specific placeholder values. Each key has `uz`, `ru`, and optional `en` text; the Bot selects the recipient's locale before rendering. |
+| `parse_mode`            | No                                   | string         | `HTML` or `MarkdownV2`. Defaults to `HTML` for backward compatibility.                                                                               |
 | `inline_keyboard`       | No                                   | object         | Inline URL and repair-order action buttons.                                                                                                         |
 | `support_reply`         | No                                   | object         | Sends as a reply to a stored client support message when its mapping exists.                                                                        |
 | `type`                  | No                                   | string         | Existing message-template type. An active template of this type takes precedence.                                                                   |
@@ -51,8 +52,69 @@ The following values come from the registered user and cannot be overridden by `
 
 `first_name`, `last_name`, `full_name`, `phone_number`, `telegram_username`, `locale`.
 
-Unresolved placeholders cause a `400` response. The final rendered message must be non-empty and
-at most 4,096 characters.
+Unresolved placeholders cause a `400` response. A request may contain at most 100 primitive and 100
+localized variable entries, each string value may contain at most 4,096 characters, and the final
+rendered message must be non-empty and at most 4,096 characters after Telegram entity parsing. To
+bound parsing work while allowing markup overhead and escaped values, each authored message variant
+and the final formatted source may contain at most 16,384 characters.
+
+### Rich text and safe variable composition
+
+The endpoint supports Telegram's complete regular-message rich-text syntax through `HTML` and
+modern `MarkdownV2`. It deliberately does not enable legacy `Markdown`, which lacks underline,
+strikethrough, spoiler, blockquote, expandable blockquote, and custom-emoji support.
+
+- `HTML` is the default and supports Telegram tags such as `<b>`, `<i>`, `<u>`, `<s>`,
+  `<tg-spoiler>`, `<a>`, `<code>`, `<pre>`, `<blockquote>`, and `<tg-emoji>`.
+- `MarkdownV2` supports bold, italic, underline, strikethrough, spoilers, inline links, code blocks,
+  blockquotes, expandable blockquotes, and custom emoji using Telegram's MarkdownV2 syntax.
+- Authored markup is preserved. Every interpolated built-in, primitive, or localized variable is
+  escaped for the selected mode, so upstream or user-controlled values cannot close an HTML tag or
+  accidentally create Markdown entities.
+- Apply formatting around a placeholder—for example `<b>{{first_name}}</b>` or
+  `*{{first_name}}*`. Variable values are treated as text, not as trusted markup.
+- If Telegram rejects malformed authored markup, the API returns `400 Invalid ... message
+  formatting`; unrelated Telegram delivery failures remain `502`.
+- When a repair-order button edits a rich message, the Back action restores Telegram's parsed
+  message entities, preserving formatting regardless of whether the source used HTML or MarkdownV2.
+
+Active database templates selected through `type` are authored as Telegram HTML and always use
+HTML delivery. `parse_mode` controls caller-supplied `message` and `localized_messages` content.
+
+#### HTML example
+
+```json
+{
+  "phone_number": "+998901234567",
+  "message": "<b>Salom, {{first_name}}</b>\\n<blockquote>{{status_note}}</blockquote>",
+  "parse_mode": "HTML",
+  "variables": {
+    "status_note": "Screen & battery diagnostics completed"
+  }
+}
+```
+
+#### MarkdownV2 example
+
+```json
+{
+  "phone_number": "+998901234567",
+  "localized_messages": {
+    "uz": "*Salom, {{first_name}}*\\nQurilma: ||{{phone_category}}||",
+    "ru": "*Здравствуйте, {{first_name}}*\\nУстройство: ||{{phone_category}}||"
+  },
+  "parse_mode": "MarkdownV2",
+  "localized_variables": {
+    "phone_category": {
+      "uz": "iPhone 15 Pro_Max",
+      "ru": "iPhone 15 Pro_Max"
+    }
+  }
+}
+```
+
+The underscore in `Pro_Max` is escaped automatically during interpolation. Callers must author the
+surrounding MarkdownV2 syntax correctly; they must not pre-escape variable values.
 
 ### Locale-specific variables
 
@@ -91,9 +153,10 @@ deterministic and preserves the final 4,096-character Telegram limit.
 {
   "phone_number": "+998901234567",
   "localized_messages": {
-    "uz": "Salom {{first_name}}. Qurilma: {{phone_category}}",
-    "ru": "Здравствуйте, {{first_name}}. Устройство: {{phone_category}}"
+    "uz": "<b>Salom {{first_name}}</b>. Qurilma: <u>{{phone_category}}</u>",
+    "ru": "<b>Здравствуйте, {{first_name}}</b>. Устройство: <u>{{phone_category}}</u>"
   },
+  "parse_mode": "HTML",
   "localized_variables": {
     "phone_category": {
       "uz": "iPhone 15 Pro",
@@ -126,7 +189,7 @@ For a Russian user named Ali, the successful response is:
 ```json
 {
   "status": "sent",
-  "message": "Здравствуйте, Ali. Устройство: iPhone 15 Pro"
+  "message": "<b>Здравствуйте, Ali</b>. Устройство: <u>iPhone 15 Pro</u>"
 }
 ```
 
@@ -173,7 +236,7 @@ Telegram reply. Missing or rejected reply targets fall back to a normal Telegram
 | Status | Meaning                                                           | Response example                                                                                                       |
 | ------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `200`  | Delivered                                                         | `{ "status": "sent", "message": "final rendered Telegram text" }`                                                      |
-| `400`  | Invalid request, unresolved variable, or invalid rendered message | `{ "statusCode": 400, "error": "BadRequest", "message": "..." }`                                                       |
+| `400`  | Invalid request, unresolved variable, invalid rendered message, or malformed rich text | `{ "statusCode": 400, "error": "BadRequest", "message": "..." }`                                                       |
 | `401`  | Missing or invalid bearer token                                   | `{ "statusCode": 401, "error": "Unauthorized", "message": "A valid Bearer token is required" }`                        |
 | `404`  | No registered Telegram user matches the phone                     | `{ "statusCode": 404, "error": "NotFound", "message": "No registered Telegram user was found for this phone number" }` |
 | `409`  | User is marked as blocked                                         | `{ "statusCode": 409, "error": "Conflict", "message": "Telegram user is marked as blocked" }`                          |

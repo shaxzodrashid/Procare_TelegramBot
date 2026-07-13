@@ -432,6 +432,10 @@ credentials in tests.
 - Use `parse_mode: 'HTML'` only when required.
 - Escape all user-controlled and upstream-controlled values included in HTML messages with
   `escapeHtml`.
+- `POST /messages/send` supports `HTML` and `MarkdownV2` rich text. Preserve authored markup, but
+  escape every interpolated variable for the selected parse mode; active database templates remain
+  HTML-authored. Keep repair-order Back restoration entity-based so both source formats survive
+  edit/restore navigation.
 - Do not escape the complete message after adding intentional markup; escape interpolated values.
 - Keep callback data short and stable within Telegram limits.
 - Answer callback queries before doing longer work so Telegram clients stop showing the loading

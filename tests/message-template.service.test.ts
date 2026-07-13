@@ -303,6 +303,99 @@ describe('BotDirectMessageService', () => {
     assert.deepEqual(calls[0]?.options, { parse_mode: 'HTML' });
   });
 
+  it('preserves HTML formatting while escaping combined built-in and request variables', async () => {
+    const store = new MemoryTemplateStore(null);
+    const users = new MemoryRegisteredUserLookup(
+      directMessageUser({ first_name: 'Ali & <Bek>', last_name: "O'Neil" }),
+    );
+    const { telegram, calls } = createTelegramDouble();
+    const service = new BotDirectMessageService(users, store, telegram);
+
+    const result = await service.sendDirectMessage({
+      phoneNumber: '+998901234567',
+      message:
+        '<b>{{first_name}}</b> <i>{{last_name}}</i> <a href="https://example.com?q={{query}}">Open</a>',
+      variables: { query: 'a&mode="unsafe"' },
+      parseMode: 'HTML',
+    });
+
+    const expected =
+      '<b>Ali &amp; &lt;Bek&gt;</b> <i>O&#39;Neil</i> <a href="https://example.com?q=a&amp;mode=&quot;unsafe&quot;">Open</a>';
+    assert.deepEqual(result, { status: 'sent', message: expected });
+    assert.equal(calls[0]?.text, expected);
+    assert.deepEqual(calls[0]?.options, { parse_mode: 'HTML' });
+  });
+
+  it('preserves MarkdownV2 formatting while escaping locale-specific and built-in variables', async () => {
+    const store = new MemoryTemplateStore(null);
+    const users = new MemoryRegisteredUserLookup(
+      directMessageUser({ locale: 'ru', first_name: 'Ali_Bek' }),
+    );
+    const { telegram, calls } = createTelegramDouble();
+    const service = new BotDirectMessageService(users, store, telegram);
+
+    const result = await service.sendDirectMessage({
+      phoneNumber: '+998901234567',
+      message: '*{{first_name}}* — ||{{phone_category}}|| — {{details}}',
+      localizedVariables: {
+        first_name: { uz: 'Wrong name', ru: 'Wrong name' },
+        phone_category: { uz: 'iPhone 15', ru: 'iPhone 15 Pro_Max' },
+      },
+      variables: { details: '1. screen + battery', phone_category: 'fallback' },
+      parseMode: 'MarkdownV2',
+    });
+
+    const expected = '*Ali\\_Bek* — ||iPhone 15 Pro\\_Max|| — 1\\. screen \\+ battery';
+    assert.deepEqual(result, { status: 'sent', message: expected });
+    assert.equal(calls[0]?.text, expected);
+    assert.deepEqual(calls[0]?.options, { parse_mode: 'MarkdownV2' });
+  });
+
+  it('maps Telegram entity parsing failures to an invalid message result', async () => {
+    const store = new MemoryTemplateStore(null);
+    const users = new MemoryRegisteredUserLookup(directMessageUser());
+    const { telegram } = createTelegramDouble({
+      error_code: 400,
+      description:
+        "Bad Request: can't parse entities: Can't find end tag corresponding to start tag b",
+    });
+    const service = new BotDirectMessageService(users, store, telegram);
+
+    const result = await service.sendDirectMessage({
+      phoneNumber: '+998901234567',
+      message: '<b>broken',
+      parseMode: 'HTML',
+    });
+
+    assert.deepEqual(result, {
+      status: 'invalid_message',
+      message: 'Invalid HTML message formatting',
+    });
+    assert.equal(store.logs[0]?.status, 'failed');
+  });
+
+  it('escapes MarkdownV2 variables according to text, code, and link target context', async () => {
+    const store = new MemoryTemplateStore(null);
+    const users = new MemoryRegisteredUserLookup(directMessageUser());
+    const { telegram, calls } = createTelegramDouble();
+    const service = new BotDirectMessageService(users, store, telegram);
+
+    const result = await service.sendDirectMessage({
+      phoneNumber: '+998901234567',
+      message: '*{{label}}* `{{code}}` [Open]({{url}})',
+      variables: {
+        label: 'A_B',
+        code: 'a_b`c\\d',
+        url: 'https://example.com/a_(1)',
+      },
+      parseMode: 'MarkdownV2',
+    });
+
+    const expected = '*A\\_B* `a_b\\`c\\\\d` [Open](https://example.com/a_(1\\))';
+    assert.deepEqual(result, { status: 'sent', message: expected });
+    assert.equal(calls[0]?.text, expected);
+  });
+
   it('selects and renders the message variant for the registered user locale', async () => {
     const store = new MemoryTemplateStore(null);
     const users = new MemoryRegisteredUserLookup(directMessageUser({ locale: 'ru' }));
@@ -770,6 +863,14 @@ describe('renderDirectMessage', () => {
     assert.deepEqual(renderDirectMessage('{{ z_value }} {{ a_value }}', {}), {
       ok: false,
       message: 'Missing message variables: a_value, z_value',
+    });
+  });
+
+  it('applies Telegram limits after HTML entities are parsed', () => {
+    assert.equal(renderDirectMessage(`<b>${'a'.repeat(4096)}</b>`, {}, 'HTML').ok, true);
+    assert.deepEqual(renderDirectMessage(`<b>${'a'.repeat(4097)}</b>`, {}, 'HTML'), {
+      ok: false,
+      message: 'message must be 4096 characters or fewer after rendering',
     });
   });
 });

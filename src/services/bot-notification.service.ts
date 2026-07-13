@@ -7,6 +7,13 @@ import type { RegisteredUserStore } from './registered-user.store.js';
 import { MessageTemplateRenderer, type MessageTemplateStore } from './message-template.service.js';
 import type { SupportMessageStore } from './support-message.store.js';
 import type { Logger } from '../utils/logger.js';
+import {
+  DEFAULT_TELEGRAM_PARSE_MODE,
+  TELEGRAM_FORMATTED_SOURCE_LIMIT,
+  escapeTelegramVariable,
+  telegramFormattedText,
+  type TelegramParseMode,
+} from '../utils/telegram-formatting.js';
 
 export interface TemplatePhoto {
   buffer: Buffer | Uint8Array;
@@ -30,6 +37,8 @@ export interface SendDirectMessageParams {
   message?: string;
   localizedMessages?: DirectMessageLocalizedMessages;
   variables?: DirectMessageVariables;
+  localizedVariables?: DirectMessageLocalizedVariables;
+  parseMode?: TelegramParseMode;
   inlineKeyboard?: DirectMessageInlineKeyboard;
   supportReply?: DirectMessageSupportReply;
   type?: MessageTemplateType;
@@ -74,6 +83,14 @@ export interface DirectMessageLocalizedMessages {
   ru: string;
   en?: string | null;
 }
+
+export interface DirectMessageLocalizedVariable {
+  uz: DirectMessageVariableValue;
+  ru: DirectMessageVariableValue;
+  en?: DirectMessageVariableValue;
+}
+
+export type DirectMessageLocalizedVariables = Record<string, DirectMessageLocalizedVariable>;
 
 export interface DirectMessageUrlButton {
   type: 'url';
@@ -135,6 +152,37 @@ const isTelegramReplyTargetError = (error: unknown): boolean => {
     (normalized.includes('reply') ||
       normalized.includes('replied') ||
       normalized.includes('message to be replied'))
+  );
+};
+
+export const isTelegramFormattingError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+  const record = error as Record<string, unknown>;
+  const description =
+    typeof record.description === 'string'
+      ? record.description
+      : typeof record.message === 'string'
+        ? record.message
+        : '';
+  const normalized = description.toLowerCase();
+
+  return (
+    record.error_code === 400 &&
+    (normalized.includes("can't parse entities") ||
+      normalized.includes('unsupported start tag') ||
+      normalized.includes('unsupported end tag') ||
+      normalized.includes('entity is too long'))
+  );
+};
+
+const localizedVariablesFor = (
+  variables: DirectMessageLocalizedVariables | undefined,
+  locale: string | null | undefined,
+): DirectMessageVariables => {
+  if (!variables) return {};
+  const selectedLocale = locale === 'ru' ? 'ru' : 'uz';
+  return Object.fromEntries(
+    Object.entries(variables).map(([key, value]) => [key, value[selectedLocale]]),
   );
 };
 
@@ -382,9 +430,11 @@ export class BotDirectMessageService {
     }
 
     let messageText: string;
+    let messageParseMode: TelegramParseMode = DEFAULT_TELEGRAM_PARSE_MODE;
     if (template) {
       const placeholders = {
         ...params.variables,
+        ...localizedVariablesFor(params.localizedVariables, user.locale),
         first_name: user.first_name,
         last_name: user.last_name,
         full_name: [user.first_name, user.last_name].filter(Boolean).join(' '),
@@ -393,16 +443,24 @@ export class BotDirectMessageService {
         locale: user.locale,
       };
       messageText = MessageTemplateRenderer.render(template, user.locale ?? 'uz', placeholders);
-      if (!messageText.trim()) {
+      if (messageText.length > TELEGRAM_FORMATTED_SOURCE_LIMIT) {
+        return {
+          status: 'invalid_message',
+          message: `formatted message source must be ${TELEGRAM_FORMATTED_SOURCE_LIMIT} characters or fewer`,
+        };
+      }
+      const visibleText = telegramFormattedText(messageText, messageParseMode);
+      if (!visibleText.trim()) {
         return { status: 'invalid_message', message: 'message must not be empty after rendering' };
       }
-      if (messageText.length > TELEGRAM_TEXT_LIMIT) {
+      if (visibleText.length > TELEGRAM_TEXT_LIMIT) {
         return {
           status: 'invalid_message',
           message: `message must be ${TELEGRAM_TEXT_LIMIT} characters or fewer after rendering`,
         };
       }
     } else {
+      messageParseMode = params.parseMode ?? DEFAULT_TELEGRAM_PARSE_MODE;
       const localizedMessage =
         params.localizedMessages?.[user.locale === 'ru' ? 'ru' : 'uz'] ?? params.message;
       if (localizedMessage === undefined) {
@@ -411,15 +469,20 @@ export class BotDirectMessageService {
           message: 'message or localized_messages must be provided',
         };
       }
-      const rendered = renderDirectMessage(localizedMessage, {
-        ...params.variables,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        full_name: [user.first_name, user.last_name].filter(Boolean).join(' '),
-        phone_number: user.phone_number,
-        telegram_username: user.telegram_username,
-        locale: user.locale,
-      });
+      const rendered = renderDirectMessage(
+        localizedMessage,
+        {
+          ...params.variables,
+          ...localizedVariablesFor(params.localizedVariables, user.locale),
+          first_name: user.first_name,
+          last_name: user.last_name,
+          full_name: [user.first_name, user.last_name].filter(Boolean).join(' '),
+          phone_number: user.phone_number,
+          telegram_username: user.telegram_username,
+          locale: user.locale,
+        },
+        messageParseMode,
+      );
       if (!rendered.ok) return { status: 'invalid_message', message: rendered.message };
       messageText = rendered.message;
     }
@@ -439,14 +502,14 @@ export class BotDirectMessageService {
           messageText,
           {
             ...directMessageOptions(replyMarkup, replyTarget ?? null),
-            parse_mode: TELEGRAM_PARSE_MODE_HTML,
+            parse_mode: messageParseMode,
           },
         );
       } catch (error) {
         if (!replyTarget || !isTelegramReplyTargetError(error)) throw error;
         sentMessage = await this.telegram.sendMessage(user.telegram_id, messageText, {
           ...directMessageOptions(replyMarkup, null),
-          parse_mode: TELEGRAM_PARSE_MODE_HTML,
+          parse_mode: messageParseMode,
         });
       }
 
@@ -505,6 +568,12 @@ export class BotDirectMessageService {
         status: 'failed',
         error_message: errorMessage(error),
       });
+      if (isTelegramFormattingError(error)) {
+        return {
+          status: 'invalid_message',
+          message: `Invalid ${messageParseMode} message formatting`,
+        };
+      }
       return { status: 'failed' };
     }
   }
@@ -513,18 +582,22 @@ export class BotDirectMessageService {
 export const renderDirectMessage = (
   message: string,
   variables: DirectMessageVariables,
+  parseMode: TelegramParseMode = DEFAULT_TELEGRAM_PARSE_MODE,
 ): { ok: true; message: string } | { ok: false; message: string } => {
   const missingVariables = new Set<string>();
-  const rendered = message.replace(DIRECT_MESSAGE_PLACEHOLDER_PATTERN, (match, key: string) => {
-    if (!Object.hasOwn(variables, key)) {
-      missingVariables.add(key);
-      return match;
-    }
+  const rendered = message.replace(
+    DIRECT_MESSAGE_PLACEHOLDER_PATTERN,
+    (match, key: string, offset: number) => {
+      if (!Object.hasOwn(variables, key)) {
+        missingVariables.add(key);
+        return match;
+      }
 
-    const value = variables[key];
-    if (value === null || value === undefined || value === '') return '';
-    return String(value);
-  });
+      const value = variables[key];
+      if (value === null || value === undefined || value === '') return '';
+      return escapeTelegramVariable(String(value), parseMode, message, offset);
+    },
+  );
 
   if (missingVariables.size > 0) {
     return {
@@ -533,8 +606,18 @@ export const renderDirectMessage = (
     };
   }
 
-  if (!rendered.trim()) return { ok: false, message: 'message must not be empty after rendering' };
-  if (rendered.length > TELEGRAM_TEXT_LIMIT) {
+  if (rendered.length > TELEGRAM_FORMATTED_SOURCE_LIMIT) {
+    return {
+      ok: false,
+      message: `formatted message source must be ${TELEGRAM_FORMATTED_SOURCE_LIMIT} characters or fewer`,
+    };
+  }
+
+  const visibleText = telegramFormattedText(rendered, parseMode);
+  if (!visibleText.trim()) {
+    return { ok: false, message: 'message must not be empty after rendering' };
+  }
+  if (visibleText.length > TELEGRAM_TEXT_LIMIT) {
     return {
       ok: false,
       message: `message must be ${TELEGRAM_TEXT_LIMIT} characters or fewer after rendering`,

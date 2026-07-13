@@ -1,4 +1,5 @@
 import type { Context, SessionFlavor } from 'grammy';
+import type { MessageEntity } from 'grammy/types';
 
 import type { AdminProfile, ClientProfile, Locale } from '../types/client.js';
 import type { MessageTemplateDraft, MessageTemplateField } from '../types/message-template.js';
@@ -80,6 +81,7 @@ export interface BotSession {
     string,
     {
       text: string;
+      entities?: MessageEntity[];
       repairOrderUuid: string;
       buttonText?: string;
     }

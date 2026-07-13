@@ -23,6 +23,12 @@ const callbackMessageText = (ctx: BotContext): string | null => {
   return message.text;
 };
 
+const callbackMessageEntities = (ctx: BotContext) => {
+  const message = ctx.callbackQuery?.message;
+  if (!message || !('entities' in message)) return undefined;
+  return message.entities;
+};
+
 const buttonTextForOriginalMessage = (
   ctx: BotContext,
   repairOrderUuid: string,
@@ -87,7 +93,10 @@ const restoreOriginalMessage = async (ctx: BotContext, repairOrderUuid: string):
     view.buttonText || (ctx.session.locale === 'ru' ? '🧾 Детали заказа' : '🧾 Buyurtmani ko‘rish'),
     `dm:ro:o:${repairOrderUuid}`,
   );
-  await ctx.editMessageText(view.text, { reply_markup: keyboard });
+  await ctx.editMessageText(view.text, {
+    entities: view.entities,
+    reply_markup: keyboard,
+  });
 };
 
 const showDirectMessageRepairOrder = async (
@@ -108,6 +117,7 @@ const showDirectMessageRepairOrder = async (
     ctx.session.directMessageViews ??= {};
     ctx.session.directMessageViews[messageId] ??= {
       text: originalText,
+      entities: callbackMessageEntities(ctx),
       repairOrderUuid,
       buttonText: buttonTextForOriginalMessage(ctx, repairOrderUuid),
     };

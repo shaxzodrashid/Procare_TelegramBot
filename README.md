@@ -185,11 +185,15 @@ Request:
 {
   "phone_number": "+998901234567",
   "localized_messages": {
-    "uz": "Salom {{first_name}}. Qurilma: {{phone_category}}",
-    "ru": "Здравствуйте, {{first_name}}. Устройство: {{phone_category}}"
+    "uz": "*Salom, {{first_name}}*\\nQurilma: ||{{phone_category}}||",
+    "ru": "*Здравствуйте, {{first_name}}*\\nУстройство: ||{{phone_category}}||"
   },
-  "variables": {
-    "phone_category": "iPhone 15 Pro"
+  "parse_mode": "MarkdownV2",
+  "localized_variables": {
+    "phone_category": {
+      "uz": "iPhone 15 Pro",
+      "ru": "iPhone 15 Pro"
+    }
   },
   "support_reply": {
     "target_crm_comment_id": "22222222-2222-4222-8222-222222222222"
@@ -223,6 +227,14 @@ The legacy `message` field remains an optional fallback for callers that have on
 least one of `message` or `localized_messages` is required. If both are supplied, the localized
 variant takes precedence for Uzbek and Russian users.
 
+Rich text supports Telegram `HTML` and modern `MarkdownV2` through `parse_mode`; `HTML` remains the
+default for backward compatibility. The message template keeps its authored markup, while every
+built-in, primitive, and locale-specific variable value is escaped for the selected mode before
+interpolation. This makes values containing characters such as `<`, `&`, `_`, `*`, `(`, or `.` safe
+without breaking surrounding bold, italic, spoiler, link, quote, code, or other Telegram entities.
+Legacy `Markdown` is intentionally rejected because it cannot represent the complete formatting
+set. Active database template types remain HTML-authored and therefore use HTML delivery.
+
 Successful responses include the exact rendered message sent to Telegram:
 
 ```json
@@ -235,7 +247,9 @@ Successful responses include the exact rendered message sent to Telegram:
 Built-in variables come from the registered user and cannot be overridden by request variables:
 `first_name`, `last_name`, `full_name`, `phone_number`, `telegram_username`, and `locale`. External
 platforms may pass additional string, number, boolean, or `null` values through `variables`; for
-example, `phone_category` or `repair_order_number`.
+example, `phone_category` or `repair_order_number`. `localized_variables` accepts the same primitive
+value types under required `uz` and `ru` keys; its locale-selected value takes precedence over an
+identically named primitive variable. Built-in values always take final precedence.
 
 For CRM support replies, pass `support_reply.target_crm_comment_id` with the CRM comment ID of the
 client message being answered. If the bot has a stored Telegram mapping for that CRM comment and the
@@ -258,9 +272,10 @@ single repair-order keyboard is also accepted:
 }
 ```
 
-It returns `400` for invalid payloads or unresolved variables, `401` for a missing or invalid bearer
-token, `404` when no local user matches, `409` when the user is already marked as blocked, `502` when
-Telegram delivery fails, and `503` when the Telegram bot is disabled so delivery is unavailable.
+It returns `400` for invalid payloads, unresolved variables, or Telegram-rejected rich-text syntax;
+`401` for a missing or invalid bearer token; `404` when no local user matches; `409` when the user is
+already marked as blocked; `502` for other Telegram delivery failures; and `503` when the Telegram
+bot is disabled so delivery is unavailable.
 
 ## Docker Compose
 

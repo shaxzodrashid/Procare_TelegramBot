@@ -3,8 +3,15 @@ import {
   type DirectMessageInlineKeyboard,
   type DirectMessageSupportReply,
   type DirectMessageVariables,
+  type DirectMessageLocalizedVariables,
   type DirectMessageLocalizedMessages,
 } from '../services/bot-notification.service.js';
+import {
+  DEFAULT_TELEGRAM_PARSE_MODE,
+  TELEGRAM_FORMATTED_SOURCE_LIMIT,
+  TELEGRAM_PARSE_MODES,
+  type TelegramParseMode,
+} from '../utils/telegram-formatting.js';
 import { normalizeUzPhone } from '../utils/phone.js';
 import { isMessageTemplateType, type MessageTemplateType } from '../types/message-template.js';
 
@@ -13,6 +20,8 @@ export interface SendMessageRequestBody {
   message?: unknown;
   localized_messages?: unknown;
   variables?: unknown;
+  localized_variables?: unknown;
+  parse_mode?: unknown;
   inline_keyboard?: unknown;
   support_reply?: unknown;
   type?: unknown;
@@ -38,6 +47,8 @@ const MAX_INLINE_KEYBOARD_ROWS = 8;
 const MAX_INLINE_KEYBOARD_BUTTONS = 32;
 const MAX_INLINE_KEYBOARD_BUTTONS_PER_ROW = 4;
 const MAX_INLINE_KEYBOARD_TEXT_LENGTH = 64;
+const MAX_VARIABLE_COUNT = 100;
+const MAX_VARIABLE_STRING_LENGTH = TELEGRAM_TEXT_LIMIT;
 
 const parseLocalizedMessages = (
   value: unknown,
@@ -55,20 +66,23 @@ const parseLocalizedMessages = (
   if (typeof ru !== 'string' || !ru.trim()) {
     return { ok: false, message: 'localized_messages.ru must be a non-empty string' };
   }
-  if (uz.trim().length > TELEGRAM_TEXT_LIMIT || ru.trim().length > TELEGRAM_TEXT_LIMIT) {
+  if (
+    uz.trim().length > TELEGRAM_FORMATTED_SOURCE_LIMIT ||
+    ru.trim().length > TELEGRAM_FORMATTED_SOURCE_LIMIT
+  ) {
     return {
       ok: false,
-      message: `localized messages must be ${TELEGRAM_TEXT_LIMIT} characters or fewer`,
+      message: `localized messages must be ${TELEGRAM_FORMATTED_SOURCE_LIMIT} source characters or fewer`,
     };
   }
   if (
     en !== undefined &&
     en !== null &&
-    (typeof en !== 'string' || en.trim().length > TELEGRAM_TEXT_LIMIT)
+    (typeof en !== 'string' || en.trim().length > TELEGRAM_FORMATTED_SOURCE_LIMIT)
   ) {
     return {
       ok: false,
-      message: `localized_messages.en must be a string with at most ${TELEGRAM_TEXT_LIMIT} characters`,
+      message: `localized_messages.en must be a string with at most ${TELEGRAM_FORMATTED_SOURCE_LIMIT} source characters`,
     };
   }
   return {
@@ -86,6 +100,9 @@ export const parseVariables = (
 ): { ok: true; variables: DirectMessageVariables } | { ok: false; message: string } => {
   if (value === undefined) return { ok: true, variables: {} };
   if (!isRecord(value)) return { ok: false, message: 'variables must be a JSON object' };
+  if (Object.keys(value).length > MAX_VARIABLE_COUNT) {
+    return { ok: false, message: `variables may contain at most ${MAX_VARIABLE_COUNT} entries` };
+  }
 
   const variables: DirectMessageVariables = {};
   for (const [key, rawVariable] of Object.entries(value)) {
@@ -106,10 +123,99 @@ export const parseVariables = (
         message: 'variable values must be strings, numbers, booleans, or null',
       };
     }
+    if (typeof rawVariable === 'string' && rawVariable.length > MAX_VARIABLE_STRING_LENGTH) {
+      return {
+        ok: false,
+        message: `variable string values must be ${MAX_VARIABLE_STRING_LENGTH} characters or fewer`,
+      };
+    }
     variables[key] = rawVariable;
   }
 
   return { ok: true, variables };
+};
+
+const isDirectMessageVariableValue = (value: unknown): value is DirectMessageVariables[string] =>
+  value === null ||
+  typeof value === 'string' ||
+  typeof value === 'number' ||
+  typeof value === 'boolean';
+
+export const parseLocalizedVariables = (
+  value: unknown,
+):
+  | { ok: true; localizedVariables: DirectMessageLocalizedVariables }
+  | { ok: false; message: string } => {
+  if (value === undefined) return { ok: true, localizedVariables: {} };
+  if (!isRecord(value)) {
+    return { ok: false, message: 'localized_variables must be a JSON object' };
+  }
+  if (Object.keys(value).length > MAX_VARIABLE_COUNT) {
+    return {
+      ok: false,
+      message: `localized_variables may contain at most ${MAX_VARIABLE_COUNT} entries`,
+    };
+  }
+
+  const localizedVariables: DirectMessageLocalizedVariables = {};
+  for (const [key, rawLocalizedVariable] of Object.entries(value)) {
+    if (!/^[a-zA-Z0-9_]{1,64}$/.test(key)) {
+      return {
+        ok: false,
+        message: 'localized variable names may contain only letters, numbers, and underscores',
+      };
+    }
+    if (!isRecord(rawLocalizedVariable)) {
+      return {
+        ok: false,
+        message: `localized_variables.${key} must be a JSON object`,
+      };
+    }
+    if (!Object.hasOwn(rawLocalizedVariable, 'uz') || !Object.hasOwn(rawLocalizedVariable, 'ru')) {
+      return {
+        ok: false,
+        message: `localized_variables.${key} must define uz and ru values`,
+      };
+    }
+
+    const { uz, ru, en } = rawLocalizedVariable;
+    for (const [locale, localizedValue] of Object.entries({ uz, ru, en })) {
+      if (locale === 'en' && localizedValue === undefined) continue;
+      if (!isDirectMessageVariableValue(localizedValue)) {
+        return {
+          ok: false,
+          message: `localized_variables.${key}.${locale} must be a string, number, boolean, or null`,
+        };
+      }
+      if (
+        typeof localizedValue === 'string' &&
+        localizedValue.length > MAX_VARIABLE_STRING_LENGTH
+      ) {
+        return {
+          ok: false,
+          message: `localized_variables.${key}.${locale} must be ${MAX_VARIABLE_STRING_LENGTH} characters or fewer`,
+        };
+      }
+    }
+
+    localizedVariables[key] = {
+      uz: uz as DirectMessageVariables[string],
+      ru: ru as DirectMessageVariables[string],
+      ...(en !== undefined ? { en: en as DirectMessageVariables[string] } : {}),
+    };
+  }
+
+  return { ok: true, localizedVariables };
+};
+
+const parseTelegramParseMode = (
+  value: unknown,
+): { ok: true; parseMode: TelegramParseMode } | { ok: false; message: string } => {
+  if (value === undefined) return { ok: true, parseMode: DEFAULT_TELEGRAM_PARSE_MODE };
+  if (typeof value !== 'string' || !TELEGRAM_PARSE_MODES.includes(value as TelegramParseMode)) {
+    return { ok: false, message: 'parse_mode must be HTML or MarkdownV2' };
+  }
+  return { ok: true, parseMode: value as TelegramParseMode };
 };
 
 const isHttpUrl = (value: string): boolean => {
@@ -256,6 +362,8 @@ export const parseSendMessageBody = (
       message?: string;
       localizedMessages?: DirectMessageLocalizedMessages;
       variables: DirectMessageVariables;
+      localizedVariables: DirectMessageLocalizedVariables;
+      parseMode: TelegramParseMode;
       inlineKeyboard?: DirectMessageInlineKeyboard;
       supportReply?: DirectMessageSupportReply;
       type?: MessageTemplateType;
@@ -271,6 +379,8 @@ export const parseSendMessageBody = (
     message: rawMessage,
     localized_messages: rawLocalizedMessages,
     variables: rawVariables,
+    localized_variables: rawLocalizedVariables,
+    parse_mode: rawParseMode,
     inline_keyboard: rawInlineKeyboard,
     support_reply: rawSupportReply,
     type: rawType,
@@ -290,8 +400,11 @@ export const parseSendMessageBody = (
     if (typeof rawMessage !== 'string') return { ok: false, message: 'message must be a string' };
     message = rawMessage.trim();
     if (!message) return { ok: false, message: 'message must not be empty' };
-    if (message.length > TELEGRAM_TEXT_LIMIT) {
-      return { ok: false, message: `message must be ${TELEGRAM_TEXT_LIMIT} characters or fewer` };
+    if (message.length > TELEGRAM_FORMATTED_SOURCE_LIMIT) {
+      return {
+        ok: false,
+        message: `message must be ${TELEGRAM_FORMATTED_SOURCE_LIMIT} source characters or fewer`,
+      };
     }
   }
 
@@ -337,6 +450,12 @@ export const parseSendMessageBody = (
   const parsedVariables = parseVariables(rawVariables);
   if (!parsedVariables.ok) return parsedVariables;
 
+  const parsedLocalizedVariables = parseLocalizedVariables(rawLocalizedVariables);
+  if (!parsedLocalizedVariables.ok) return parsedLocalizedVariables;
+
+  const parsedParseMode = parseTelegramParseMode(rawParseMode);
+  if (!parsedParseMode.ok) return parsedParseMode;
+
   const parsedInlineKeyboard = parseInlineKeyboard(rawInlineKeyboard);
   if (!parsedInlineKeyboard.ok) return parsedInlineKeyboard;
 
@@ -356,6 +475,8 @@ export const parseSendMessageBody = (
     message,
     localizedMessages: parsedLocalizedMessages.localizedMessages,
     variables: parsedVariables.variables,
+    localizedVariables: parsedLocalizedVariables.localizedVariables,
+    parseMode: parsedParseMode.parseMode,
     inlineKeyboard: parsedInlineKeyboard.inlineKeyboard,
     supportReply: parsedSupportReply.supportReply,
     type,

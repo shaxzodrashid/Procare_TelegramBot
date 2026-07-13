@@ -153,6 +153,8 @@ describe('direct message API', () => {
         phoneNumber: '+998901234567',
         message: 'Salom {{ first_name }}',
         variables: { phone_category: 'iPhone 15' },
+        localizedVariables: {},
+        parseMode: 'HTML',
         inlineKeyboard: {
           rows: [
             [{ type: 'url', text: 'CRM', url: 'https://crm.procare.uz/orders/1' }],
@@ -206,6 +208,148 @@ describe('direct message API', () => {
       status: 'sent',
       message: 'Здравствуйте, Ali',
     });
+  });
+
+  it('accepts MarkdownV2 with locale-specific variables and passes the complete rendering contract', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(params) {
+          assert.equal(params.parseMode, 'MarkdownV2');
+          assert.deepEqual(params.localizedVariables, {
+            phone_category: {
+              uz: 'iPhone 15 Pro',
+              ru: 'iPhone 15 Pro Max',
+            },
+          });
+          return { status: 'sent', message: '*Ali* — iPhone 15 Pro Max' };
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: '*{{first_name}}* — {{phone_category}}',
+        parse_mode: 'MarkdownV2',
+        localized_variables: {
+          phone_category: {
+            uz: 'iPhone 15 Pro',
+            ru: 'iPhone 15 Pro Max',
+          },
+        },
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), {
+      status: 'sent',
+      message: '*Ali* — iPhone 15 Pro Max',
+    });
+  });
+
+  it('rejects legacy or unsupported parse modes before sending', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(): Promise<DirectMessageDeliveryResult> {
+          throw new Error('should not send');
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: '*Salom*',
+        parse_mode: 'Markdown',
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(
+      response.json<{ message: string }>().message,
+      'parse_mode must be HTML or MarkdownV2',
+    );
+  });
+
+  it('validates locale-specific variable shape before sending', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(): Promise<DirectMessageDeliveryResult> {
+          throw new Error('should not send');
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: '{{phone_category}}',
+        localized_variables: { phone_category: { uz: 'iPhone' } },
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(
+      response.json<{ message: string }>().message,
+      'localized_variables.phone_category must define uz and ru values',
+    );
+  });
+
+  it('accepts the variable-count boundary and rejects oversized variable maps', async () => {
+    let sendCount = 0;
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage() {
+          sendCount += 1;
+          return { status: 'sent' as const };
+        },
+      },
+    });
+    const variables = Object.fromEntries(
+      Array.from({ length: 100 }, (_, index) => [`value_${index}`, index]),
+    );
+
+    const boundaryResponse = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Bounded message',
+        variables,
+      },
+    });
+    const oversizedResponse = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Oversized map',
+        variables: { ...variables, value_100: 100 },
+      },
+    });
+    await app.close();
+
+    assert.equal(boundaryResponse.statusCode, 200);
+    assert.equal(oversizedResponse.statusCode, 400);
+    assert.equal(
+      oversizedResponse.json<{ message: string }>().message,
+      'variables may contain at most 100 entries',
+    );
+    assert.equal(sendCount, 1);
   });
 
   it('accepts repair-order keyboard shorthand', async () => {

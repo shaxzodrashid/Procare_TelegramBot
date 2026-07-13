@@ -143,7 +143,7 @@ const createTestBot = () => {
   return { bot, apiCalls };
 };
 
-const callbackUpdate = (data: string, text: string) => ({
+const callbackUpdate = (data: string, text: string, entities?: unknown[]) => ({
   update_id: Math.floor(Math.random() * 1_000_000),
   callback_query: {
     id: `callback-${data}`,
@@ -156,6 +156,7 @@ const callbackUpdate = (data: string, text: string) => ({
       chat: { id: 700201, type: 'private' as const, first_name: 'Ali' },
       from: { id: 99999, is_bot: true, first_name: 'TestBot' },
       text,
+      entities,
       reply_markup: {
         inline_keyboard: [[{ text: 'Open order', callback_data: `dm:ro:o:${repairOrderUuid}` }]],
       },
@@ -168,7 +169,9 @@ describe('direct message inline repair-order buttons', () => {
     const { bot, apiCalls } = createTestBot();
 
     await bot.handleUpdate(
-      callbackUpdate(`dm:ro:o:${repairOrderUuid}`, 'Original API message') as any,
+      callbackUpdate(`dm:ro:o:${repairOrderUuid}`, 'Original API message', [
+        { type: 'bold', offset: 0, length: 8 },
+      ]) as any,
     );
 
     const detailEdit = apiCalls.find((call) => call.method === 'editMessageText');
@@ -192,6 +195,7 @@ describe('direct message inline repair-order buttons', () => {
     const backEdit = apiCalls.find((call) => call.method === 'editMessageText');
     assert.ok(backEdit);
     assert.equal(backEdit.payload.text, 'Original API message');
+    assert.deepEqual(backEdit.payload.entities, [{ type: 'bold', offset: 0, length: 8 }]);
     assert.equal(
       backEdit.payload.reply_markup.inline_keyboard[0][0].callback_data,
       `dm:ro:o:${repairOrderUuid}`,
