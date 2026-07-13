@@ -1,7 +1,5 @@
 import type { Knex } from 'knex';
 
-import type { LifecycleBroadcastSummary } from './lifecycle-notification.service.js';
-
 export type HealthStatus = 'ok' | 'degraded' | 'unhealthy';
 export type ComponentHealthStatus = HealthStatus | 'disabled';
 export type BotPollingState =
@@ -31,7 +29,6 @@ export interface SystemHealthSnapshot {
     migrations: HealthCheck;
     api: HealthCheck;
     telegram: HealthCheck;
-    lifecycleNotifications: HealthCheck;
   };
 }
 
@@ -44,7 +41,6 @@ export interface SystemHealthMonitorOptions {
   database: Pick<Knex, 'raw'>;
   botEnabled: boolean;
   apiEnabled: boolean;
-  lifecycleNotificationsEnabled: boolean;
   timeoutMs?: number;
 }
 
@@ -74,8 +70,6 @@ export class SystemHealthMonitor {
   private botPollingState: BotPollingState;
   private botFailureMessage: string | undefined;
   private telegramProbe: (() => Promise<TelegramHealthProbeResult>) | undefined;
-  private lifecycleBroadcasts: Partial<Record<'startup' | 'shutdown', LifecycleBroadcastSummary>> =
-    {};
 
   constructor(private readonly options: SystemHealthMonitorOptions) {
     this.timeoutMs = options.timeoutMs ?? 2000;
@@ -122,10 +116,6 @@ export class SystemHealthMonitor {
     this.telegramProbe = probe;
   }
 
-  recordLifecycleBroadcast(summary: LifecycleBroadcastSummary): void {
-    this.lifecycleBroadcasts[summary.kind] = summary;
-  }
-
   async snapshot(): Promise<SystemHealthSnapshot> {
     const checks = {
       process: this.processCheck(),
@@ -134,7 +124,6 @@ export class SystemHealthMonitor {
       migrations: this.migrationCheck(),
       api: this.apiCheck(),
       telegram: await this.telegramCheck(),
-      lifecycleNotifications: this.lifecycleNotificationsCheck(),
     };
 
     return {
@@ -164,7 +153,6 @@ export class SystemHealthMonitor {
       details: {
         botEnabled: this.options.botEnabled,
         apiEnabled: this.options.apiEnabled,
-        lifecycleNotificationsEnabled: this.options.lifecycleNotificationsEnabled,
       },
     };
   }
@@ -242,29 +230,6 @@ export class SystemHealthMonitor {
         details,
       };
     }
-  }
-
-  private lifecycleNotificationsCheck(): HealthCheck {
-    if (!this.options.lifecycleNotificationsEnabled) return { status: 'disabled' };
-
-    const startup = this.lifecycleBroadcasts.startup;
-    const shutdown = this.lifecycleBroadcasts.shutdown;
-    const last = startup ?? shutdown;
-    if (!last) {
-      return {
-        status: 'degraded',
-        message: 'No lifecycle broadcast has completed in this process yet',
-      };
-    }
-
-    const status = last.timedOut || last.failed > 0 || last.blocked > 0 ? 'degraded' : 'ok';
-    return {
-      status,
-      details: {
-        startup,
-        shutdown,
-      },
-    };
   }
 }
 

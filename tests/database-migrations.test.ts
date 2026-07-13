@@ -7,6 +7,10 @@ import {
   up as cleanupUsers,
 } from '../src/database/migrations/20260615001000_remove_unused_user_columns.js';
 import { up as restoreUsersIsBlocked } from '../src/database/migrations/20260701000300_restore_users_is_blocked_after_cleanup.js';
+import {
+  down as removeUsersShouldRestart,
+  up as addUsersShouldRestart,
+} from '../src/database/migrations/20260713000000_add_users_should_restart.js';
 
 describe('user table migrations', () => {
   it('keeps the active blocked-user flag during unused-column cleanup', async () => {
@@ -100,5 +104,39 @@ describe('user table migrations', () => {
 
     assert.equal(addedColumn, 'is_blocked');
     assert.equal(defaultValue, false);
+  });
+
+  it('adds and removes the durable users.should_restart flag', async () => {
+    const addedColumns: string[] = [];
+    const droppedColumns: string[] = [];
+    let defaultValue: boolean | undefined;
+    const knex = {
+      schema: {
+        alterTable: async (_table: string, callback: (table: any) => void) => {
+          callback({
+            boolean: (column: string) => {
+              addedColumns.push(column);
+              return {
+                notNullable() {
+                  return this;
+                },
+                defaultTo(value: boolean) {
+                  defaultValue = value;
+                  return this;
+                },
+              };
+            },
+            dropColumn: (column: string) => droppedColumns.push(column),
+          });
+        },
+      },
+    };
+
+    await addUsersShouldRestart(knex as any);
+    await removeUsersShouldRestart(knex as any);
+
+    assert.deepEqual(addedColumns, ['should_restart']);
+    assert.equal(defaultValue, false);
+    assert.deepEqual(droppedColumns, ['should_restart']);
   });
 });

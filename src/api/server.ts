@@ -6,6 +6,7 @@ import type {
   DirectMessageInlineKeyboard,
   DirectMessageSupportReply,
   DirectMessageVariables,
+  DirectMessageLocalizedMessages,
   DirectMessageDeliveryResult,
   DirectFileDeliveryResult,
 } from '../services/bot-notification.service.js';
@@ -18,6 +19,7 @@ export interface DirectMessageSender {
   sendDirectMessage(params: {
     phoneNumber: string;
     message: string;
+    localizedMessages?: DirectMessageLocalizedMessages;
     variables: DirectMessageVariables;
     inlineKeyboard?: DirectMessageInlineKeyboard;
     supportReply?: DirectMessageSupportReply;
@@ -99,6 +101,7 @@ export const createApiServer = (
     const result = await dependencies.directMessageSender.sendDirectMessage({
       phoneNumber: parsed.phoneNumber,
       message: parsed.message,
+      localizedMessages: parsed.localizedMessages,
       variables: parsed.variables,
       inlineKeyboard: parsed.inlineKeyboard,
       supportReply: parsed.supportReply,

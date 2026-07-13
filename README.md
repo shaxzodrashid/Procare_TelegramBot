@@ -156,22 +156,17 @@ Example response:
     "database": { "status": "ok", "latencyMs": 3 },
     "migrations": { "status": "ok" },
     "api": { "status": "ok" },
-    "telegram": { "status": "ok" },
-    "lifecycleNotifications": { "status": "ok" }
+    "telegram": { "status": "ok" }
   }
 }
 ```
 
 The endpoint returns HTTP `503` when a required component is unhealthy. It actively verifies the
 PostgreSQL connection, migration completion, API readiness, Telegram authentication/polling, and
-Telegram `getMe` reachability when the bot is enabled. Lifecycle notification delivery is reported
-as `ok`, `degraded`, or `disabled` so deployments can detect whether startup/shutdown broadcasts are
-working.
-
-When lifecycle notifications are enabled, startup sends every non-blocked stored Telegram user a
-localized service-restored message with a one-tap `/start` keyboard. Graceful shutdown clears the
-Telegram command menu, sends a localized technical-update notice, and removes the user's current
-reply keyboard before polling is stopped.
+Telegram `getMe` reachability when the bot is enabled. Startup and graceful shutdown do not send
+broadcast messages to users. A deployment with a different Git commit marks stored users with
+`users.should_restart = true`; their next interaction is stopped until they send `/start`, which
+clears the flag and rebuilds the in-memory session from persisted registration data.
 
 The direct message endpoint is:
 
@@ -273,16 +268,19 @@ For production deploys, use the root manager script instead of raw Compose comma
 ./deploy.sh up
 ```
 
-`./deploy.sh down` stops the bot first while PostgreSQL is still running, giving the bot time to
-send the shutdown technical-update notice, clear Telegram menu commands, remove user reply
-keyboards, and write dispatch logs. It then stops the full Compose stack without deleting volumes.
+`./deploy.sh down` records deployment history, stops the bot gracefully, clears Telegram menu
+commands, and then stops the full Compose stack without deleting volumes. It does not broadcast a
+shutdown message.
 
 `./deploy.sh up` pulls `origin/main` with `--ff-only`, prepares the mounted `./logs` directory for
 the container user, runs `docker compose up -d --build`, waits until the bot container is healthy,
 prints the `/health` report, and updates the latest open `deployment_history` database row with the
 exact database-server `started_at` timestamp, shutdown period, current Git commit SHA, and full Git
-commit message. Override the source branch only for exceptional cases with `DEPLOY_GIT_REMOTE` and
-`DEPLOY_GIT_BRANCH`.
+commit message. After migrations and health checks pass, it compares the current Git SHA with the
+previous healthy deployment. If they differ, all stored users are marked `should_restart = true`;
+the first managed deployment also marks users when no healthy baseline exists. Restarting the same
+commit does not mark them again. Override the source branch only for exceptional cases with
+`DEPLOY_GIT_REMOTE` and `DEPLOY_GIT_BRANCH`.
 
 Deployment history is stored in PostgreSQL table `deployment_history`. `./deploy.sh down` creates
 the table if needed before shutdown and inserts `stopped_at` using `CURRENT_TIMESTAMP` from the
@@ -317,11 +315,6 @@ All supported variables are listed in `.env.example`.
 | `API_HOST`                         | `0.0.0.0`       | API listen host                                   |
 | `API_PORT`                         | `3000`          | API listen port                                   |
 | `API_MESSAGE_SEND_TOKEN`           | Required        | Bearer token for `POST /messages/send`            |
-| `LIFECYCLE_NOTIFICATIONS_ENABLED`  | `true`          | Send startup/shutdown Telegram service notices    |
-| `LIFECYCLE_BROADCAST_BATCH_SIZE`   | `100`           | Users fetched per lifecycle broadcast page        |
-| `LIFECYCLE_BROADCAST_CONCURRENCY`  | `10`            | Parallel Telegram sends per broadcast batch       |
-| `LIFECYCLE_STARTUP_TIMEOUT_MS`     | `60000`         | Max startup broadcast time per process            |
-| `LIFECYCLE_SHUTDOWN_TIMEOUT_MS`    | `60000`         | Max graceful shutdown broadcast time              |
 | `CRM_BASE_URL`                     | none            | Required CRM/API base URL                         |
 | `TELEGRAM_BOT_BASIC_AUTH_USER`     | none            | Required CRM service username                     |
 | `TELEGRAM_BOT_BASIC_AUTH_PASSWORD` | none            | Required CRM service password                     |
@@ -507,15 +500,13 @@ names and ordering without overwriting the employee-managed display names.
 timestamps for `stopped_at` and `started_at`, the computed shutdown period, current Git commit SHA,
 full Git commit message, status, and an operational note.
 
-While this project is pre-production and has no real user data, edit an existing table's original
-migration instead of creating follow-up alteration migrations. Add a new migration file only when
-introducing a new database table.
+`users.should_restart` is a durable deployment gate. It defaults to `false`, is set to `true` only
+when `deploy.sh up` detects a different commit from the previous healthy deployment, and is cleared
+for one user when that user sends `/start`.
 
-Once a shared or production database contains durable data, applied migrations must become
-immutable and schema changes must use new forward migrations.
-
-Changing an original migration does not update a database where that migration was already applied.
-Recreate only a disposable local database or volume before restarting the application.
+This deploy-targeted schema change uses a forward migration because editing the original `users`
+migration would not update an existing persistent database. Disposable pre-production databases may
+still be recreated when explicitly chosen; shared or production applied migrations are immutable.
 
 ## Tests
 

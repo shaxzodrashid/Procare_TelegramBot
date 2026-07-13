@@ -16,10 +16,6 @@ import { BotDirectMessageService } from '../services/bot-notification.service.js
 import { HttpClientRepairOrderService } from '../services/client-repair-order.service.js';
 import { HttpClientRegistrationService } from '../services/client-registration.service.js';
 import { SystemHealthMonitor } from '../services/health.service.js';
-import {
-  BotLifecycleNotificationService,
-  type LifecycleBroadcastSummary,
-} from '../services/lifecycle-notification.service.js';
 import { PostgresMessageTemplateStore } from '../services/message-template.service.js';
 import { PostgresRegisteredUserStore } from '../services/registered-user.store.js';
 import {
@@ -40,8 +36,6 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
   let botTask: Promise<void> | undefined;
   let api: FastifyInstance | undefined;
   let directMessageService: BotDirectMessageService | undefined;
-  let lifecycleNotificationService: BotLifecycleNotificationService | undefined;
-  let startupNotificationTask: Promise<void> | undefined;
   let stopping = false;
 
   const database = createDatabase(config.database);
@@ -49,7 +43,6 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
     database,
     botEnabled: config.bot.enabled,
     apiEnabled: config.api.enabled,
-    lifecycleNotificationsEnabled: config.lifecycleNotifications.enabled,
   });
   try {
     await migrateDatabase(database);
@@ -138,18 +131,6 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       supportMessageStore,
       { logger },
     );
-    if (config.lifecycleNotifications.enabled) {
-      lifecycleNotificationService = new BotLifecycleNotificationService(
-        registeredUserStore,
-        messageTemplateStore,
-        bot.api,
-        logger,
-        {
-          batchSize: config.lifecycleNotifications.batchSize,
-          concurrency: config.lifecycleNotifications.concurrency,
-        },
-      );
-    }
     logger.info(`Telegram bot @${bot.botInfo.username} authenticated`);
   }
 
@@ -171,16 +152,6 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
         onStart: (botInfo) => {
           healthMonitor.markBotPollingRunning(botInfo.username);
           logger.info(`Telegram bot @${botInfo.username} started`);
-          if (lifecycleNotificationService) {
-            startupNotificationTask = runLifecycleNotification(
-              'startup',
-              lifecycleNotificationService.notifyStartup(
-                config.lifecycleNotifications.startupTimeoutMs,
-              ),
-              healthMonitor,
-              logger,
-            );
-          }
         },
       })
       .catch((error: unknown) => {
@@ -199,21 +170,10 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
 
       if (bot) {
         healthMonitor.markBotPollingStopping();
-        if (startupNotificationTask) await startupNotificationTask.catch(() => undefined);
         try {
           await clearLocalizedBotCommands(bot);
         } catch (error) {
           logger.warn('Failed to clear Telegram command menu before shutdown', error);
-        }
-        if (lifecycleNotificationService) {
-          await runLifecycleNotification(
-            'shutdown',
-            lifecycleNotificationService.notifyShutdown(
-              config.lifecycleNotifications.shutdownTimeoutMs,
-            ),
-            healthMonitor,
-            logger,
-          );
         }
         await bot.stop();
         healthMonitor.markBotPollingStopped();
@@ -225,18 +185,4 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       logger.info('Application stopped');
     },
   };
-};
-
-const runLifecycleNotification = async (
-  kind: LifecycleBroadcastSummary['kind'],
-  task: Promise<LifecycleBroadcastSummary>,
-  healthMonitor: SystemHealthMonitor,
-  logger: Logger,
-): Promise<void> => {
-  try {
-    const summary = await task;
-    healthMonitor.recordLifecycleBroadcast(summary);
-  } catch (error) {
-    logger.error(`Lifecycle ${kind} notification failed`, error);
-  }
 };

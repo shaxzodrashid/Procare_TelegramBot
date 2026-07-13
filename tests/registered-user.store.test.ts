@@ -48,7 +48,11 @@ const createDatabaseDouble = (
           return this;
         },
         leftJoin(joinTable: string, firstColumn: string, secondColumn: string) {
-          calls.push({ table, action: 'leftJoin', payload: { joinTable, firstColumn, secondColumn } });
+          calls.push({
+            table,
+            action: 'leftJoin',
+            payload: { joinTable, firstColumn, secondColumn },
+          });
           return this;
         },
         delete() {
@@ -114,6 +118,7 @@ describe('PostgresRegisteredUserStore', () => {
     assert.equal((userInsert?.payload as Record<string, unknown>).is_blocked, false);
     assert.equal((userMerge?.payload as Record<string, unknown>).last_decline_reason, null);
     assert.equal((userMerge?.payload as Record<string, unknown>).is_blocked, false);
+    assert.equal('should_restart' in (userMerge?.payload as Record<string, unknown>), false);
     assert.equal((userMerge?.payload as Record<string, unknown>).declined_at, null);
     assert.equal((clientInsert?.payload as Record<string, unknown>).user_id, '42');
     assert.equal((clientInsert?.payload as Record<string, unknown>).crm_client_id, 'client-1');
@@ -248,6 +253,7 @@ describe('PostgresRegisteredUserStore', () => {
                   last_name: 'Valiyev',
                   phone_number: '+998901234567',
                   language_code: 'uz',
+                  should_restart: true,
                 };
               }
               if (table === 'clients') {
@@ -276,6 +282,7 @@ describe('PostgresRegisteredUserStore', () => {
         last_name: 'Valiyev',
         phone_number: '+998901234567',
         locale: 'uz',
+        should_restart: true,
       },
       client: {
         crm_client_id: 'client-12',
@@ -301,6 +308,7 @@ describe('PostgresRegisteredUserStore', () => {
                   last_name: null,
                   phone_number: '+998901111111',
                   language_code: 'ru',
+                  should_restart: false,
                 };
               }
               if (table === 'clients') {
@@ -333,6 +341,7 @@ describe('PostgresRegisteredUserStore', () => {
         last_name: null,
         phone_number: '+998901111111',
         locale: 'ru',
+        should_restart: false,
       },
       employee: {
         crm_admin_id: 'admin-13',
@@ -408,6 +417,22 @@ describe('PostgresRegisteredUserStore', () => {
     const store = new PostgresRegisteredUserStore(database);
     const result = await store.findByTelegramId('9999');
     assert.equal(result, null);
+  });
+
+  it('clears the restart requirement by Telegram ID', async () => {
+    const now = new Date('2026-07-13T10:00:00.000Z');
+    const { database, calls } = createDatabaseDouble('15', now);
+    const store = new PostgresRegisteredUserStore(database);
+
+    await store.clearRestartRequired('1008');
+
+    assert.deepEqual(calls.find((call) => call.action === 'where')?.payload, {
+      telegram_id: '1008',
+    });
+    assert.deepEqual(calls.find((call) => call.action === 'update')?.payload, {
+      should_restart: false,
+      updated_at: now,
+    });
   });
 
   it('finds active employee Telegram targets by CRM admin IDs', async () => {
@@ -595,6 +620,7 @@ describe('PostgresRegisteredUserStore', () => {
               last_name: 'SearchLastName',
               phone_number: '+998901234567',
               language_code: 'ru',
+              should_restart: false,
               crm_client_id: 'crm-101',
               customer_code: 'CC-101',
               client_status: 'Active',
@@ -618,6 +644,7 @@ describe('PostgresRegisteredUserStore', () => {
       last_name: 'users.last_name',
       phone_number: 'users.phone_number',
       language_code: 'users.language_code',
+      should_restart: 'users.should_restart',
       crm_client_id: 'clients.crm_client_id',
       customer_code: 'clients.customer_code',
       client_status: 'clients.status',
@@ -634,6 +661,7 @@ describe('PostgresRegisteredUserStore', () => {
         last_name: 'SearchLastName',
         phone_number: '+998901234567',
         locale: 'ru',
+        should_restart: false,
       },
       client: {
         crm_client_id: 'crm-101',

@@ -107,12 +107,15 @@ Startup is intentionally ordered:
 8. The bot starts long polling.
 
 If migrations fail, the database pool is destroyed and startup fails. The HTTP health endpoint
-checks process state, PostgreSQL reachability, migration completion, Fastify readiness, Telegram
-authentication/polling, and lifecycle notification state. It does not perform a CRM business
+checks process state, PostgreSQL reachability, migration completion, Fastify readiness, and Telegram
+authentication/polling. It does not perform a CRM business
 operation as a health probe.
 
 Production deploys should go through `./deploy.sh`, not raw Compose commands. The script records
 deployment history in PostgreSQL before stopping the stack and after the bot becomes healthy again.
+It does not broadcast startup or shutdown messages. When the current Git commit differs from the
+previous healthy deployment, it marks every stored user with `should_restart = true`. A first
+managed deployment without a healthy baseline marks users conservatively.
 Use database-server timestamps for `stopped_at` and `started_at`, and store the computed shutdown
 period, Git commit SHA, and full Git commit message. `./deploy.sh up` refreshes from `origin/main`
 with `--ff-only`, rebuilds, waits for container health, and prints the health endpoint report.
@@ -173,6 +176,9 @@ Important behavior:
   menu for configured Telegram IDs.
 - Developer API error localization rows are keyed by the code-owned endpoint registry and the
   upstream error envelope's `location` token. Keep `location` values stable and endpoint-specific.
+- A user with `users.should_restart = true` may not use normal bot handlers. The restart gate must
+  answer callbacks, show the localized `/start` prompt, and clear the flag only when a real `/start`
+  command resets and restores that user's session.
 
 When changing a flow, update session types, handler guards, messages, keyboards, formatters, and
 tests as one change. Avoid introducing user-facing text directly inside handlers when it belongs in
@@ -283,7 +289,8 @@ contract changes.
 The local database currently owns nine application tables: `users`, `clients`, `employees`,
 `message_templates`, `message_dispatch_logs`, `support_messages`, `api_error_localizations`,
 `repair_order_status_names`, and `deployment_history`, plus Knex migration metadata.
-`users.telegram_id` is the unique Telegram identity used for upserts. `clients.user_id`,
+`users.telegram_id` is the unique Telegram identity used for upserts. `users.should_restart` is the
+durable deploy-time session restart gate. `clients.user_id`,
 `employees.user_id`, `message_dispatch_logs.user_id`, and `support_messages.user_id` reference
 `users.id`.
 
@@ -346,19 +353,17 @@ The deployment history table persists production deploy timing:
 The repository is currently pre-production and documented as having no real user data. Under that
 explicit condition:
 
-- Edit the original migration for an existing table instead of adding a chain of corrective
-  alteration migrations.
+- Edit the original migration for an existing table when the rollout will recreate the disposable
+  database.
 - Add a new migration file when introducing a new table.
 - Keep both `up` and `down` paths valid.
 - Update store code, record types, tests, `.env.example` when relevant, and documentation in the
   same change.
+- Never destroy a database unless the environment is confirmed disposable.
 
-This policy must change once a shared or production database contains durable data. From that point,
-applied migrations are immutable and every schema change requires a forward migration.
-
-Editing an already-applied migration does not update an existing local database. In a disposable
-development environment, recreate the database or Docker volume and restart so migrations run
-against an empty schema. Never destroy a database unless the environment is confirmed disposable.
+A schema change expressly shipped through `deploy.sh` to an existing persistent database requires
+a new forward migration, because editing an already-applied migration cannot update that database.
+Once a shared or production database contains durable data, all applied migrations are immutable.
 
 Do not derive this service's schema from `Docs/POSTGRES_ARCHITECTURE_REPORT.md`.
 
@@ -380,11 +385,6 @@ with `AppConfig` and `loadConfig`.
 | `API_HOST`                         | `0.0.0.0`                 | Fastify listen host                                       |
 | `API_PORT`                         | `3000`                    | Integer from 1 through 65535                              |
 | `API_MESSAGE_SEND_TOKEN`           | Required when API enabled | Bearer token for `POST /messages/send`; secret            |
-| `LIFECYCLE_NOTIFICATIONS_ENABLED`  | `true`                    | Send startup and graceful-shutdown Telegram notices       |
-| `LIFECYCLE_BROADCAST_BATCH_SIZE`   | `100`                     | Integer from 1 through 1000                               |
-| `LIFECYCLE_BROADCAST_CONCURRENCY`  | `10`                      | Integer from 1 through 50                                 |
-| `LIFECYCLE_STARTUP_TIMEOUT_MS`     | `60000`                   | Integer from 1000 through 300000                          |
-| `LIFECYCLE_SHUTDOWN_TIMEOUT_MS`    | `60000`                   | Integer from 1000 through 300000                          |
 | `CRM_BASE_URL`                     | Required                  | Trailing slashes are removed                              |
 | `TELEGRAM_BOT_BASIC_AUTH_USER`     | Required                  | CRM service credential                                    |
 | `TELEGRAM_BOT_BASIC_AUTH_PASSWORD` | Required                  | CRM service secret                                        |
@@ -581,15 +581,15 @@ Do not accidentally present these as implemented features:
 
 - Sessions are in memory, with no Redis or database-backed adapter.
 - Horizontal scaling is unsafe because bot session state is process-local.
-- A restart loses registration and in-progress repair-request state.
+- A restart loses in-progress flow state; persisted client/employee registration is restored.
 - The bot uses long polling, not webhooks.
 - Private-chat operation is an architectural assumption, not an explicit global chat-type guard.
 - The health endpoint does not perform CRM business-operation probes.
 - Registered client identity is cached only in session; repair-order objects are fetched on demand.
 - There is no full Telegram update integration test suite.
 - There is no live PostgreSQL integration test.
-- There is no campaign broadcast system, coupon system, support flow, or scheduled job layer in this
-  repository; lifecycle notices are limited to startup and graceful shutdown.
+- There is no campaign broadcast system, coupon system, or scheduled job layer in this repository;
+  startup and graceful shutdown do not broadcast Telegram messages.
 - Public repair-order creation has no client-provided idempotency key, so it must not be retried
   automatically.
 

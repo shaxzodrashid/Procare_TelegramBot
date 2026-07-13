@@ -18,6 +18,8 @@ export const languageKeyboard = (): Keyboard =>
 export const registrationKeyboard = (locale: Locale): Keyboard =>
   new Keyboard().requestContact(t(locale, 'sharePhone')).resized().oneTime();
 
+export const restartKeyboard = (): Keyboard => new Keyboard().text('/start').resized().oneTime();
+
 export interface PersonalMenuUser {
   locale: Locale;
   client?: Pick<ClientProfile, 'account_type'> | null;

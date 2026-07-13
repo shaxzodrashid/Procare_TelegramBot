@@ -24,6 +24,7 @@ export interface RegisteredUserStore {
     includeBlocked?: boolean;
   }): Promise<RegisteredUserMessageTarget[]>;
   findByTelegramId(telegramId: string): Promise<UserRegistrationState | null>;
+  clearRestartRequired(telegramId: string): Promise<void>;
   searchClients(query: string): Promise<UserRegistrationState[]>;
 }
 
@@ -132,9 +133,7 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
         'clients.crm_client_id',
       )
       .where({ 'users.phone_number': phoneNumber })
-      .first()) as
-      | (UserMessageTargetRow & { crm_client_id?: string | null })
-      | undefined;
+      .first()) as (UserMessageTargetRow & { crm_client_id?: string | null }) | undefined;
 
     if (!row) return null;
 
@@ -228,6 +227,7 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
         last_name: userRow.last_name,
         phone_number: userRow.phone_number || '',
         locale,
+        should_restart: Boolean(userRow.should_restart),
       },
     };
 
@@ -265,6 +265,13 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
     return result;
   }
 
+  async clearRestartRequired(telegramId: string): Promise<void> {
+    await this.database('users').where({ telegram_id: telegramId }).update({
+      should_restart: false,
+      updated_at: this.database.fn.now(),
+    });
+  }
+
   async searchClients(query: string): Promise<UserRegistrationState[]> {
     const trimmed = query.trim();
     if (!trimmed) return [];
@@ -279,6 +286,7 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
         last_name: 'users.last_name',
         phone_number: 'users.phone_number',
         language_code: 'users.language_code',
+        should_restart: 'users.should_restart',
         crm_client_id: 'clients.crm_client_id',
         customer_code: 'clients.customer_code',
         client_status: 'clients.status',
@@ -303,6 +311,7 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
           last_name: row.last_name,
           phone_number: row.phone_number || '',
           locale,
+          should_restart: Boolean(row.should_restart),
         },
         client: {
           crm_client_id: row.crm_client_id,

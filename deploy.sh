@@ -25,7 +25,7 @@ usage() {
   cat <<'USAGE'
 Usage:
   ./deploy.sh down       Stop the bot safely, then stop the Compose stack.
-  ./deploy.sh up         Pull main, build/start the Compose stack, and diagnose bot health.
+  ./deploy.sh up         Pull main, build/start the Compose stack, and mark users after code updates.
   ./deploy.sh restart    Run down, pull main, then up.
   ./deploy.sh status     Show Compose status and recent deployment history.
   ./deploy.sh logs       Show recent bot logs.
@@ -266,6 +266,48 @@ RETURNING id, stopped_at, started_at, shutdown_period, shutdown_period_seconds, 
 SQL
 }
 
+mark_users_for_restart_if_code_changed() {
+  ensure_deployment_history_table
+  commit_sha="$(sql_quote "$(current_commit_sha)")"
+
+  psql_exec <<SQL
+WITH previous_healthy_deployment AS (
+  SELECT git_commit_sha
+  FROM deployment_history
+  WHERE status = 'healthy'
+    AND started_at IS NOT NULL
+    AND git_commit_sha IS NOT NULL
+  ORDER BY started_at DESC
+  LIMIT 1
+),
+code_change AS (
+  SELECT 1
+  WHERE NOT EXISTS (SELECT 1 FROM previous_healthy_deployment)
+     OR EXISTS (
+       SELECT 1
+       FROM previous_healthy_deployment
+       WHERE git_commit_sha <> $commit_sha
+     )
+),
+updated_users AS (
+  UPDATE users
+  SET
+    should_restart = TRUE,
+    updated_at = CURRENT_TIMESTAMP
+  WHERE should_restart = FALSE
+    AND EXISTS (SELECT 1 FROM code_change)
+  RETURNING id
+)
+SELECT
+  CASE
+    WHEN EXISTS (SELECT 1 FROM code_change) THEN 'code_changed'
+    ELSE 'unchanged'
+  END AS codebase_status,
+  COUNT(*) AS users_marked_for_restart
+FROM updated_users;
+SQL
+}
+
 show_deployment_history() {
   require_postgres_running
   ensure_deployment_history_table
@@ -283,19 +325,6 @@ FROM deployment_history
 ORDER BY COALESCE(started_at, stopped_at, created_at) DESC
 LIMIT 10;
 SQL
-}
-
-warn_if_postgres_unavailable_for_shutdown() {
-  postgres_container="$(service_container_id "$POSTGRES_SERVICE")"
-  if [ -z "$postgres_container" ]; then
-    info "$POSTGRES_SERVICE is not running; shutdown notification dispatch logs may not be written"
-    return
-  fi
-
-  postgres_state="$(container_state "$postgres_container")"
-  if [ "$postgres_state" != "running" ]; then
-    info "$POSTGRES_SERVICE is $postgres_state; shutdown notification dispatch logs may not be written"
-  fi
 }
 
 wait_for_bot_health() {
@@ -381,7 +410,6 @@ command_down() {
 
   bot_container="$(service_container_id "$APP_SERVICE")"
   if [ -n "$bot_container" ]; then
-    warn_if_postgres_unavailable_for_shutdown
     info "Stopping $APP_SERVICE with ${SHUTDOWN_TIMEOUT_SECONDS}s grace period"
     $COMPOSE stop -t "$SHUTDOWN_TIMEOUT_SECONDS" "$APP_SERVICE"
   else
@@ -404,6 +432,7 @@ command_up() {
   wait_for_postgres_ready
   record_deploy_up_started
   wait_for_bot_health
+  mark_users_for_restart_if_code_changed
   print_health_report
   record_deploy_up_completed
 }

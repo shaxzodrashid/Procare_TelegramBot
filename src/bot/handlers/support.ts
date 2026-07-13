@@ -207,9 +207,11 @@ const submitSupportComment = async (
     // React with 👍 emoji to confirm successful delivery
     if (ctx.chat) {
       await ctx.api
-        .setMessageReaction(ctx.chat.id, input.telegramMessage?.messageId ?? ctx.message!.message_id, [
-          { type: 'emoji', emoji: '👍' },
-        ])
+        .setMessageReaction(
+          ctx.chat.id,
+          input.telegramMessage?.messageId ?? ctx.message!.message_id,
+          [{ type: 'emoji', emoji: '👍' }],
+        )
         .catch(() => undefined);
     }
   } catch (error) {
@@ -219,9 +221,11 @@ const submitSupportComment = async (
     // React with 👎 emoji to show failure
     if (ctx.chat) {
       await ctx.api
-        .setMessageReaction(ctx.chat.id, input.telegramMessage?.messageId ?? ctx.message!.message_id, [
-          { type: 'emoji', emoji: '👎' },
-        ])
+        .setMessageReaction(
+          ctx.chat.id,
+          input.telegramMessage?.messageId ?? ctx.message!.message_id,
+          [{ type: 'emoji', emoji: '👎' }],
+        )
         .catch(() => undefined);
     }
 
@@ -301,7 +305,7 @@ interface MediaGroupBuffer {
   mediaGroupId: string;
   chatId: string;
   timer: NodeJS.Timeout | null;
-  downloads: Promise<{ photo: CustomerSupportPhotoUpload | null; error: any }>[];
+  downloads: Promise<{ photo: CustomerSupportPhotoUpload | null; error: unknown }>[];
   captions: string[];
   messageIds: number[];
   dates: number[];
@@ -313,7 +317,6 @@ const handleCompletedMediaGroup = async (
   ctx: BotContext,
   buffer: MediaGroupBuffer,
   dependencies: BotDependencies,
-  token: string,
 ) => {
   const draft = ctx.session.supportComment;
   if (ctx.session.stage !== 'support_comment_input' || !draft || !ctx.session.client) {
@@ -432,9 +435,12 @@ export const registerSupportHandlers = (
       buffer.downloads.push(downloadPromise);
 
       if (buffer.timer) clearTimeout(buffer.timer);
-      buffer.timer = setTimeout(async () => {
+      const completedBuffer = buffer;
+      buffer.timer = setTimeout(() => {
         mediaGroupBuffers.delete(mediaGroupId);
-        await handleCompletedMediaGroup(ctx, buffer!, dependencies, token);
+        void handleCompletedMediaGroup(ctx, completedBuffer, dependencies).catch((error: unknown) =>
+          dependencies.logger.error('Failed to submit Telegram support media group', error),
+        );
       }, 800);
       return;
     }

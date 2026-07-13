@@ -16,7 +16,6 @@ describe('SystemHealthMonitor', () => {
       database: healthyDatabase,
       botEnabled: false,
       apiEnabled: true,
-      lifecycleNotificationsEnabled: false,
     });
 
     monitor.markMigrationsCompleted();
@@ -27,7 +26,6 @@ describe('SystemHealthMonitor', () => {
     assert.equal(snapshot.status, 'ok');
     assert.equal(snapshot.checks.database.status, 'ok');
     assert.equal(snapshot.checks.telegram.status, 'disabled');
-    assert.equal(snapshot.checks.lifecycleNotifications.status, 'disabled');
   });
 
   it('reports unhealthy when database probing fails', async () => {
@@ -39,7 +37,6 @@ describe('SystemHealthMonitor', () => {
       } as unknown as SystemHealthMonitorOptions['database'],
       botEnabled: false,
       apiEnabled: true,
-      lifecycleNotificationsEnabled: false,
     });
 
     monitor.markMigrationsCompleted();
@@ -57,7 +54,6 @@ describe('SystemHealthMonitor', () => {
       database: healthyDatabase,
       botEnabled: true,
       apiEnabled: true,
-      lifecycleNotificationsEnabled: false,
     });
 
     monitor.markMigrationsCompleted();

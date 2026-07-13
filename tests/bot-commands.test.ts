@@ -8,6 +8,7 @@ import {
   localizedBotCommands,
   parseSettingsName,
   registrationAccountKind,
+  createRestartGateMiddleware,
   createSessionRestorationMiddleware,
   setLocalizedBotCommands,
 } from '../src/bot/create-bot.js';
@@ -305,6 +306,160 @@ describe('employee menu access', () => {
   });
 });
 
+describe('deployment restart gate', () => {
+  const mockLogger: Logger = {
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+    debug: () => {},
+    extra: () => {},
+    table: () => {},
+  };
+
+  const restartState = {
+    user: {
+      id: '42',
+      telegram_id: '123',
+      telegram_username: 'testuser',
+      first_name: 'Test',
+      last_name: null,
+      phone_number: '+998901234567',
+      locale: 'ru' as const,
+      should_restart: true,
+    },
+  };
+
+  it('blocks normal messages and replaces stale session state with a /start prompt', async () => {
+    let calledNext = false;
+    const replies: Array<{
+      text: string;
+      options: { reply_markup: { keyboard: Array<Array<{ text: string }>> } };
+    }> = [];
+    const store = {
+      findByTelegramId: async () => restartState,
+      clearRestartRequired: async () => {},
+    } as unknown as RegisteredUserStore;
+    const middleware = createRestartGateMiddleware({
+      registeredUserStore: store,
+      logger: mockLogger,
+    });
+    const ctx = {
+      from: { id: 123 },
+      message: { text: 'Мои заказы' },
+      session: {
+        locale: 'uz' as const,
+        client: { client_id: 'stale-client' },
+      },
+      reply: async (
+        text: string,
+        options: { reply_markup: { keyboard: Array<Array<{ text: string }>> } },
+      ) => {
+        replies.push({ text, options });
+      },
+    } as unknown as BotContext;
+
+    await middleware(ctx, async () => {
+      calledNext = true;
+    });
+
+    assert.equal(calledNext, false);
+    assert.equal(ctx.session.locale, 'ru');
+    assert.equal(ctx.session.stage, 'choosing_language');
+    assert.equal(ctx.session.client, undefined);
+    assert.match(replies[0]?.text ?? '', /перезапустите бота командой \/start/);
+    assert.equal(replies[0]?.options.reply_markup.keyboard[0]?.[0]?.text, '/start');
+  });
+
+  it('clears the durable flag and allows a real /start command through', async () => {
+    let calledNext = false;
+    const clearedIds: string[] = [];
+    const store = {
+      findByTelegramId: async () => restartState,
+      clearRestartRequired: async (telegramId: string) => {
+        clearedIds.push(telegramId);
+      },
+    } as unknown as RegisteredUserStore;
+    const middleware = createRestartGateMiddleware({
+      registeredUserStore: store,
+      logger: mockLogger,
+    });
+    const ctx = {
+      from: { id: 123 },
+      message: { text: '/start@TestBot referral' },
+      session: { locale: 'uz' as const },
+      reply: async () => {},
+    } as unknown as BotContext;
+
+    await middleware(ctx, async () => {
+      calledNext = true;
+    });
+
+    assert.equal(calledNext, true);
+    assert.deepEqual(clearedIds, ['123']);
+    assert.equal(ctx.session.locale, 'ru');
+    assert.equal(ctx.session.stage, 'choosing_language');
+  });
+
+  it('keeps /start blocked when the durable flag cannot be cleared', async () => {
+    let calledNext = false;
+    const replies: string[] = [];
+    const store = {
+      findByTelegramId: async () => restartState,
+      clearRestartRequired: async () => {
+        throw new Error('database unavailable');
+      },
+    } as unknown as RegisteredUserStore;
+    const middleware = createRestartGateMiddleware({
+      registeredUserStore: store,
+      logger: mockLogger,
+    });
+    const ctx = {
+      from: { id: 123 },
+      message: { text: '/start' },
+      session: { locale: 'uz' as const },
+      reply: async (text: string) => {
+        replies.push(text);
+      },
+    } as unknown as BotContext;
+
+    await middleware(ctx, async () => {
+      calledNext = true;
+    });
+
+    assert.equal(calledNext, false);
+    assert.match(replies[0] ?? '', /Сервис временно недоступен/);
+  });
+
+  it('answers stale callbacks before showing the restart prompt', async () => {
+    let answered = false;
+    let replied = false;
+    const store = {
+      findByTelegramId: async () => restartState,
+      clearRestartRequired: async () => {},
+    } as unknown as RegisteredUserStore;
+    const middleware = createRestartGateMiddleware({
+      registeredUserStore: store,
+      logger: mockLogger,
+    });
+    const ctx = {
+      from: { id: 123 },
+      callbackQuery: { id: 'callback-1', data: 'ro:r' },
+      session: { locale: 'uz' as const },
+      answerCallbackQuery: async () => {
+        answered = true;
+      },
+      reply: async () => {
+        replied = true;
+      },
+    } as unknown as BotContext;
+
+    await middleware(ctx, async () => {});
+
+    assert.equal(answered, true);
+    assert.equal(replied, true);
+  });
+});
+
 describe('session restoration middleware', () => {
   const mockLogger: Logger = {
     info: () => {},
@@ -328,6 +483,7 @@ describe('session restoration middleware', () => {
               last_name: 'Doe',
               phone_number: '+998901234567',
               locale: 'ru' as const,
+              should_restart: false,
             },
             client: {
               crm_client_id: 'client-123',
@@ -387,6 +543,7 @@ describe('session restoration middleware', () => {
               last_name: null,
               phone_number: '+998907654321',
               locale: 'uz' as const,
+              should_restart: false,
             },
             employee: {
               crm_admin_id: 'admin-456',

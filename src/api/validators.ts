@@ -3,6 +3,7 @@ import {
   type DirectMessageInlineKeyboard,
   type DirectMessageSupportReply,
   type DirectMessageVariables,
+  type DirectMessageLocalizedMessages,
 } from '../services/bot-notification.service.js';
 import { normalizeUzPhone } from '../utils/phone.js';
 import { isMessageTemplateType, type MessageTemplateType } from '../types/message-template.js';
@@ -10,6 +11,7 @@ import { isMessageTemplateType, type MessageTemplateType } from '../types/messag
 export interface SendMessageRequestBody {
   phone_number?: unknown;
   message?: unknown;
+  localized_messages?: unknown;
   variables?: unknown;
   inline_keyboard?: unknown;
   support_reply?: unknown;
@@ -36,6 +38,48 @@ const MAX_INLINE_KEYBOARD_ROWS = 8;
 const MAX_INLINE_KEYBOARD_BUTTONS = 32;
 const MAX_INLINE_KEYBOARD_BUTTONS_PER_ROW = 4;
 const MAX_INLINE_KEYBOARD_TEXT_LENGTH = 64;
+
+const parseLocalizedMessages = (
+  value: unknown,
+):
+  | { ok: true; localizedMessages?: DirectMessageLocalizedMessages }
+  | { ok: false; message: string } => {
+  if (value === undefined) return { ok: true };
+  if (!isRecord(value)) return { ok: false, message: 'localized_messages must be a JSON object' };
+  const uz = value.uz;
+  const ru = value.ru;
+  const en = value.en;
+  if (typeof uz !== 'string' || !uz.trim()) {
+    return { ok: false, message: 'localized_messages.uz must be a non-empty string' };
+  }
+  if (typeof ru !== 'string' || !ru.trim()) {
+    return { ok: false, message: 'localized_messages.ru must be a non-empty string' };
+  }
+  if (uz.trim().length > TELEGRAM_TEXT_LIMIT || ru.trim().length > TELEGRAM_TEXT_LIMIT) {
+    return {
+      ok: false,
+      message: `localized messages must be ${TELEGRAM_TEXT_LIMIT} characters or fewer`,
+    };
+  }
+  if (
+    en !== undefined &&
+    en !== null &&
+    (typeof en !== 'string' || en.trim().length > TELEGRAM_TEXT_LIMIT)
+  ) {
+    return {
+      ok: false,
+      message: `localized_messages.en must be a string with at most ${TELEGRAM_TEXT_LIMIT} characters`,
+    };
+  }
+  return {
+    ok: true,
+    localizedMessages: {
+      uz: uz.trim(),
+      ru: ru.trim(),
+      en: typeof en === 'string' ? en.trim() || null : null,
+    },
+  };
+};
 
 export const parseVariables = (
   value: unknown,
@@ -210,6 +254,7 @@ export const parseSendMessageBody = (
       ok: true;
       phoneNumber: string;
       message: string;
+      localizedMessages?: DirectMessageLocalizedMessages;
       variables: DirectMessageVariables;
       inlineKeyboard?: DirectMessageInlineKeyboard;
       supportReply?: DirectMessageSupportReply;
@@ -224,6 +269,7 @@ export const parseSendMessageBody = (
   const {
     phone_number: rawPhoneNumber,
     message: rawMessage,
+    localized_messages: rawLocalizedMessages,
     variables: rawVariables,
     inline_keyboard: rawInlineKeyboard,
     support_reply: rawSupportReply,
@@ -295,10 +341,14 @@ export const parseSendMessageBody = (
   const parsedSupportReply = parseSupportReply(rawSupportReply);
   if (!parsedSupportReply.ok) return parsedSupportReply;
 
+  const parsedLocalizedMessages = parseLocalizedMessages(rawLocalizedMessages);
+  if (!parsedLocalizedMessages.ok) return parsedLocalizedMessages;
+
   return {
     ok: true,
     phoneNumber,
     message,
+    localizedMessages: parsedLocalizedMessages.localizedMessages,
     variables: parsedVariables.variables,
     inlineKeyboard: parsedInlineKeyboard.inlineKeyboard,
     supportReply: parsedSupportReply.supportReply,

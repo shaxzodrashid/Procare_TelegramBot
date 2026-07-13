@@ -52,10 +52,8 @@ const messages = {
     invalidPhone: '⚠️ Telefon raqami noto‘g‘ri. O‘zbekiston raqamini qayta ulashing.',
     maintenance: '🛠 Texnik ishlar ketmoqda. Iltimos, keyinroq urinib ko‘ring.',
     unavailable: '📡 Xizmat vaqtincha ishlamayapti. Iltimos, keyinroq urinib ko‘ring.',
-    serviceShutdownNotice:
-      '🛠 Procare bot qisqa texnik yangilanish uchun vaqtincha to‘xtatilmoqda.\n\nNoqulaylik uchun uzr so‘raymiz. Bot qayta ishga tushgach, sizga xabar beramiz.',
-    serviceStartupNotice:
-      '✅ Procare bot qayta ishga tushdi.\n\nSessiyani yangilash va menyuni qayta ochish uchun /start buyrug‘ini yuboring.',
+    restartRequired:
+      '🔄 Procare bot yangilandi. Davom etishdan oldin /start buyrug‘i orqali botni qayta boshlang.',
     orders: '📦 Mening buyurtmalarim',
     adminTemplates: '🧩 Xabar shablonlari',
     adminStatusNames: '🏷 Status nomlari',
@@ -291,10 +289,8 @@ const messages = {
     invalidPhone: '⚠️ Неверный номер. Пожалуйста, отправьте номер Узбекистана повторно.',
     maintenance: '🛠 Ведутся технические работы. Попробуйте позже.',
     unavailable: '📡 Сервис временно недоступен. Попробуйте позже.',
-    serviceShutdownNotice:
-      '🛠 Procare bot временно останавливается для короткого технического обновления.\n\nПриносим извинения за неудобства. Когда бот снова запустится, мы отправим уведомление.',
-    serviceStartupNotice:
-      '✅ Procare bot снова запущен.\n\nЧтобы обновить сессию и открыть меню заново, отправьте команду /start.',
+    restartRequired:
+      '🔄 Procare bot обновлён. Перед продолжением перезапустите бота командой /start.',
     orders: '📦 Мои заказы',
     adminTemplates: '🧩 Шаблоны сообщений',
     adminStatusNames: '🏷 Названия статусов',

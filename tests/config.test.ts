@@ -25,11 +25,6 @@ describe('loadConfig', () => {
     assert.equal(config.bot.enabled, false);
     assert.equal(config.bot.richMessagesEnabled, true);
     assert.deepEqual(config.bot.developerTelegramIds, ['1001', '1002']);
-    assert.equal(config.lifecycleNotifications.enabled, true);
-    assert.equal(config.lifecycleNotifications.batchSize, 100);
-    assert.equal(config.lifecycleNotifications.concurrency, 10);
-    assert.equal(config.lifecycleNotifications.startupTimeoutMs, 60_000);
-    assert.equal(config.lifecycleNotifications.shutdownTimeoutMs, 60_000);
     assert.equal(config.crm.baseUrl, 'http://localhost:5001');
     assert.equal(config.database.host, 'localhost');
     assert.equal(config.database.name, 'probox_bot_db');
@@ -60,17 +55,6 @@ describe('loadConfig', () => {
         error instanceof ConfigurationError &&
         error.issues.includes(
           'DEVELOPER_TELEGRAM_IDS must be a comma-separated list of Telegram numeric IDs',
-        ),
-    );
-  });
-
-  it('rejects invalid lifecycle notification bounds', () => {
-    assert.throws(
-      () => loadConfig({ ...validEnv, LIFECYCLE_BROADCAST_CONCURRENCY: '0' }),
-      (error: unknown) =>
-        error instanceof ConfigurationError &&
-        error.issues.includes(
-          'LIFECYCLE_BROADCAST_CONCURRENCY must be an integer between 1 and 50',
         ),
     );
   });

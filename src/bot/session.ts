@@ -9,6 +9,8 @@ import {
   summarizeText,
   summarizeUnknownPayload,
 } from '../utils/log-redaction.js';
+import { restartKeyboard } from './keyboards.js';
+import { t } from './messages.js';
 export const initialSession = (): BotSession => ({ locale: 'uz', stage: 'choosing_language' });
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -346,6 +348,69 @@ export const resetSession = (sessionData: BotSession, locale: Locale): void => {
   clearSettingsFlow(sessionData);
   sessionData.locale = locale;
   sessionData.stage = 'choosing_language';
+};
+
+const isStartCommand = (ctx: BotContext): boolean =>
+  Boolean(ctx.message?.text && /^\/start(?:@[A-Za-z0-9_]+)?(?:\s|$)/i.test(ctx.message.text));
+
+export const createRestartGateMiddleware = (dependencies: {
+  registeredUserStore: RegisteredUserStore;
+  logger: Logger;
+}) => {
+  return async (ctx: BotContext, next: () => Promise<void>) => {
+    if (!ctx.from) {
+      await next();
+      return;
+    }
+
+    const telegramId = String(ctx.from.id);
+    let registrationState;
+    try {
+      registrationState = await dependencies.registeredUserStore.findByTelegramId(telegramId);
+    } catch (error) {
+      dependencies.logger.error('Failed to read user restart requirement', error);
+      await next();
+      return;
+    }
+
+    if (!registrationState?.user.should_restart) {
+      await next();
+      return;
+    }
+
+    const locale = registrationState.user.locale;
+    resetSession(ctx.session, locale);
+
+    if (isStartCommand(ctx)) {
+      try {
+        await dependencies.registeredUserStore.clearRestartRequired(telegramId);
+        dependencies.logger.info(`Cleared restart requirement for telegram_id: ${telegramId}`);
+      } catch (error) {
+        dependencies.logger.error('Failed to clear user restart requirement', error);
+        await ctx.reply(t(locale, 'unavailable'), {
+          reply_markup: restartKeyboard(),
+        });
+        return;
+      }
+      await next();
+      return;
+    }
+
+    if (ctx.callbackQuery) {
+      await ctx
+        .answerCallbackQuery()
+        .catch((error: unknown) =>
+          dependencies.logger.warn('Failed to answer callback blocked by restart gate', error),
+        );
+    }
+    try {
+      await ctx.reply(t(locale, 'restartRequired'), {
+        reply_markup: restartKeyboard(),
+      });
+    } catch (error) {
+      dependencies.logger.error('Failed to send user restart requirement', error);
+    }
+  };
 };
 
 export const createSessionRestorationMiddleware = (dependencies: {

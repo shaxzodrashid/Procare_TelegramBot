@@ -20,13 +20,6 @@ const config: AppConfig = {
   logLevel: 'info',
   bot: { enabled: false, richMessagesEnabled: false, developerTelegramIds: [] },
   api: { enabled: true, host: '127.0.0.1', port: 3000, messageSendToken: 'message-token' },
-  lifecycleNotifications: {
-    enabled: true,
-    batchSize: 100,
-    concurrency: 10,
-    startupTimeoutMs: 60_000,
-    shutdownTimeoutMs: 60_000,
-  },
   crm: {
     baseUrl: 'http://crm.test',
     username: 'bot',
@@ -81,7 +74,6 @@ describe('health API', () => {
               migrations: { status: 'ok' },
               api: { status: 'ok' },
               telegram: { status: 'disabled' },
-              lifecycleNotifications: { status: 'disabled' },
             },
           };
         },
@@ -113,9 +105,9 @@ describe('direct message API', () => {
       directMessageSender: {
         async sendDirectMessage(params) {
           const cleaned = Object.fromEntries(
-            Object.entries(params).filter(([_, v]) => v !== undefined)
+            Object.entries(params).filter(([, value]) => value !== undefined),
           );
-          calls.push(cleaned as any);
+          calls.push(cleaned as (typeof calls)[number]);
           return { status: 'sent' };
         },
       },

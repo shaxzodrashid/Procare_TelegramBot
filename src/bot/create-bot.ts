@@ -24,6 +24,7 @@ import {
 import {
   initialSession,
   createTelegramApiLoggingTransformer,
+  createRestartGateMiddleware,
   createSessionRestorationMiddleware,
   summarizeTelegramUpdate,
   summarizeSession,
@@ -73,7 +74,7 @@ export {
   canRegisterWithManualPhone,
 } from './helpers.js';
 
-export { createSessionRestorationMiddleware } from './session.js';
+export { createRestartGateMiddleware, createSessionRestorationMiddleware } from './session.js';
 
 export const createBot = (token: string, dependencies: BotDependencies): Bot<BotContext> => {
   const bot = new Bot<BotContext>(token);
@@ -92,6 +93,9 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
     }
     await next();
   });
+
+  // A changed deployment must invalidate persisted users before their sessions are restored.
+  bot.use(createRestartGateMiddleware(dependencies));
 
   // Automatically restore sessions for registered users
   bot.use(createSessionRestorationMiddleware(dependencies));

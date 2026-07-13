@@ -28,6 +28,7 @@ export interface TemplateMessageDeliveryResult {
 export interface SendDirectMessageParams {
   phoneNumber: string;
   message: string;
+  localizedMessages?: DirectMessageLocalizedMessages;
   variables?: DirectMessageVariables;
   inlineKeyboard?: DirectMessageInlineKeyboard;
   supportReply?: DirectMessageSupportReply;
@@ -67,6 +68,12 @@ const DIRECT_MESSAGE_PLACEHOLDER_PATTERN = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
 
 export type DirectMessageVariableValue = string | number | boolean | null | undefined;
 export type DirectMessageVariables = Record<string, DirectMessageVariableValue>;
+
+export interface DirectMessageLocalizedMessages {
+  uz: string;
+  ru: string;
+  en?: string | null;
+}
 
 export interface DirectMessageUrlButton {
   type: 'url';
@@ -396,7 +403,9 @@ export class BotDirectMessageService {
         };
       }
     } else {
-      const rendered = renderDirectMessage(params.message, {
+      const localizedMessage =
+        params.localizedMessages?.[user.locale === 'ru' ? 'ru' : 'uz'] ?? params.message;
+      const rendered = renderDirectMessage(localizedMessage, {
         ...params.variables,
         first_name: user.first_name,
         last_name: user.last_name,
@@ -429,14 +438,10 @@ export class BotDirectMessageService {
         );
       } catch (error) {
         if (!replyTarget || !isTelegramReplyTargetError(error)) throw error;
-        sentMessage = await this.telegram.sendMessage(
-          user.telegram_id,
-          messageText,
-          {
-            ...directMessageOptions(replyMarkup, null),
-            parse_mode: TELEGRAM_PARSE_MODE_HTML,
-          },
-        );
+        sentMessage = await this.telegram.sendMessage(user.telegram_id, messageText, {
+          ...directMessageOptions(replyMarkup, null),
+          parse_mode: TELEGRAM_PARSE_MODE_HTML,
+        });
       }
 
       if (params.crmCommentId && this.supportMessages && user.crm_client_id) {

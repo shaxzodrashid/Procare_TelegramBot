@@ -7,13 +7,7 @@ export const up = async (knex: Knex): Promise<void> => {
     table
       .enu(
         'template_type',
-        [
-          'warranty',
-          'offerta',
-          'checklist',
-          'problem_start',
-          'problem_finished',
-        ],
+        ['warranty', 'offerta', 'checklist', 'problem_start', 'problem_finished'],
         {
           useNative: true,
           enumName: 'message_template_type',

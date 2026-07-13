@@ -59,6 +59,7 @@ export interface UserRegistrationState {
     last_name: string | null;
     phone_number: string;
     locale: Locale;
+    should_restart: boolean;
   };
   client?: {
     crm_client_id: string;

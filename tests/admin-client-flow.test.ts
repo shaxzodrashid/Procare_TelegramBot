@@ -34,6 +34,7 @@ const createMockDependencies = (): BotDependencies & {
         last_name: 'Doe',
         phone_number: '+998901234567',
         locale: 'uz',
+        should_restart: false,
       },
       client: {
         crm_client_id: 'crm-201',
