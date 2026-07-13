@@ -108,7 +108,13 @@ ensure_logs_directory() {
 
 print_health_report() {
   info "Health endpoint report:"
-  if ! $COMPOSE exec -T "$APP_SERVICE" sh -c 'if [ "$API_ENABLED" = "false" ]; then echo "health API disabled"; exit 0; fi; node -e "const port=process.env.API_PORT||3000; fetch(`http://127.0.0.1:${port}/health`).then(async (res)=>{ const body=await res.text(); console.log(body); process.exit(res.ok ? 0 : 1); }).catch((error)=>{ console.error(error); process.exit(1); });"'; then
+  api_enabled="$($COMPOSE exec -T "$APP_SERVICE" printenv API_ENABLED 2>/dev/null || true)"
+  if [ "$api_enabled" = "false" ]; then
+    printf 'health API disabled\n'
+    return 0
+  fi
+
+  if ! $COMPOSE exec -T "$APP_SERVICE" node -e 'const port=process.env.API_PORT||3000; fetch("http://127.0.0.1:"+port+"/health").then(async (res)=>{ const body=await res.text(); console.log(body); process.exit(res.ok ? 0 : 1); }).catch((error)=>{ console.error(error); process.exit(1); });'; then
     print_failure_logs
     fail "$APP_SERVICE health endpoint diagnosis failed"
   fi
