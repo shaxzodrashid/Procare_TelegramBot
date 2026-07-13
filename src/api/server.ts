@@ -18,7 +18,7 @@ import { parseSendMessageBody, parseSendFileBody } from './validators.js';
 export interface DirectMessageSender {
   sendDirectMessage(params: {
     phoneNumber: string;
-    message: string;
+    message?: string;
     localizedMessages?: DirectMessageLocalizedMessages;
     variables: DirectMessageVariables;
     inlineKeyboard?: DirectMessageInlineKeyboard;
@@ -111,7 +111,9 @@ export const createApiServer = (
       ...(parsed.type !== undefined ? { type: parsed.type } : {}),
     });
 
-    if (result.status === 'sent') return reply.send({ status: 'sent' });
+    if (result.status === 'sent') {
+      return reply.send({ status: 'sent', message: result.message });
+    }
     if (result.status === 'invalid_message') {
       return reply.status(400).send({
         statusCode: 400,

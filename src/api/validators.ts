@@ -253,7 +253,7 @@ export const parseSendMessageBody = (
   | {
       ok: true;
       phoneNumber: string;
-      message: string;
+      message?: string;
       localizedMessages?: DirectMessageLocalizedMessages;
       variables: DirectMessageVariables;
       inlineKeyboard?: DirectMessageInlineKeyboard;
@@ -281,16 +281,18 @@ export const parseSendMessageBody = (
   if (typeof rawPhoneNumber !== 'string') {
     return { ok: false, message: 'phone_number must be a string' };
   }
-  if (typeof rawMessage !== 'string') return { ok: false, message: 'message must be a string' };
-
   const phoneNumber = normalizeUzPhone(rawPhoneNumber);
   if (!phoneNumber)
     return { ok: false, message: 'phone_number must be a valid Uzbek phone number' };
 
-  const message = rawMessage.trim();
-  if (!message) return { ok: false, message: 'message must not be empty' };
-  if (message.length > TELEGRAM_TEXT_LIMIT) {
-    return { ok: false, message: `message must be ${TELEGRAM_TEXT_LIMIT} characters or fewer` };
+  let message: string | undefined;
+  if (rawMessage !== undefined) {
+    if (typeof rawMessage !== 'string') return { ok: false, message: 'message must be a string' };
+    message = rawMessage.trim();
+    if (!message) return { ok: false, message: 'message must not be empty' };
+    if (message.length > TELEGRAM_TEXT_LIMIT) {
+      return { ok: false, message: `message must be ${TELEGRAM_TEXT_LIMIT} characters or fewer` };
+    }
   }
 
   let type: MessageTemplateType | undefined;
@@ -343,6 +345,10 @@ export const parseSendMessageBody = (
 
   const parsedLocalizedMessages = parseLocalizedMessages(rawLocalizedMessages);
   if (!parsedLocalizedMessages.ok) return parsedLocalizedMessages;
+
+  if (!message && !parsedLocalizedMessages.localizedMessages) {
+    return { ok: false, message: 'message or localized_messages must be provided' };
+  }
 
   return {
     ok: true,

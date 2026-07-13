@@ -272,7 +272,7 @@ describe('BotDirectMessageService', () => {
       message: 'Salom',
     });
 
-    assert.deepEqual(result, { status: 'sent' });
+    assert.deepEqual(result, { status: 'sent', message: 'Salom' });
     assert.deepEqual(calls, [
       {
         method: 'sendMessage',
@@ -298,9 +298,27 @@ describe('BotDirectMessageService', () => {
       variables: { phone_category: 'iPhone 15 Pro' },
     });
 
-    assert.deepEqual(result, { status: 'sent' });
+    assert.deepEqual(result, { status: 'sent', message: 'Salom Ali. Qurilma: iPhone 15 Pro' });
     assert.equal(calls[0]?.text, 'Salom Ali. Qurilma: iPhone 15 Pro');
     assert.deepEqual(calls[0]?.options, { parse_mode: 'HTML' });
+  });
+
+  it('selects and renders the message variant for the registered user locale', async () => {
+    const store = new MemoryTemplateStore(null);
+    const users = new MemoryRegisteredUserLookup(directMessageUser({ locale: 'ru' }));
+    const { telegram, calls } = createTelegramDouble();
+    const service = new BotDirectMessageService(users, store, telegram);
+
+    const result = await service.sendDirectMessage({
+      phoneNumber: '+998901234567',
+      localizedMessages: {
+        uz: 'Salom {{ first_name }}',
+        ru: 'Здравствуйте, {{ first_name }}',
+      },
+    });
+
+    assert.deepEqual(result, { status: 'sent', message: 'Здравствуйте, Ali' });
+    assert.equal(calls[0]?.text, 'Здравствуйте, Ali');
   });
 
   it('sends inline keyboards with URL and repair-order buttons', async () => {
@@ -325,7 +343,7 @@ describe('BotDirectMessageService', () => {
       },
     });
 
-    assert.deepEqual(result, { status: 'sent' });
+    assert.deepEqual(result, { status: 'sent', message: 'Salom' });
     assert.deepEqual(calls[0]?.options, {
       reply_markup: buildDirectMessageInlineKeyboard(
         {
@@ -368,7 +386,7 @@ describe('BotDirectMessageService', () => {
       },
     });
 
-    assert.deepEqual(result, { status: 'sent' });
+    assert.deepEqual(result, { status: 'sent', message: 'Javob' });
     assert.deepEqual(calls, [
       {
         method: 'sendMessage',
@@ -400,7 +418,7 @@ describe('BotDirectMessageService', () => {
       },
     });
 
-    assert.deepEqual(result, { status: 'sent' });
+    assert.deepEqual(result, { status: 'sent', message: 'Javob' });
     assert.deepEqual(calls, [
       {
         method: 'sendMessage',
@@ -439,7 +457,7 @@ describe('BotDirectMessageService', () => {
       },
     });
 
-    assert.deepEqual(result, { status: 'sent' });
+    assert.deepEqual(result, { status: 'sent', message: 'Javob' });
     assert.deepEqual(calls, [
       {
         method: 'sendMessage',
@@ -535,7 +553,7 @@ describe('BotDirectMessageService', () => {
       variables: { code: '12345' },
     });
 
-    assert.deepEqual(result, { status: 'sent' });
+    assert.deepEqual(result, { status: 'sent', message: 'Salom Ali. Xush kelibsiz! Kod: 12345' });
     assert.deepEqual(calls, [
       {
         method: 'sendMessage',
@@ -562,7 +580,7 @@ describe('BotDirectMessageService', () => {
       variables: { code: '12345' },
     });
 
-    assert.deepEqual(result, { status: 'sent' });
+    assert.deepEqual(result, { status: 'sent', message: 'Fallback message 12345' });
     assert.deepEqual(calls, [
       {
         method: 'sendMessage',

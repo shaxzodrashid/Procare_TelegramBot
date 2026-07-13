@@ -176,12 +176,18 @@ Authorization: Bearer <API_MESSAGE_SEND_TOKEN>
 Content-Type: application/json
 ```
 
+The complete Postman-ready contract, including saved-response examples, is in
+[`Docs/DIRECT_MESSAGE_API.md`](Docs/DIRECT_MESSAGE_API.md).
+
 Request:
 
 ```json
 {
   "phone_number": "+998901234567",
-  "message": "Salom {{first_name}}. Qurilma: {{phone_category}}",
+  "localized_messages": {
+    "uz": "Salom {{first_name}}. Qurilma: {{phone_category}}",
+    "ru": "Здравствуйте, {{first_name}}. Устройство: {{phone_category}}"
+  },
   "variables": {
     "phone_category": "iPhone 15 Pro"
   },
@@ -209,8 +215,22 @@ Request:
 }
 ```
 
-The API normalizes Uzbek phone numbers, finds the local `users` row by `phone_number`, renders
-message variables, and sends a plain Telegram message to that user's `telegram_id`.
+The API normalizes Uzbek phone numbers, finds the local `users` row by `phone_number`, selects the
+matching `localized_messages.uz` or `localized_messages.ru` value from that user's stored locale,
+renders message variables, and sends the resulting Telegram message to that user's `telegram_id`.
+`localized_messages` requires non-empty Uzbek and Russian strings and may be sent without `message`.
+The legacy `message` field remains an optional fallback for callers that have only one locale; at
+least one of `message` or `localized_messages` is required. If both are supplied, the localized
+variant takes precedence for Uzbek and Russian users.
+
+Successful responses include the exact rendered message sent to Telegram:
+
+```json
+{
+  "status": "sent",
+  "message": "Salom Ali. Qurilma: iPhone 15 Pro"
+}
+```
 
 Built-in variables come from the registered user and cannot be overridden by request variables:
 `first_name`, `last_name`, `full_name`, `phone_number`, `telegram_username`, and `locale`. External

@@ -27,7 +27,7 @@ export interface TemplateMessageDeliveryResult {
 
 export interface SendDirectMessageParams {
   phoneNumber: string;
-  message: string;
+  message?: string;
   localizedMessages?: DirectMessageLocalizedMessages;
   variables?: DirectMessageVariables;
   inlineKeyboard?: DirectMessageInlineKeyboard;
@@ -405,6 +405,12 @@ export class BotDirectMessageService {
     } else {
       const localizedMessage =
         params.localizedMessages?.[user.locale === 'ru' ? 'ru' : 'uz'] ?? params.message;
+      if (localizedMessage === undefined) {
+        return {
+          status: 'invalid_message',
+          message: 'message or localized_messages must be provided',
+        };
+      }
       const rendered = renderDirectMessage(localizedMessage, {
         ...params.variables,
         first_name: user.first_name,
@@ -487,7 +493,7 @@ export class BotDirectMessageService {
         status: 'sent',
         error_message: null,
       });
-      return { status: 'sent' };
+      return { status: 'sent', message: messageText };
     } catch (error) {
       if (isTelegramBlockedError(error)) {
         await this.templates.setUserBlocked(user.telegram_id, true);

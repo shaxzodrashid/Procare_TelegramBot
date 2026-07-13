@@ -1,0 +1,126 @@
+model = "gpt-5.6-sol"
+model_reasoning_effort = "high"
+model_context_window = 1050000
+model_auto_compact_token_limit = 850000
+approvals_reviewer = "user"
+sandbox_mode = "danger-full-access"
+personality = "pragmatic"
+service_tier = "default"
+
+notify = [ "C:\\Users\\user\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\ecfc0d9aa02807e3\\bin\\node_modules\\@oai\\sky\\bin\\windows\\codex-computer-use.exe", "turn-ended" ]
+
+[projects.'d:\shakhzod\javascript\procare_telegrambot']
+trust_level = "trusted"
+
+[windows]
+sandbox = "elevated"
+
+[mcp_servers.postman]
+enabled = true
+url = "https://mcp.postman.com/mcp"
+
+[features]
+multi_agent = true
+computer_use = true
+js_repl = false
+memories = true
+
+[plugins."notion@openai-curated"]
+enabled = true
+
+[plugins."google-calendar@openai-curated"]
+enabled = true
+
+[plugins."gmail@openai-curated"]
+enabled = true
+
+[plugins."google-drive@openai-curated"]
+enabled = true
+
+[plugins."codex-security@openai-curated"]
+enabled = true
+
+[plugins."computer-use@openai-bundled"]
+enabled = true
+
+[plugins."chrome@openai-bundled"]
+enabled = true
+
+[plugins."browser@openai-bundled"]
+enabled = true
+
+[marketplaces.openai-bundled]
+last_updated = "2026-07-13T10:05:11Z"
+source_type = "local"
+source = '\\?\C:\Users\user\.codex\.tmp\bundled-marketplaces\openai-bundled'
+
+[marketplaces.openai-primary-runtime]
+last_updated = "2026-07-10T01:45:18Z"
+source_type = "local"
+source = '\\?\C:\Users\user\.cache\codex-runtimes\codex-primary-runtime\plugins\openai-primary-runtime'
+
+[tui.model_availability_nux]
+"gpt-5.5" = 4
+
+[apps.asdk_app_6939e86417648191b7bda087d872685b]
+enabled = false
+
+[desktop]
+appearanceTheme = "system"
+appearanceLightCodeThemeId = "codex"
+appearanceDarkCodeThemeId = "absolutely"
+usePointerCursors = true
+dictationDictionary = []
+followUpQueueMode = "steer"
+composerEnterBehavior = "cmdIfMultiline"
+localeOverride = "en-US"
+integratedTerminalShell = "powershell"
+runCodexInWindowsSubsystemForLinux = false
+git-pull-request-merge-method = "merge"
+selected-avatar-id = "codex"
+conversationDetailMode = "STEPS_COMMANDS"
+keepRemoteControlAwakeWhilePluggedIn = true
+git-show-sidebar-pr-icons = true
+reviewDelivery = "detached"
+show-context-window-usage = true
+enabled-reasoning-efforts = ["low", "medium", "high", "xhigh"]
+show-ultra-in-model-picker-slider = false
+
+[desktop.appearanceLightChromeTheme]
+accent = "#0169cc"
+contrast = 45
+ink = "#0d0d0d"
+opaqueWindows = true
+surface = "#ffffff"
+
+[desktop.appearanceLightChromeTheme.fonts]
+ui = "Inter"
+
+[desktop.appearanceLightChromeTheme.semanticColors]
+diffAdded = "#00a240"
+diffRemoved = "#e02e2a"
+skill = "#751ed9"
+
+[desktop.appearanceDarkChromeTheme]
+accent = "#cc7d5e"
+contrast = 60
+ink = "#f9f9f7"
+opaqueWindows = false
+surface = "#2d2d2b"
+
+[desktop.appearanceDarkChromeTheme.fonts]
+
+[desktop.appearanceDarkChromeTheme.semanticColors]
+diffAdded = "#00c853"
+diffRemoved = "#ff5f38"
+skill = "#cc7d5e"
+
+[desktop.open-in-target-preferences]
+global = "vscode"
+
+[desktop.open-in-target-preferences.perPath]
+'D:\Shakhzod\Javascript\Procare_TelegramBot' = "vscode"
+
+[memories]
+generate_memories = true
+use_memories = true

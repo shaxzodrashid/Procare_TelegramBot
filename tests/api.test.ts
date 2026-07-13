@@ -172,6 +172,42 @@ describe('direct message API', () => {
     ]);
   });
 
+  it('accepts standalone localized messages and returns the locale-selected rendered message', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(params) {
+          assert.equal(params.message, undefined);
+          assert.deepEqual(params.localizedMessages, {
+            uz: 'Salom {{ first_name }}',
+            ru: 'Здравствуйте, {{ first_name }}',
+            en: null,
+          });
+          return { status: 'sent', message: 'Здравствуйте, Ali' };
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        localized_messages: {
+          uz: 'Salom {{ first_name }}',
+          ru: 'Здравствуйте, {{ first_name }}',
+        },
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), {
+      status: 'sent',
+      message: 'Здравствуйте, Ali',
+    });
+  });
+
   it('accepts repair-order keyboard shorthand', async () => {
     const calls: Array<{ inlineKeyboard: unknown }> = [];
     const app = createApiServer(config, logger, {
@@ -255,6 +291,30 @@ describe('direct message API', () => {
 
     assert.equal(response.statusCode, 400);
     assert.equal(response.json<{ error: string }>().error, 'BadRequest');
+  });
+
+  it('requires a fallback message or both localized variants', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(): Promise<DirectMessageDeliveryResult> {
+          throw new Error('should not send');
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: { phone_number: '+998901234567' },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(
+      response.json<{ message: string }>().message,
+      'message or localized_messages must be provided',
+    );
   });
 
   it('rejects invalid variable payloads before sending', async () => {
