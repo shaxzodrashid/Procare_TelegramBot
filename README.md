@@ -261,17 +261,24 @@ The optional `inline_keyboard` supports generated repair-order actions and custo
 layouts. Generated `details`, `approval`, and `rating` keyboards accept the trusted internal
 `repair_order_uuid`. Details preserve the exact original message entities and full keyboard for
 Back navigation. Approval uses confirmation, requires a rejection explanation, re-authorizes the
-client-owned order, and submits the decision to CRM. Rating currently shows 1–5 because the CRM
-rating API accepts grades 1 through 5. A generated details keyboard looks like this:
+client-owned order, and submits the decision to CRM. Rating uses grades 1–10 in two rows of five.
+CRM can control action labels, row positions, and order through `layout`; each layout button contains
+only its semantic `type` and visible `text`. For example, approval can put Approve above Reject:
 
 ```json
 {
   "inline_keyboard": {
-    "type": "details",
-    "repair_order_uuid": "11111111-1111-4111-8111-111111111111"
+    "type": "approval",
+    "repair_order_uuid": "11111111-1111-4111-8111-111111111111",
+    "layout": [[{ "type": "approve", "text": "APPROVE" }], [{ "type": "reject", "text": "REJECT" }]]
   }
 }
 ```
+
+Purpose validation is strict: `details` requires one `details` button; `approval` requires exactly
+one `reject` and one `approve` button in one or two rows; `rating` requires each subtype from
+`rating_1` through `rating_10` exactly once in two rows of five. Omitting `layout` keeps the default
+localized layout for backward compatibility.
 
 The legacy top-level `repair_order` name remains an alias for `details`. Custom rows may contain URL
 and details/legacy repair-order buttons.

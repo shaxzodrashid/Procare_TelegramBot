@@ -115,8 +115,8 @@ const messages = {
       '🔄 Bu buyurtma endi tasdiqlashni kutmayapti. CRM ma’lumotlari yangilangan.',
     directActionUnavailable:
       '📡 Amalni hozir bajarib bo‘lmadi. Iltimos, birozdan keyin qayta urinib ko‘ring.',
-    directRatingAccepted: '⭐ Rahmat! {{grade}}/5 bahoyingiz qabul qilindi.',
-    directRatingRecorded: '⭐ {{grade}}/5 — baho qabul qilindi',
+    directRatingAccepted: '⭐ Rahmat! {{grade}}/10 bahoyingiz qabul qilindi.',
+    directRatingRecorded: '⭐ {{grade}}/10 — baho qabul qilindi',
     directSupportReplyActivated:
       '💬 Javobingiz #{{number}} buyurtma suhbatiga yuborildi. Yana yozishingiz mumkin yoki suhbatni tugating.',
     orderSupport: '💬 Xodimga yozish',
@@ -374,8 +374,8 @@ const messages = {
       '🔄 Этот заказ больше не ожидает одобрения. Данные CRM уже обновились.',
     directActionUnavailable:
       '📡 Сейчас не удалось выполнить действие. Пожалуйста, повторите немного позже.',
-    directRatingAccepted: '⭐ Спасибо! Ваша оценка {{grade}}/5 принята.',
-    directRatingRecorded: '⭐ {{grade}}/5 — оценка принята',
+    directRatingAccepted: '⭐ Спасибо! Ваша оценка {{grade}}/10 принята.',
+    directRatingRecorded: '⭐ {{grade}}/10 — оценка принята',
     directSupportReplyActivated:
       '💬 Ответ отправлен в чат по заказу #{{number}}. Можете написать ещё или завершить чат.',
     orderSupport: '💬 Написать сотруднику',

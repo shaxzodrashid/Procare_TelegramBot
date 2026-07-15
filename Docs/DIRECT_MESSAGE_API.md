@@ -212,24 +212,38 @@ Telegram reply. Missing or rejected reply targets fall back to a normal Telegram
   {
     "inline_keyboard": {
       "type": "approval",
-      "repair_order_uuid": "11111111-1111-4111-8111-111111111111"
+      "repair_order_uuid": "11111111-1111-4111-8111-111111111111",
+      "layout": [
+        [
+          { "type": "reject", "text": "REJECT" },
+          { "type": "approve", "text": "APPROVE" }
+        ]
+      ]
     }
   }
   ```
 
 - `type` may be `details`, `approval`, or `rating`. The legacy top-level `repair_order` type is
   accepted as an alias for `details`.
-- `details` creates one localized button. It may include optional `text`; Back restores the exact
-  original Telegram text entities and full original inline keyboard.
-- `approval` creates Reject followed by Approve. Approve requires an explicit confirmation.
+- `layout` is an array of Telegram button rows. CRM controls row placement and button order. Every
+  layout button accepts only `type` and visible `text`; `repair_order_uuid` remains at the keyboard
+  level so CRM cannot attach a different order to an individual action.
+- `details` requires exactly one button whose subtype is `details`. Without `layout`, optional
+  top-level `text` or the bot's localized default is used. Back restores the exact original Telegram
+  text entities and full original inline keyboard.
+- `approval` requires exactly one `reject` and one `approve` subtype. They may be placed as
+  `REJECT | APPROVE`, `APPROVE | REJECT`, or as two one-button rows in either order. Approve requires
+  an explicit confirmation.
   Reject requires a 1–4,000 character explanation and then an explicit confirmation. Before each
   CRM decision, the bot reloads the order through the client-owned detail endpoint and requires
   `initial_problems_approval.requires_action = true`.
-- `rating` creates grades 1–5, matching the current CRM rating contract. After a successful
-  submission the rating controls are removed. Rating retries are safe because CRM upserts the one
-  current Telegram rating for the order.
-- Generated action keyboards always require a valid internal `repair_order_uuid`. `text` is
-  accepted only by `details`.
+- `rating` requires exactly ten subtypes, `rating_1` through `rating_10`, each used once. Its layout
+  must have two rows of five buttons. The subtype—not the visible text—determines the submitted
+  grade. After a successful submission the rating controls are removed. Rating retries are safe
+  because CRM upserts the one current Telegram rating for the order.
+- Generated action keyboards always require a valid internal `repair_order_uuid`. A custom `layout`
+  cannot be combined with legacy top-level `text`. Omitting `layout` preserves the bot's default
+  localized action layouts for backward compatibility.
 - `inline_keyboard.rows` must contain 1–8 rows.
 - Each row must contain 1–4 buttons; the whole keyboard may contain at most 32 buttons.
 - `url` buttons require non-empty `text` and an `http` or `https` `url`.
@@ -237,7 +251,8 @@ Telegram reply. Missing or rejected reply targets fall back to a normal Telegram
   `repair_order_uuid`; `text` is optional and localized by the bot when omitted.
 - CRM template rows may also use `approval` and `rating` plus `localized_text` containing required
   `uz` and `ru` labels and optional `en`. Those labels open the action flow; approval then shows
-  Reject/Approve and rating then shows grades 1–5. Both chooser views provide Back navigation.
+  Reject/Approve and rating then shows grades 1–10 in two rows of five. Both chooser views provide
+  Back navigation.
 
 ## Staff comment photo attachments
 

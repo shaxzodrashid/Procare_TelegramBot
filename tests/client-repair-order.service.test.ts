@@ -281,7 +281,7 @@ describe('HttpClientRepairOrderService', () => {
             String(input),
             `http://crm.test/api/v1/telegram/repair-orders/rating?repair_order_id=${detail.id}`,
           );
-          assert.deepEqual(JSON.parse(String(init?.body)), { grade: 5 });
+          assert.deepEqual(JSON.parse(String(init?.body)), { grade: 10 });
           if (calls === 1) {
             return Response.json({ message: 'maintenance' }, { status: 503 });
           }
@@ -289,7 +289,7 @@ describe('HttpClientRepairOrderService', () => {
             id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
             repair_order_id: detail.id,
             source: 'Telegram',
-            grade: 5,
+            grade: 10,
             notes: null,
             created_at: '2026-07-14T08:00:00.000Z',
             updated_at: '2026-07-14T08:00:00.000Z',
@@ -302,9 +302,9 @@ describe('HttpClientRepairOrderService', () => {
       logger,
     );
 
-    const result = await service.submitRepairOrderRating(detail.id, { grade: 5 });
+    const result = await service.submitRepairOrderRating(detail.id, { grade: 10 });
 
-    assert.equal(result.grade, 5);
+    assert.equal(result.grade, 10);
     assert.equal(calls, 2);
     assert.deepEqual(delays, [250]);
   });
@@ -322,7 +322,7 @@ describe('HttpClientRepairOrderService', () => {
             id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
             repair_order_id: detail.id,
             source: 'Telegram',
-            grade: 10,
+            grade: 11,
             notes: null,
             created_at: '2026-07-14T08:00:00.000Z',
             updated_at: '2026-07-14T08:00:00.000Z',
@@ -336,6 +336,33 @@ describe('HttpClientRepairOrderService', () => {
       (error: unknown) =>
         error instanceof ClientRepairOrderError && error.code === 'invalid_response',
     );
+  });
+
+  it('rejects rating grades above ten before making a request', async () => {
+    let calls = 0;
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () => {
+          calls += 1;
+          throw new Error('should not request CRM');
+        },
+      },
+      logger,
+    );
+
+    await assert.rejects(
+      service.submitRepairOrderRating(detail.id, { grade: 11 as never }),
+      (error: unknown) =>
+        error instanceof ClientRepairOrderError &&
+        error.code === 'invalid_request' &&
+        error.message === 'grade must be an integer from 1 to 10',
+    );
+    assert.equal(calls, 0);
   });
 
   it('authenticates and requests a paginated client-owned list', async () => {

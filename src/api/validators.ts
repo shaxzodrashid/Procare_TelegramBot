@@ -1,5 +1,7 @@
 import {
   TELEGRAM_TEXT_LIMIT,
+  type DirectMessageActionButton,
+  type DirectMessageActionInlineKeyboard,
   type DirectMessageAttachment,
   type DirectMessageInlineKeyboard,
   type DirectMessageRowsInlineKeyboard,
@@ -232,6 +234,130 @@ const isHttpUrl = (value: string): boolean => {
   }
 };
 
+const RATING_BUTTON_TYPES = [
+  'rating_1',
+  'rating_2',
+  'rating_3',
+  'rating_4',
+  'rating_5',
+  'rating_6',
+  'rating_7',
+  'rating_8',
+  'rating_9',
+  'rating_10',
+] as const;
+
+const parseActionKeyboardLayout = (
+  keyboardType: DirectMessageActionInlineKeyboard['type'],
+  value: unknown,
+): { ok: true; layout?: DirectMessageActionButton[][] } | { ok: false; message: string } => {
+  if (value === undefined) return { ok: true };
+  if (!Array.isArray(value)) {
+    return { ok: false, message: 'inline_keyboard.layout must be an array of button rows' };
+  }
+
+  const rowLengths = value.map((row) => (Array.isArray(row) ? row.length : -1));
+  if (keyboardType === 'details' && (value.length !== 1 || rowLengths[0] !== 1)) {
+    return { ok: false, message: 'details layout must contain exactly one button' };
+  }
+  if (
+    keyboardType === 'approval' &&
+    (value.length < 1 ||
+      value.length > 2 ||
+      rowLengths.some((length) => length < 1 || length > 2) ||
+      rowLengths.reduce((total, length) => total + length, 0) !== 2)
+  ) {
+    return {
+      ok: false,
+      message: 'approval layout must contain exactly two buttons in one or two rows',
+    };
+  }
+  if (
+    keyboardType === 'rating' &&
+    (value.length !== 2 || rowLengths.some((length) => length !== 5))
+  ) {
+    return {
+      ok: false,
+      message: 'rating layout must contain exactly ten buttons in two rows of five',
+    };
+  }
+
+  const allowedTypes =
+    keyboardType === 'details'
+      ? new Set(['details'])
+      : keyboardType === 'approval'
+        ? new Set(['reject', 'approve'])
+        : new Set<string>(RATING_BUTTON_TYPES);
+  const layout: DirectMessageActionButton[][] = [];
+  const buttonTypes: string[] = [];
+
+  for (const rawRow of value) {
+    if (!Array.isArray(rawRow)) {
+      return { ok: false, message: 'inline_keyboard.layout rows must be arrays' };
+    }
+    const row: DirectMessageActionButton[] = [];
+    for (const rawButton of rawRow) {
+      if (!isRecord(rawButton)) {
+        return { ok: false, message: 'inline_keyboard.layout buttons must be objects' };
+      }
+      const unsupportedFields = Object.keys(rawButton).filter(
+        (field) => field !== 'type' && field !== 'text',
+      );
+      if (unsupportedFields.length > 0) {
+        return {
+          ok: false,
+          message: 'inline_keyboard.layout buttons accept only type and text',
+        };
+      }
+      if (typeof rawButton.type !== 'string' || !allowedTypes.has(rawButton.type)) {
+        return {
+          ok: false,
+          message: `${keyboardType} layout contains an incompatible button type`,
+        };
+      }
+      if (typeof rawButton.text !== 'string' || !rawButton.text.trim()) {
+        return {
+          ok: false,
+          message: 'inline_keyboard.layout button text must be a non-empty string',
+        };
+      }
+      const text = rawButton.text.trim();
+      if (text.length > MAX_INLINE_KEYBOARD_TEXT_LENGTH) {
+        return {
+          ok: false,
+          message: `inline_keyboard.layout button text must be ${MAX_INLINE_KEYBOARD_TEXT_LENGTH} characters or fewer`,
+        };
+      }
+      buttonTypes.push(rawButton.type);
+      row.push({ type: rawButton.type as DirectMessageActionButton['type'], text });
+    }
+    layout.push(row);
+  }
+
+  const expectedTypes =
+    keyboardType === 'details'
+      ? ['details']
+      : keyboardType === 'approval'
+        ? ['approve', 'reject']
+        : [...RATING_BUTTON_TYPES];
+  if (
+    buttonTypes.length !== expectedTypes.length ||
+    [...buttonTypes].sort().some((type, index) => type !== [...expectedTypes].sort()[index])
+  ) {
+    return {
+      ok: false,
+      message:
+        keyboardType === 'approval'
+          ? 'approval layout requires one reject button and one approve button'
+          : keyboardType === 'rating'
+            ? 'rating layout requires each type from rating_1 through rating_10 exactly once'
+            : 'details layout requires one details button',
+    };
+  }
+
+  return { ok: true, layout };
+};
+
 const parseKeyboardButton = (
   value: unknown,
 ):
@@ -341,6 +467,7 @@ export const parseInlineKeyboard = (
     value.type === 'approval' ||
     value.type === 'rating'
   ) {
+    const keyboardType = value.type === 'repair_order' ? 'details' : value.type;
     if (
       typeof value.repair_order_uuid !== 'string' ||
       !UUID_PATTERN.test(value.repair_order_uuid)
@@ -348,6 +475,14 @@ export const parseInlineKeyboard = (
       return {
         ok: false,
         message: `${String(value.type)} keyboards require a valid repair_order_uuid`,
+      };
+    }
+    const parsedLayout = parseActionKeyboardLayout(keyboardType, value.layout);
+    if (!parsedLayout.ok) return parsedLayout;
+    if (parsedLayout.layout && value.text !== undefined) {
+      return {
+        ok: false,
+        message: 'generated keyboards cannot combine layout with top-level text',
       };
     }
     if (value.text !== undefined) {
@@ -367,9 +502,10 @@ export const parseInlineKeyboard = (
     return {
       ok: true,
       inlineKeyboard: {
-        type: value.type === 'repair_order' ? 'details' : value.type,
+        type: keyboardType,
         repairOrderUuid: value.repair_order_uuid,
         ...(typeof value.text === 'string' ? { text: value.text.trim() } : {}),
+        ...(parsedLayout.layout ? { layout: parsedLayout.layout } : {}),
       },
     };
   }

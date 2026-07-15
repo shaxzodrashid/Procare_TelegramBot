@@ -9,6 +9,7 @@ import {
   buildDirectMessageInlineKeyboard,
   isTelegramBlockedError,
   renderDirectMessage,
+  type DirectMessageActionButton,
 } from '../src/services/bot-notification.service.js';
 import {
   MessageTemplateRenderer,
@@ -484,7 +485,48 @@ describe('BotDirectMessageService', () => {
           text: String(grade),
           callback_data: `dm:rt:${grade}:${repairOrderUuid}`,
         })),
+        [6, 7, 8, 9, 10].map((grade) => ({
+          text: String(grade),
+          callback_data: `dm:rt:${grade}:${repairOrderUuid}`,
+        })),
       ],
+    );
+  });
+
+  it('builds action callbacks in the exact CRM-provided layout order', () => {
+    const repairOrderUuid = '11111111-1111-4111-8111-111111111111';
+    const ratingButtons = (grades: number[]): DirectMessageActionButton[] =>
+      grades.map((grade) => ({
+        type: `rating_${grade}` as DirectMessageActionButton['type'],
+        text: String(grade),
+      }));
+    const approval = buildDirectMessageInlineKeyboard(
+      {
+        type: 'approval',
+        repairOrderUuid,
+        layout: [[{ type: 'approve', text: 'APPROVE' }], [{ type: 'reject', text: 'REJECT' }]],
+      },
+      'uz',
+    );
+    const rating = buildDirectMessageInlineKeyboard(
+      {
+        type: 'rating',
+        repairOrderUuid,
+        layout: [ratingButtons([1, 2, 3, 4, 5]), ratingButtons([6, 7, 8, 9, 10])],
+      },
+      'uz',
+    );
+
+    assert.deepEqual(approval?.inline_keyboard, [
+      [{ text: 'APPROVE', callback_data: `dm:ap:a:${repairOrderUuid}` }],
+      [{ text: 'REJECT', callback_data: `dm:ap:r:${repairOrderUuid}` }],
+    ]);
+    assert.equal(rating?.inline_keyboard.length, 2);
+    assert.deepEqual(
+      rating?.inline_keyboard
+        .flat()
+        .map((button) => ('callback_data' in button ? button.callback_data : undefined)),
+      Array.from({ length: 10 }, (_, index) => `dm:rt:${index + 1}:${repairOrderUuid}`),
     );
   });
 

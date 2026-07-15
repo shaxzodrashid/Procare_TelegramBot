@@ -309,22 +309,23 @@ describe('direct message inline repair-order buttons', () => {
     );
     const chooser = apiCalls.find((call) => call.method === 'editMessageReplyMarkup');
     assert.ok(chooser);
+    assert.equal(chooser.payload.reply_markup.inline_keyboard.length, 3);
     assert.equal(
-      chooser.payload.reply_markup.inline_keyboard[0][4].callback_data,
-      `dm:rt:5:${repairOrderUuid}`,
+      chooser.payload.reply_markup.inline_keyboard[1][4].callback_data,
+      `dm:rt:10:${repairOrderUuid}`,
     );
 
     apiCalls.length = 0;
     await bot.handleUpdate(
       callbackUpdate(
-        `dm:rt:5:${repairOrderUuid}`,
+        `dm:rt:10:${repairOrderUuid}`,
         'Completed service',
         undefined,
         chooser.payload.reply_markup.inline_keyboard,
       ) as any,
     );
 
-    assert.deepEqual(dependencies.ratings, [{ grade: 5 }]);
+    assert.deepEqual(dependencies.ratings, [{ grade: 10 }]);
     const completed = apiCalls.find((call) => call.method === 'editMessageText');
     assert.ok(completed);
     assert.equal(completed.payload.text, 'Completed service');
@@ -483,20 +484,24 @@ describe('direct message inline repair-order buttons', () => {
   it('submits a rating only after re-authorizing the repair order and removes the controls', async () => {
     const { bot, apiCalls, dependencies } = createTestBot();
     await bot.handleUpdate(
-      callbackUpdate(`dm:rt:5:${repairOrderUuid}`, 'Rate our service', undefined, [
+      callbackUpdate(`dm:rt:10:${repairOrderUuid}`, 'Rate our service', undefined, [
         [1, 2, 3, 4, 5].map((grade) => ({
+          text: String(grade),
+          callback_data: `dm:rt:${grade}:${repairOrderUuid}`,
+        })),
+        [6, 7, 8, 9, 10].map((grade) => ({
           text: String(grade),
           callback_data: `dm:rt:${grade}:${repairOrderUuid}`,
         })),
       ]) as any,
     );
 
-    assert.deepEqual(dependencies.ratings, [{ grade: 5 }]);
+    assert.deepEqual(dependencies.ratings, [{ grade: 10 }]);
     const keyboardEdit = apiCalls.find((call) => call.method === 'editMessageReplyMarkup');
     assert.ok(keyboardEdit);
     assert.deepEqual(keyboardEdit.payload.reply_markup.inline_keyboard, []);
     assert.ok(
-      apiCalls.some((call) => call.method === 'sendMessage' && /5\/5/.test(call.payload.text)),
+      apiCalls.some((call) => call.method === 'sendMessage' && /10\/10/.test(call.payload.text)),
     );
   });
 });

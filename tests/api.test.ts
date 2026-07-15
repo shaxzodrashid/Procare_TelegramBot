@@ -131,6 +131,129 @@ describe('direct message API', () => {
     ]);
   });
 
+  it('accepts CRM-controlled layouts with purpose-specific button subtypes', async () => {
+    const keyboards: unknown[] = [];
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(params) {
+          keyboards.push(params.inlineKeyboard);
+          return { status: 'sent' };
+        },
+      },
+    });
+    const repairOrderUuid = '11111111-1111-4111-8111-111111111111';
+    const ratingButtons = Array.from({ length: 10 }, (_, index) => ({
+      type: `rating_${index + 1}`,
+      text: String(index + 1),
+    }));
+    const actionKeyboards = [
+      {
+        type: 'details',
+        repair_order_uuid: repairOrderUuid,
+        layout: [[{ type: 'details', text: 'Open details' }]],
+      },
+      {
+        type: 'approval',
+        repair_order_uuid: repairOrderUuid,
+        layout: [[{ type: 'approve', text: 'Approve' }], [{ type: 'reject', text: 'Reject' }]],
+      },
+      {
+        type: 'rating',
+        repair_order_uuid: repairOrderUuid,
+        layout: [ratingButtons.slice(0, 5), ratingButtons.slice(5)],
+      },
+    ];
+
+    for (const inlineKeyboard of actionKeyboards) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/messages/send',
+        headers: authHeaders,
+        payload: {
+          phone_number: '+998901234567',
+          message: 'CRM action',
+          inline_keyboard: inlineKeyboard,
+        },
+      });
+      assert.equal(response.statusCode, 200);
+    }
+    await app.close();
+
+    assert.deepEqual(
+      keyboards,
+      actionKeyboards.map(({ repair_order_uuid, ...keyboard }) => ({
+        ...keyboard,
+        repairOrderUuid: repair_order_uuid,
+      })),
+    );
+  });
+
+  it('rejects layouts whose button inventory does not match the keyboard purpose', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(): Promise<DirectMessageDeliveryResult> {
+          return { status: 'sent' };
+        },
+      },
+    });
+    const repairOrderUuid = '11111111-1111-4111-8111-111111111111';
+    const invalidLayouts = [
+      {
+        keyboard: {
+          type: 'details',
+          repair_order_uuid: repairOrderUuid,
+          layout: [
+            [
+              { type: 'details', text: 'One' },
+              { type: 'details', text: 'Two' },
+            ],
+          ],
+        },
+        message: 'details layout must contain exactly one button',
+      },
+      {
+        keyboard: {
+          type: 'approval',
+          repair_order_uuid: repairOrderUuid,
+          layout: [
+            [
+              { type: 'approve', text: 'Approve' },
+              { type: 'approve', text: 'Approve' },
+            ],
+          ],
+        },
+        message: 'approval layout requires one reject button and one approve button',
+      },
+      {
+        keyboard: {
+          type: 'rating',
+          repair_order_uuid: repairOrderUuid,
+          layout: [
+            [1, 2, 3, 4, 5].map((grade) => ({ type: `rating_${grade}`, text: String(grade) })),
+            [6, 7, 8, 9].map((grade) => ({ type: `rating_${grade}`, text: String(grade) })),
+          ],
+        },
+        message: 'rating layout must contain exactly ten buttons in two rows of five',
+      },
+    ];
+
+    for (const invalid of invalidLayouts) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/messages/send',
+        headers: authHeaders,
+        payload: {
+          phone_number: '+998901234567',
+          message: 'CRM action',
+          inline_keyboard: invalid.keyboard,
+        },
+      });
+      assert.equal(response.statusCode, 400);
+      assert.equal(response.json<{ message: string }>().message, invalid.message);
+    }
+    await app.close();
+  });
+
   it('accepts the localized multi-action keyboard emitted by CRM templates', async () => {
     let captured: unknown;
     const app = createApiServer(config, logger, {

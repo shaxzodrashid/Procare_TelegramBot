@@ -1,7 +1,10 @@
 import { InlineKeyboard, type Bot } from 'grammy';
 
 import { ClientRepairOrderError } from '../../services/client-repair-order.service.js';
-import type { CustomerRepairOrderDetail } from '../../types/client-repair-order.js';
+import type {
+  CustomerRepairOrderDetail,
+  CustomerRepairOrderRatingGrade,
+} from '../../types/client-repair-order.js';
 import { escapeHtml } from '../../utils/html.js';
 import { formatClientRepairOrderDetail } from '../formatters.js';
 import { safeHttpUrl } from '../helpers.js';
@@ -15,7 +18,7 @@ const repairOrderCallbackPattern =
 const approvalCallbackPattern =
   /^dm:ap:(?<action>o|a|r|ca|cr|b):(?<repairOrderUuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 const ratingCallbackPattern =
-  /^dm:rt:(?<action>o|b|[1-5]):(?<repairOrderUuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+  /^dm:rt:(?<action>o|b|10|[1-9]):(?<repairOrderUuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
 const callbackMessageId = (ctx: BotContext): string | null => {
   const message = ctx.callbackQuery?.message;
@@ -239,6 +242,12 @@ const showRatingOptions = async (
       .text('4', `dm:rt:4:${repairOrderUuid}`)
       .text('5', `dm:rt:5:${repairOrderUuid}`)
       .row()
+      .text('6', `dm:rt:6:${repairOrderUuid}`)
+      .text('7', `dm:rt:7:${repairOrderUuid}`)
+      .text('8', `dm:rt:8:${repairOrderUuid}`)
+      .text('9', `dm:rt:9:${repairOrderUuid}`)
+      .text('10', `dm:rt:10:${repairOrderUuid}`)
+      .row()
       .text(t(ctx.session.locale, 'back'), `dm:rt:b:${repairOrderUuid}`),
   });
 };
@@ -413,7 +422,7 @@ const submitRating = async (
   ctx: BotContext,
   dependencies: BotDependencies,
   repairOrderUuid: string,
-  grade: 1 | 2 | 3 | 4 | 5,
+  grade: CustomerRepairOrderRatingGrade,
 ): Promise<void> => {
   if (!(await loadAuthorizedOrder(ctx, dependencies, repairOrderUuid))) return;
 
@@ -504,11 +513,11 @@ export const registerDirectMessageHandlers = (
       return;
     }
     const grade = Number(action);
-    if (!Number.isInteger(grade) || grade < 1 || grade > 5) {
+    if (!Number.isInteger(grade) || grade < 1 || grade > 10) {
       await ctx.reply(t(ctx.session.locale, 'staleAction'));
       return;
     }
-    await submitRating(ctx, dependencies, repairOrderUuid, grade as 1 | 2 | 3 | 4 | 5);
+    await submitRating(ctx, dependencies, repairOrderUuid, grade as CustomerRepairOrderRatingGrade);
   });
 
   bot.on('message:text', async (ctx, next) => {
