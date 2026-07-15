@@ -104,6 +104,10 @@ const createTelegramDouble = (sendMessageError?: unknown | unknown[]) => {
       calls.push({ method: 'sendPhoto', options });
       return {};
     },
+    async sendMediaGroup(chatId: string | number, _media: unknown, options?: unknown) {
+      calls.push({ method: 'sendMediaGroup', chatId, options });
+      return [{}];
+    },
     async sendDocument(chatId: string | number, document: unknown, options?: unknown) {
       calls.push({
         method: 'sendDocument',
@@ -454,6 +458,136 @@ describe('BotDirectMessageService', () => {
       ),
       parse_mode: 'HTML',
     });
+  });
+
+  it('builds localized generated details, approval, and rating keyboards', () => {
+    const repairOrderUuid = '11111111-1111-4111-8111-111111111111';
+
+    assert.deepEqual(
+      buildDirectMessageInlineKeyboard({ type: 'details', repairOrderUuid }, 'ru')?.inline_keyboard,
+      [[{ text: '🧾 Детали заказа', callback_data: `dm:ro:o:${repairOrderUuid}` }]],
+    );
+    assert.deepEqual(
+      buildDirectMessageInlineKeyboard({ type: 'approval', repairOrderUuid }, 'uz')
+        ?.inline_keyboard,
+      [
+        [
+          { text: '❌ Rad etish', callback_data: `dm:ap:r:${repairOrderUuid}` },
+          { text: '✅ Tasdiqlash', callback_data: `dm:ap:a:${repairOrderUuid}` },
+        ],
+      ],
+    );
+    assert.deepEqual(
+      buildDirectMessageInlineKeyboard({ type: 'rating', repairOrderUuid }, 'uz')?.inline_keyboard,
+      [
+        [1, 2, 3, 4, 5].map((grade) => ({
+          text: String(grade),
+          callback_data: `dm:rt:${grade}:${repairOrderUuid}`,
+        })),
+      ],
+    );
+  });
+
+  it('builds localized template row actions as openable details, approval, and rating flows', () => {
+    const repairOrderUuid = '11111111-1111-4111-8111-111111111111';
+    const keyboard = buildDirectMessageInlineKeyboard(
+      {
+        rows: [
+          [
+            {
+              type: 'details',
+              repairOrderUuid,
+              localizedText: { uz: 'Ko‘rish', ru: 'Открыть', en: 'Open' },
+            },
+          ],
+          [
+            {
+              type: 'approval',
+              repairOrderUuid,
+              localizedText: { uz: 'Tasdiqlash', ru: 'Подтвердить' },
+            },
+          ],
+          [
+            {
+              type: 'rating',
+              repairOrderUuid,
+              localizedText: { uz: 'Baholash', ru: 'Оценить' },
+            },
+          ],
+        ],
+      },
+      'ru',
+    );
+
+    assert.deepEqual(keyboard?.inline_keyboard, [
+      [{ text: 'Открыть', callback_data: `dm:ro:o:${repairOrderUuid}` }],
+      [{ text: 'Подтвердить', callback_data: `dm:ap:o:${repairOrderUuid}` }],
+      [{ text: 'Оценить', callback_data: `dm:rt:o:${repairOrderUuid}` }],
+    ]);
+  });
+
+  it('downloads staff photos before delivery and keeps the keyboard on an editable text message', async () => {
+    const store = new MemoryTemplateStore(null);
+    const users = new MemoryRegisteredUserLookup(directMessageUser());
+    const { telegram, calls } = createTelegramDouble();
+    const service = new BotDirectMessageService(users, store, telegram, undefined, {
+      fetchImpl: async () =>
+        new Response(Buffer.from('photo'), {
+          status: 200,
+          headers: { 'content-type': 'image/jpeg', 'content-length': '5' },
+        }),
+    });
+
+    const result = await service.sendDirectMessage({
+      phoneNumber: '+998901234567',
+      message: 'Please approve',
+      attachments: [{ type: 'photo', url: 'https://files.test/photo.jpg' }],
+      inlineKeyboard: {
+        type: 'approval',
+        repairOrderUuid: '11111111-1111-4111-8111-111111111111',
+      },
+    });
+
+    assert.deepEqual(result, { status: 'sent', message: 'Please approve' });
+    assert.deepEqual(
+      calls.map((call) => call.method),
+      ['sendPhoto', 'sendMessage'],
+    );
+    assert.equal((calls[0]?.options as { caption?: string }).caption, undefined);
+    assert.ok((calls[1]?.options as { reply_markup?: unknown }).reply_markup);
+  });
+
+  it('sends multiple staff photos as a media group before the keyboard message', async () => {
+    const store = new MemoryTemplateStore(null);
+    const users = new MemoryRegisteredUserLookup(directMessageUser());
+    const { telegram, calls } = createTelegramDouble();
+    const service = new BotDirectMessageService(users, store, telegram, undefined, {
+      fetchImpl: async () =>
+        new Response(Buffer.from('photo'), {
+          status: 200,
+          headers: { 'content-type': 'image/jpeg', 'content-length': '5' },
+        }),
+    });
+
+    const result = await service.sendDirectMessage({
+      phoneNumber: '+998901234567',
+      message: 'Please approve',
+      attachments: [
+        { type: 'photo', url: 'https://files.test/front.jpg' },
+        { type: 'photo', url: 'https://files.test/back.jpg' },
+      ],
+      inlineKeyboard: {
+        type: 'approval',
+        repairOrderUuid: '11111111-1111-4111-8111-111111111111',
+      },
+    });
+
+    assert.deepEqual(result, { status: 'sent', message: 'Please approve' });
+    assert.deepEqual(
+      calls.map((call) => call.method),
+      ['sendMediaGroup', 'sendMessage'],
+    );
+    assert.ok((calls[1]?.options as { reply_markup?: unknown }).reply_markup);
   });
 
   it('sends support replies against the stored Telegram message target', async () => {

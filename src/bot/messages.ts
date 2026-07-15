@@ -94,6 +94,31 @@ const messages = {
     orderChecklist: '📋 Qabul akti',
     orderWarrantyDocument: '🛡 Kafolat',
     orderOffer: '📄 Ommaviy oferta',
+    directDetails: '🧾 Buyurtmani ko‘rish',
+    directApprovalAction: '✅ Tasdiqlash',
+    directRatingAction: '⭐ Xizmatni baholash',
+    directApprovalReject: '❌ Rad etish',
+    directApprovalApprove: '✅ Tasdiqlash',
+    directApprovalConfirm:
+      '⚠️ <b>#{{number}} buyurtmani tasdiqlaysizmi?</b>\n\nQaror darhol Procare CRM tizimiga yuboriladi va uni bu tugma orqali ortga qaytarib bo‘lmaydi.',
+    directApprovalConfirmButton: '✅ Ha, tasdiqlash',
+    directRejectionPrompt:
+      '✍️ <b>#{{number}} buyurtmani nega rad etayotganingizni yozing.</b>\n\nIzoh Procare xodimlariga yuboriladi (1–4000 belgi).',
+    directRejectionReview:
+      '⚠️ <b>#{{number}} buyurtmani rad etishni tasdiqlang</b>\n\n<b>Sabab:</b>\n{{note}}\n\nTasdiqlangandan keyin qaror darhol CRM tizimiga yuboriladi.',
+    directRejectionConfirmButton: '❌ Rad etishni tasdiqlash',
+    directRejectionEmpty: '⚠️ Rad etish sababini yozish majburiy.',
+    directRejectionTooLong: '⚠️ Izoh 4000 belgidan oshmasligi kerak.',
+    directApprovalAccepted: '✅ Qaroringiz qabul qilindi: buyurtma tasdiqlandi.',
+    directApprovalRejected: '✅ Qaroringiz va izohingiz qabul qilindi: buyurtma rad etildi.',
+    directApprovalNoLongerPending:
+      '🔄 Bu buyurtma endi tasdiqlashni kutmayapti. CRM ma’lumotlari yangilangan.',
+    directActionUnavailable:
+      '📡 Amalni hozir bajarib bo‘lmadi. Iltimos, birozdan keyin qayta urinib ko‘ring.',
+    directRatingAccepted: '⭐ Rahmat! {{grade}}/5 bahoyingiz qabul qilindi.',
+    directRatingRecorded: '⭐ {{grade}}/5 — baho qabul qilindi',
+    directSupportReplyActivated:
+      '💬 Javobingiz #{{number}} buyurtma suhbatiga yuborildi. Yana yozishingiz mumkin yoki suhbatni tugating.',
     orderSupport: '💬 Xodimga yozish',
     supportPrompt:
       '💬 #{{number}} buyurtma bo‘yicha chat boshlandi.\n\n📋 <b>Suhbat qoidalari:</b>\n ├ ✍️ <b>Matn yoki rasm</b> — xabarlaringiz avtomatik tarzda xodimlarga yuboriladi.\n ├ 📎 <b>Rasmlar</b> — bir vaqtda 5 tagacha rasm yuborish mumkin (har biri max 5 MB).\n ├ ↩️ <b>Javob qaytarish</b> — xodimning xabariga reply (javob) yuborishingiz mumkin.\n └ 👍 <b>Tasdiqlash</b> — xabar yetkazilganda bot unga avtomatik 👍 reaksiyasini qoldiradi.\n\n👇 Xabaringizni yozib qoldiring yoki suhbatni yakunlash uchun tugmani bosing:',
@@ -328,6 +353,31 @@ const messages = {
     orderChecklist: '📋 Акт приёма',
     orderWarrantyDocument: '🛡 Гарантия',
     orderOffer: '📄 Публичная оферта',
+    directDetails: '🧾 Детали заказа',
+    directApprovalAction: '✅ Подтвердить',
+    directRatingAction: '⭐ Оценить сервис',
+    directApprovalReject: '❌ Отклонить',
+    directApprovalApprove: '✅ Одобрить',
+    directApprovalConfirm:
+      '⚠️ <b>Одобрить заказ #{{number}}?</b>\n\nРешение сразу отправится в Procare CRM, и отменить его этой кнопкой будет нельзя.',
+    directApprovalConfirmButton: '✅ Да, одобрить',
+    directRejectionPrompt:
+      '✍️ <b>Напишите, почему вы отклоняете заказ #{{number}}.</b>\n\nКомментарий будет отправлен сотрудникам Procare (1–4000 символов).',
+    directRejectionReview:
+      '⚠️ <b>Подтвердите отклонение заказа #{{number}}</b>\n\n<b>Причина:</b>\n{{note}}\n\nПосле подтверждения решение сразу отправится в CRM.',
+    directRejectionConfirmButton: '❌ Подтвердить отклонение',
+    directRejectionEmpty: '⚠️ Причина отклонения обязательна.',
+    directRejectionTooLong: '⚠️ Комментарий не должен превышать 4000 символов.',
+    directApprovalAccepted: '✅ Решение принято: заказ одобрен.',
+    directApprovalRejected: '✅ Решение и комментарий приняты: заказ отклонён.',
+    directApprovalNoLongerPending:
+      '🔄 Этот заказ больше не ожидает одобрения. Данные CRM уже обновились.',
+    directActionUnavailable:
+      '📡 Сейчас не удалось выполнить действие. Пожалуйста, повторите немного позже.',
+    directRatingAccepted: '⭐ Спасибо! Ваша оценка {{grade}}/5 принята.',
+    directRatingRecorded: '⭐ {{grade}}/5 — оценка принята',
+    directSupportReplyActivated:
+      '💬 Ответ отправлен в чат по заказу #{{number}}. Можете написать ещё или завершить чат.',
     orderSupport: '💬 Написать сотруднику',
     supportPrompt:
       '💬 Чат по заказу #{{number}} начат.\n\n📋 <b>Правила чата:</b>\n ├ ✍️ <b>Текст или фото</b> — ваши сообщения автоматически отправляются сотрудникам.\n ├ 📎 <b>Фотографии</b> — можно отправить до 5 фото за один раз (каждое макс. 5 МБ).\n ├ ↩️ <b>Ответы</b> — вы можете отвечать прямо на сообщения сотрудников (через reply).\n └ 👍 <b>Подтверждение</b> — при успешной доставке бот автоматически ставит реакцию 👍.\n\n👇 Напишите ваше сообщение или нажмите кнопку ниже для завершения чата:',

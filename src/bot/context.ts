@@ -1,5 +1,5 @@
 import type { Context, SessionFlavor } from 'grammy';
-import type { MessageEntity } from 'grammy/types';
+import type { InlineKeyboardMarkup, MessageEntity } from 'grammy/types';
 
 import type { AdminProfile, ClientProfile, Locale } from '../types/client.js';
 import type { MessageTemplateDraft, MessageTemplateField } from '../types/message-template.js';
@@ -32,7 +32,8 @@ export type RegistrationStage =
   | 'admin_export_period_input'
   | 'developer_error_location_input'
   | 'developer_error_message_uz_input'
-  | 'developer_error_message_ru_input';
+  | 'developer_error_message_ru_input'
+  | 'direct_message_rejection_note';
 
 export interface UnknownClientSession {
   phoneNumber: string;
@@ -83,9 +84,16 @@ export interface BotSession {
       text: string;
       entities?: MessageEntity[];
       repairOrderUuid: string;
-      buttonText?: string;
+      inlineKeyboard: InlineKeyboardMarkup['inline_keyboard'];
     }
   >;
+  directMessageApproval?: {
+    repairOrderUuid: string;
+    messageId: string;
+    mode: 'approve_confirmation' | 'rejection_note' | 'reject_confirmation';
+    note?: string;
+    submitting: boolean;
+  };
   stage?: RegistrationStage;
   unknownClient?: UnknownClientSession;
   repairDraft?: RepairRequestDraft;

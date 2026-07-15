@@ -1,4 +1,4 @@
-import { InlineKeyboard, InputFile } from 'grammy';
+import { InlineKeyboard, InputFile, InputMediaBuilder } from 'grammy';
 import type { Api } from 'grammy';
 
 import type { TemplateRecipient, MessageTemplateType } from '../types/message-template.js';
@@ -7,6 +7,7 @@ import type { RegisteredUserStore } from './registered-user.store.js';
 import { MessageTemplateRenderer, type MessageTemplateStore } from './message-template.service.js';
 import type { SupportMessageStore } from './support-message.store.js';
 import type { Logger } from '../utils/logger.js';
+import { t } from '../bot/messages.js';
 import {
   DEFAULT_TELEGRAM_PARSE_MODE,
   TELEGRAM_FORMATTED_SOURCE_LIMIT,
@@ -45,10 +46,11 @@ export interface SendDirectMessageParams {
   crmCommentId?: string;
   repairOrderUuid?: string;
   orderNumber?: string;
+  attachments?: DirectMessageAttachment[];
 }
 
 export interface DirectMessageDeliveryResult {
-  status: 'sent' | 'failed' | 'not_found' | 'blocked' | 'invalid_message';
+  status: 'sent' | 'failed' | 'not_found' | 'blocked' | 'invalid_message' | 'invalid_attachments';
   message?: string;
 }
 
@@ -67,10 +69,14 @@ export interface DirectFileDeliveryResult {
 }
 
 type TelegramTemplateApi = Pick<Api, 'sendMessage' | 'sendPhoto'>;
-type TelegramDirectMessageApi = Pick<Api, 'sendMessage' | 'sendDocument'>;
+type TelegramDirectMessageApi = Pick<
+  Api,
+  'sendMessage' | 'sendDocument' | 'sendPhoto' | 'sendMediaGroup'
+>;
 
 const TELEGRAM_CAPTION_LIMIT = 1024;
 export const TELEGRAM_TEXT_LIMIT = 4096;
+const MAX_DIRECT_MESSAGE_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const TELEGRAM_PARSE_MODE_HTML = 'HTML';
 const DIRECT_MESSAGE_DISPATCH_TYPE = 'api_direct_message';
 const DIRECT_MESSAGE_PLACEHOLDER_PATTERN = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
@@ -99,19 +105,42 @@ export interface DirectMessageUrlButton {
 }
 
 export interface DirectMessageRepairOrderButton {
-  type: 'repair_order';
+  type: 'repair_order' | 'details' | 'approval' | 'rating';
   text?: string;
+  localizedText?: DirectMessageLocalizedButtonText;
   repairOrderUuid: string;
 }
 
 export type DirectMessageInlineButton = DirectMessageUrlButton | DirectMessageRepairOrderButton;
 
-export interface DirectMessageInlineKeyboard {
+export interface DirectMessageRowsInlineKeyboard {
   rows: DirectMessageInlineButton[][];
 }
 
+export interface DirectMessageActionInlineKeyboard {
+  type: 'details' | 'approval' | 'rating';
+  repairOrderUuid: string;
+  text?: string;
+}
+
+export type DirectMessageInlineKeyboard =
+  | DirectMessageRowsInlineKeyboard
+  | DirectMessageActionInlineKeyboard;
+
 export interface DirectMessageSupportReply {
   targetCrmCommentId: string;
+}
+
+export interface DirectMessageLocalizedButtonText {
+  uz: string;
+  ru: string;
+  en?: string | null;
+}
+
+export interface DirectMessageAttachment {
+  type: 'photo';
+  url: string;
+  fileName?: string;
 }
 
 const errorMessage = (error: unknown): string =>
@@ -408,6 +437,87 @@ export class BotDirectMessageService {
     }
   }
 
+  private async downloadDirectMessageAttachments(
+    attachments: DirectMessageAttachment[] | undefined,
+  ): Promise<InputFile[]> {
+    return Promise.all(
+      (attachments ?? []).map(async (attachment, index) => {
+        const response = await this.fetchImpl(attachment.url);
+        if (!response.ok) {
+          throw new Error(`attachment ${index + 1} download returned HTTP ${response.status}`);
+        }
+        const declaredLength = Number(response.headers.get('content-length'));
+        if (
+          Number.isFinite(declaredLength) &&
+          declaredLength > MAX_DIRECT_MESSAGE_ATTACHMENT_BYTES
+        ) {
+          throw new Error(`attachment ${index + 1} exceeds 5 MB`);
+        }
+        const buffer = Buffer.from(await response.arrayBuffer());
+        if (!buffer.length) throw new Error(`attachment ${index + 1} is empty`);
+        if (buffer.length > MAX_DIRECT_MESSAGE_ATTACHMENT_BYTES) {
+          throw new Error(`attachment ${index + 1} exceeds 5 MB`);
+        }
+        return new InputFile(buffer, attachment.fileName ?? `photo-${index + 1}.jpg`);
+      }),
+    );
+  }
+
+  private async sendDirectContent(params: {
+    chatId: string;
+    messageText: string;
+    parseMode: TelegramParseMode;
+    replyMarkup: InlineKeyboard | undefined;
+    replyTarget: SupportMessageReplyTarget | null;
+    attachments: InputFile[];
+  }): Promise<{ message_id: number; chat: { id: number }; date: number }> {
+    const replyParameters = params.replyTarget
+      ? {
+          message_id: params.replyTarget.telegram_message_id,
+          allow_sending_without_reply: true,
+        }
+      : undefined;
+    if (!params.attachments.length) {
+      return this.telegram.sendMessage(params.chatId, params.messageText, {
+        ...directMessageOptions(params.replyMarkup, params.replyTarget),
+        parse_mode: params.parseMode,
+      });
+    }
+
+    const captionFits =
+      Boolean(params.messageText) &&
+      telegramFormattedText(params.messageText, params.parseMode).length <= TELEGRAM_CAPTION_LIMIT;
+    if (params.attachments.length === 1) {
+      const usePhotoCaption = captionFits && !params.replyMarkup;
+      const photo = await this.telegram.sendPhoto(params.chatId, params.attachments[0]!, {
+        ...(usePhotoCaption ? { caption: params.messageText, parse_mode: params.parseMode } : {}),
+        ...(replyParameters ? { reply_parameters: replyParameters } : {}),
+      });
+      if (!params.messageText || usePhotoCaption) return photo;
+      return this.telegram.sendMessage(params.chatId, params.messageText, {
+        ...(params.replyMarkup ? { reply_markup: params.replyMarkup } : {}),
+        parse_mode: params.parseMode,
+      });
+    }
+
+    const useAlbumCaption = captionFits && !params.replyMarkup;
+    const media = params.attachments.map((attachment, index) =>
+      InputMediaBuilder.photo(attachment, {
+        ...(index === 0 && useAlbumCaption
+          ? { caption: params.messageText, parse_mode: params.parseMode }
+          : {}),
+      }),
+    );
+    const album = await this.telegram.sendMediaGroup(params.chatId, media, {
+      ...(replyParameters ? { reply_parameters: replyParameters } : {}),
+    });
+    if (!params.messageText || useAlbumCaption) return album[0]!;
+    return this.telegram.sendMessage(params.chatId, params.messageText, {
+      ...(params.replyMarkup ? { reply_markup: params.replyMarkup } : {}),
+      parse_mode: params.parseMode,
+    });
+  }
+
   async sendDirectMessage(params: SendDirectMessageParams): Promise<DirectMessageDeliveryResult> {
     const user = await this.users.findByPhoneNumber(params.phoneNumber);
     if (!user) return { status: 'not_found' };
@@ -429,7 +539,7 @@ export class BotDirectMessageService {
       return { status: 'blocked' };
     }
 
-    let messageText: string;
+    let messageText = '';
     let messageParseMode: TelegramParseMode = DEFAULT_TELEGRAM_PARSE_MODE;
     if (template) {
       const placeholders = {
@@ -463,28 +573,47 @@ export class BotDirectMessageService {
       messageParseMode = params.parseMode ?? DEFAULT_TELEGRAM_PARSE_MODE;
       const localizedMessage =
         params.localizedMessages?.[user.locale === 'ru' ? 'ru' : 'uz'] ?? params.message;
-      if (localizedMessage === undefined) {
+      if (localizedMessage === undefined && !params.attachments?.length) {
         return {
           status: 'invalid_message',
-          message: 'message or localized_messages must be provided',
+          message: 'message, localized_messages, or attachments must be provided',
         };
       }
-      const rendered = renderDirectMessage(
-        localizedMessage,
-        {
-          ...params.variables,
-          ...localizedVariablesFor(params.localizedVariables, user.locale),
-          first_name: user.first_name,
-          last_name: user.last_name,
-          full_name: [user.first_name, user.last_name].filter(Boolean).join(' '),
-          phone_number: user.phone_number,
-          telegram_username: user.telegram_username,
-          locale: user.locale,
-        },
-        messageParseMode,
-      );
-      if (!rendered.ok) return { status: 'invalid_message', message: rendered.message };
-      messageText = rendered.message;
+      if (localizedMessage !== undefined) {
+        const rendered = renderDirectMessage(
+          localizedMessage,
+          {
+            ...params.variables,
+            ...localizedVariablesFor(params.localizedVariables, user.locale),
+            first_name: user.first_name,
+            last_name: user.last_name,
+            full_name: [user.first_name, user.last_name].filter(Boolean).join(' '),
+            phone_number: user.phone_number,
+            telegram_username: user.telegram_username,
+            locale: user.locale,
+          },
+          messageParseMode,
+        );
+        if (!rendered.ok) return { status: 'invalid_message', message: rendered.message };
+        messageText = rendered.message;
+      }
+    }
+
+    let attachments: InputFile[];
+    try {
+      attachments = await this.downloadDirectMessageAttachments(params.attachments);
+    } catch (error) {
+      await this.templates.logDispatch({
+        user_id: user.id,
+        template_id: template?.id ?? null,
+        dispatch_type: dispatchType,
+        status: 'failed',
+        error_message: `Attachment download failed: ${errorMessage(error)}`,
+      });
+      return {
+        status: 'invalid_attachments',
+        message: `Failed to download a message attachment: ${errorMessage(error)}`,
+      };
     }
 
     try {
@@ -497,19 +626,23 @@ export class BotDirectMessageService {
         : null;
       let sentMessage;
       try {
-        sentMessage = await this.telegram.sendMessage(
-          replyTarget?.telegram_chat_id ?? user.telegram_id,
+        sentMessage = await this.sendDirectContent({
+          chatId: replyTarget?.telegram_chat_id ?? user.telegram_id,
           messageText,
-          {
-            ...directMessageOptions(replyMarkup, replyTarget ?? null),
-            parse_mode: messageParseMode,
-          },
-        );
+          parseMode: messageParseMode,
+          replyMarkup,
+          replyTarget: replyTarget ?? null,
+          attachments,
+        });
       } catch (error) {
         if (!replyTarget || !isTelegramReplyTargetError(error)) throw error;
-        sentMessage = await this.telegram.sendMessage(user.telegram_id, messageText, {
-          ...directMessageOptions(replyMarkup, null),
-          parse_mode: messageParseMode,
+        sentMessage = await this.sendDirectContent({
+          chatId: user.telegram_id,
+          messageText,
+          parseMode: messageParseMode,
+          replyMarkup,
+          replyTarget: null,
+          attachments,
         });
       }
 
@@ -530,9 +663,9 @@ export class BotDirectMessageService {
               telegram_message_date: new Date(sentMessage.date * 1000),
               sender_type: 'employee',
               direction: 'outbound',
-              content_type: 'text',
-              text: messageText,
-              photo_count: 0,
+              content_type: attachments.length && !messageText ? 'photo' : 'text',
+              text: messageText || null,
+              photo_count: attachments.length,
               reply_to_support_message_id: replyTarget?.id ?? null,
             });
           } catch (saveError) {
@@ -627,8 +760,27 @@ export const renderDirectMessage = (
   return { ok: true, message: rendered };
 };
 
+const directMessageLocale = (locale: string): 'uz' | 'ru' => (locale === 'ru' ? 'ru' : 'uz');
+
 const defaultRepairOrderButtonText = (locale: string): string =>
-  locale === 'ru' ? '🧾 Детали заказа' : '🧾 Buyurtmani ko‘rish';
+  t(directMessageLocale(locale), 'directDetails');
+
+const localizedButtonText = (
+  button: DirectMessageRepairOrderButton,
+  locale: string,
+): string | undefined => {
+  if (button.text?.trim()) return button.text.trim();
+  const localized = button.localizedText;
+  if (!localized) return undefined;
+  const preferred = locale === 'ru' ? localized.ru : localized.uz;
+  return (
+    preferred?.trim() ||
+    localized.uz?.trim() ||
+    localized.ru?.trim() ||
+    localized.en?.trim() ||
+    undefined
+  );
+};
 
 export const buildDirectMessageInlineKeyboard = (
   keyboard: DirectMessageInlineKeyboard | undefined,
@@ -637,6 +789,33 @@ export const buildDirectMessageInlineKeyboard = (
   if (!keyboard) return undefined;
 
   const markup = new InlineKeyboard();
+  if ('type' in keyboard) {
+    if (keyboard.type === 'details') {
+      return markup.text(
+        keyboard.text?.trim() || defaultRepairOrderButtonText(locale),
+        `dm:ro:o:${keyboard.repairOrderUuid}`,
+      );
+    }
+    if (keyboard.type === 'approval') {
+      return markup
+        .text(
+          t(directMessageLocale(locale), 'directApprovalReject'),
+          `dm:ap:r:${keyboard.repairOrderUuid}`,
+        )
+        .text(
+          t(directMessageLocale(locale), 'directApprovalApprove'),
+          `dm:ap:a:${keyboard.repairOrderUuid}`,
+        );
+    }
+
+    return markup
+      .text('1', `dm:rt:1:${keyboard.repairOrderUuid}`)
+      .text('2', `dm:rt:2:${keyboard.repairOrderUuid}`)
+      .text('3', `dm:rt:3:${keyboard.repairOrderUuid}`)
+      .text('4', `dm:rt:4:${keyboard.repairOrderUuid}`)
+      .text('5', `dm:rt:5:${keyboard.repairOrderUuid}`);
+  }
+
   keyboard.rows.forEach((row, rowIndex) => {
     if (rowIndex > 0) markup.row();
     row.forEach((button) => {
@@ -645,8 +824,23 @@ export const buildDirectMessageInlineKeyboard = (
         return;
       }
 
+      const text = localizedButtonText(button, locale);
+      if (button.type === 'approval') {
+        markup.text(
+          text ?? t(directMessageLocale(locale), 'directApprovalAction'),
+          `dm:ap:o:${button.repairOrderUuid}`,
+        );
+        return;
+      }
+      if (button.type === 'rating') {
+        markup.text(
+          text ?? t(directMessageLocale(locale), 'directRatingAction'),
+          `dm:rt:o:${button.repairOrderUuid}`,
+        );
+        return;
+      }
       markup.text(
-        button.text?.trim() || defaultRepairOrderButtonText(locale),
+        text ?? defaultRepairOrderButtonText(locale),
         `dm:ro:o:${button.repairOrderUuid}`,
       );
     });

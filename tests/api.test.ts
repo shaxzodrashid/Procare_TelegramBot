@@ -93,6 +93,192 @@ describe('health API', () => {
 });
 
 describe('direct message API', () => {
+  it('accepts the details, approval, and rating action keyboard contracts', async () => {
+    const keyboards: unknown[] = [];
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(params) {
+          keyboards.push(params.inlineKeyboard);
+          return { status: 'sent' };
+        },
+      },
+    });
+    const repairOrderUuid = '11111111-1111-4111-8111-111111111111';
+
+    for (const inlineKeyboard of [
+      { type: 'details', repair_order_uuid: repairOrderUuid, text: 'Open details' },
+      { type: 'approval', repair_order_uuid: repairOrderUuid },
+      { type: 'rating', repair_order_uuid: repairOrderUuid },
+    ]) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/messages/send',
+        headers: authHeaders,
+        payload: {
+          phone_number: '+998901234567',
+          message: 'CRM action',
+          inline_keyboard: inlineKeyboard,
+        },
+      });
+      assert.equal(response.statusCode, 200);
+    }
+    await app.close();
+
+    assert.deepEqual(keyboards, [
+      { type: 'details', repairOrderUuid, text: 'Open details' },
+      { type: 'approval', repairOrderUuid },
+      { type: 'rating', repairOrderUuid },
+    ]);
+  });
+
+  it('accepts the localized multi-action keyboard emitted by CRM templates', async () => {
+    let captured: unknown;
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(params) {
+          captured = params.inlineKeyboard;
+          return { status: 'sent', message: 'Доставлено' };
+        },
+      },
+    });
+    const repairOrderUuid = '11111111-1111-4111-8111-111111111111';
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Template notification',
+        inline_keyboard: {
+          rows: [
+            [
+              {
+                type: 'details',
+                repair_order_uuid: repairOrderUuid,
+                localized_text: { uz: 'Ko‘rish', ru: 'Открыть', en: 'Open' },
+              },
+            ],
+            [
+              {
+                type: 'approval',
+                repair_order_uuid: repairOrderUuid,
+                localized_text: { uz: 'Tasdiqlash', ru: 'Подтвердить' },
+              },
+            ],
+            [
+              {
+                type: 'rating',
+                repair_order_uuid: repairOrderUuid,
+                localized_text: { uz: 'Baholash', ru: 'Оценить' },
+              },
+            ],
+          ],
+        },
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json<{ message: string }>().message, 'Доставлено');
+    assert.deepEqual(captured, {
+      rows: [
+        [
+          {
+            type: 'details',
+            repairOrderUuid,
+            localizedText: { uz: 'Ko‘rish', ru: 'Открыть', en: 'Open' },
+          },
+        ],
+        [
+          {
+            type: 'approval',
+            repairOrderUuid,
+            localizedText: { uz: 'Tasdiqlash', ru: 'Подтвердить', en: null },
+          },
+        ],
+        [
+          {
+            type: 'rating',
+            repairOrderUuid,
+            localizedText: { uz: 'Baholash', ru: 'Оценить', en: null },
+          },
+        ],
+      ],
+    });
+  });
+
+  it('accepts up to five trusted photo attachments and returns the exact sent text', async () => {
+    let capturedAttachments: unknown;
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(params) {
+          capturedAttachments = params.attachments;
+          return { status: 'sent', message: 'Exact rendered message' };
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Original message',
+        attachments: [
+          {
+            type: 'photo',
+            url: 'https://files.procare.uz/comment/photo.jpg',
+            file_name: 'diagnosis.jpg',
+          },
+        ],
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json<{ message: string }>().message, 'Exact rendered message');
+    assert.deepEqual(capturedAttachments, [
+      {
+        type: 'photo',
+        url: 'https://files.procare.uz/comment/photo.jpg',
+        fileName: 'diagnosis.jpg',
+      },
+    ]);
+  });
+
+  it('rejects unsupported fields on generated action keyboards', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(): Promise<DirectMessageDeliveryResult> {
+          return { status: 'sent' };
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Rate us',
+        inline_keyboard: {
+          type: 'rating',
+          repair_order_uuid: '11111111-1111-4111-8111-111111111111',
+          text: 'Custom',
+        },
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(
+      response.json<{ message: string }>().message,
+      'rating keyboards do not accept text',
+    );
+  });
+
   it('normalizes the phone number and sends the trimmed message', async () => {
     const calls: Array<{
       phoneNumber: string;
@@ -382,15 +568,8 @@ describe('direct message API', () => {
     assert.deepEqual(calls, [
       {
         inlineKeyboard: {
-          rows: [
-            [
-              {
-                type: 'repair_order',
-                text: undefined,
-                repairOrderUuid: '11111111-1111-4111-8111-111111111111',
-              },
-            ],
-          ],
+          type: 'details',
+          repairOrderUuid: '11111111-1111-4111-8111-111111111111',
         },
       },
     ]);
@@ -457,7 +636,7 @@ describe('direct message API', () => {
     assert.equal(response.statusCode, 400);
     assert.equal(
       response.json<{ message: string }>().message,
-      'message or localized_messages must be provided',
+      'message, localized_messages, or attachments must be provided',
     );
   });
 

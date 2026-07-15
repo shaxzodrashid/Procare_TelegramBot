@@ -11,6 +11,10 @@ import {
   type CustomerSupportPhotoUpload,
   type CustomerRepairProblemPart,
   type CustomerRepairOrderDetail,
+  type CustomerRepairOrderApprovalRequest,
+  type CustomerRepairOrderApprovalResponse,
+  type CustomerRepairOrderRatingRequest,
+  type CustomerRepairOrderRatingResponse,
   type CustomerRepairOrderList,
   type CustomerRepairOrderListItem,
   type CustomerRepairPayment,
@@ -41,6 +45,7 @@ export class ClientRepairOrderError extends Error {
     public readonly code: ClientRepairOrderFailureCode,
     message: string,
     public readonly status?: number,
+    public readonly location?: string,
   ) {
     super(message);
     this.name = 'ClientRepairOrderError';
@@ -57,10 +62,19 @@ export interface ClientRepairOrderGateway {
     repairOrderId: string,
     request: CustomerSupportCommentRequest,
   ): Promise<CustomerSupportCommentResponse>;
+  submitRepairOrderApproval(
+    repairOrderId: string,
+    request: CustomerRepairOrderApprovalRequest,
+  ): Promise<CustomerRepairOrderApprovalResponse>;
+  submitRepairOrderRating(
+    repairOrderId: string,
+    request: CustomerRepairOrderRatingRequest,
+  ): Promise<CustomerRepairOrderRatingResponse>;
 }
 
 interface ErrorEnvelope {
   message?: string;
+  location?: string;
 }
 
 const PAYMENT_STATUSES = new Set<PaymentStatus>(['unpaid', 'partial', 'paid', 'overpaid']);
@@ -327,9 +341,36 @@ const isCustomerRepairOrderDetail = (value: unknown): value is CustomerRepairOrd
     isNullableIsoUtcTimestamp(value.warranty.warranty_until) &&
     isDocuments(value.documents) &&
     Array.isArray(value.status_history) &&
-    value.status_history.every(isStatusHistoryItem)
+    value.status_history.every(isStatusHistoryItem) &&
+    isRecord(value.initial_problems_approval) &&
+    ['none', 'pending', 'approved', 'rejected'].includes(
+      String(value.initial_problems_approval.status),
+    ) &&
+    typeof value.initial_problems_approval.requires_action === 'boolean' &&
+    isNullableString(value.initial_problems_approval.note)
   );
 };
+
+const isRepairOrderApprovalResponse = (
+  value: unknown,
+): value is CustomerRepairOrderApprovalResponse =>
+  isRecord(value) &&
+  (value.result === 'approved' || value.result === 'rejected') &&
+  isUuid(value.repair_order_id) &&
+  isUuid(value.status_id);
+
+const isRepairOrderRatingResponse = (value: unknown): value is CustomerRepairOrderRatingResponse =>
+  isRecord(value) &&
+  isUuid(value.id) &&
+  isUuid(value.repair_order_id) &&
+  value.source === 'Telegram' &&
+  typeof value.grade === 'number' &&
+  Number.isInteger(value.grade) &&
+  value.grade >= 1 &&
+  value.grade <= 5 &&
+  isNullableString(value.notes) &&
+  isIsoUtcTimestamp(value.created_at) &&
+  isIsoUtcTimestamp(value.updated_at);
 
 const isSupportPhotoUrlSet = (
   value: unknown,
@@ -406,6 +447,22 @@ const summarizePayload = (payload: unknown): unknown => {
       created: payload.created,
       photos_count: payload.comment.photos.length,
       text: summarizeText(payload.comment.text ?? ''),
+    };
+  }
+  if (isRepairOrderApprovalResponse(payload)) {
+    return {
+      type: 'repair_order_approval',
+      repair_order_id: payload.repair_order_id,
+      result: payload.result,
+      status_id: payload.status_id,
+    };
+  }
+  if (isRepairOrderRatingResponse(payload)) {
+    return {
+      type: 'repair_order_rating',
+      repair_order_id: payload.repair_order_id,
+      grade: payload.grade,
+      source: payload.source,
     };
   }
   if (isRecord(payload) && typeof payload.message === 'string') {
@@ -499,6 +556,70 @@ export class HttpClientRepairOrderService implements ClientRepairOrderGateway {
       `/api/v1/repair-orders/register-comment/${encodeURIComponent(repairOrderId)}`,
       form,
       isSupportCommentResponse,
+    );
+  }
+
+  async submitRepairOrderApproval(
+    repairOrderId: string,
+    request: CustomerRepairOrderApprovalRequest,
+  ): Promise<CustomerRepairOrderApprovalResponse> {
+    if (!isUuid(repairOrderId)) {
+      throw new ClientRepairOrderError('invalid_request', 'repairOrderId must be a UUID');
+    }
+    const note = request.note?.trim();
+    if (request.result !== 'approved' && request.result !== 'rejected') {
+      throw new ClientRepairOrderError(
+        'invalid_request',
+        'approval result must be approved or rejected',
+      );
+    }
+    if (request.result === 'approved' && request.note !== undefined) {
+      throw new ClientRepairOrderError(
+        'invalid_request',
+        'approval note is only allowed for rejection',
+      );
+    }
+    if (request.result === 'rejected' && !note) {
+      throw new ClientRepairOrderError('invalid_request', 'rejection note is required');
+    }
+    if (note && note.length > 4_000) {
+      throw new ClientRepairOrderError(
+        'invalid_request',
+        'rejection note must be 4000 characters or fewer',
+      );
+    }
+
+    return this.postJson(
+      `/api/v1/telegram/repair-orders/${encodeURIComponent(repairOrderId)}/approval`,
+      request.result === 'rejected' ? { result: request.result, note } : { result: request.result },
+      isRepairOrderApprovalResponse,
+      false,
+    );
+  }
+
+  async submitRepairOrderRating(
+    repairOrderId: string,
+    request: CustomerRepairOrderRatingRequest,
+  ): Promise<CustomerRepairOrderRatingResponse> {
+    if (!isUuid(repairOrderId)) {
+      throw new ClientRepairOrderError('invalid_request', 'repairOrderId must be a UUID');
+    }
+    if (!Number.isInteger(request.grade) || request.grade < 1 || request.grade > 5) {
+      throw new ClientRepairOrderError('invalid_request', 'grade must be an integer from 1 to 5');
+    }
+    const notes = request.notes?.trim();
+    if (notes && notes.length > 2_000) {
+      throw new ClientRepairOrderError(
+        'invalid_request',
+        'rating notes must be 2000 characters or fewer',
+      );
+    }
+    const query = new URLSearchParams({ repair_order_id: repairOrderId });
+    return this.postJson(
+      `/api/v1/telegram/repair-orders/rating?${query}`,
+      notes === undefined ? { grade: request.grade } : { grade: request.grade, notes },
+      isRepairOrderRatingResponse,
+      true,
     );
   }
 
@@ -660,6 +781,107 @@ export class HttpClientRepairOrderService implements ClientRepairOrderGateway {
       throw new ClientRepairOrderError('maintenance', message, response.status);
     }
     throw new ClientRepairOrderError('unavailable', message, response.status);
+  }
+
+  private async postJson<T>(
+    path: string,
+    body: Record<string, unknown>,
+    validator: (value: unknown) => value is T,
+    retryTransient: boolean,
+  ): Promise<T> {
+    const attempts = retryTransient ? this.options.maxRetries + 1 : 1;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        return await this.postJsonOnce(path, body, validator);
+      } catch (error) {
+        const retryable =
+          error instanceof ClientRepairOrderError &&
+          (error.code === 'maintenance' || error.code === 'unavailable');
+        if (!retryable || attempt === attempts) throw error;
+
+        const delayMs = 250 * 2 ** (attempt - 1);
+        this.logger.warn(
+          `Client repair-order API POST attempt ${attempt} failed; retrying in ${delayMs}ms`,
+          { path, code: error.code, status: error.status },
+        );
+        await (this.options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))))(
+          delayMs,
+        );
+      }
+    }
+    throw new ClientRepairOrderError('unavailable', 'Client repair-order API request failed');
+  }
+
+  private async postJsonOnce<T>(
+    path: string,
+    body: Record<string, unknown>,
+    validator: (value: unknown) => value is T,
+  ): Promise<T> {
+    const authorization = Buffer.from(
+      `${this.options.username}:${this.options.password}`,
+      'utf8',
+    ).toString('base64');
+    this.logger.extra('Client repair-order API request', {
+      method: 'POST',
+      path,
+      timeoutMs: this.options.timeoutMs,
+    });
+
+    let response: Response;
+    try {
+      response = await (this.options.fetchImpl ?? fetch)(`${this.options.baseUrl}${path}`, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          authorization: `Basic ${authorization}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(this.options.timeoutMs),
+      });
+    } catch (error) {
+      this.logger.error(`Client repair-order API network request failed for ${path}`, error);
+      throw new ClientRepairOrderError('unavailable', 'Client repair-order API is unavailable');
+    }
+
+    const payload = (await response.json().catch(() => null)) as ErrorEnvelope | T | null;
+    this.logger.extra('Client repair-order API response', {
+      method: 'POST',
+      path,
+      status: response.status,
+      ok: response.ok,
+      body: summarizePayload(payload),
+    });
+
+    if (response.ok) {
+      if (!validator(payload)) {
+        throw new ClientRepairOrderError(
+          'invalid_response',
+          'Client repair-order API returned invalid data',
+        );
+      }
+      return payload;
+    }
+
+    const message =
+      isRecord(payload) && typeof payload.message === 'string'
+        ? payload.message
+        : `Client repair-order API request failed with status ${response.status}`;
+    const location =
+      isRecord(payload) && typeof payload.location === 'string' ? payload.location : undefined;
+    if (response.status === 400 || response.status === 422) {
+      throw new ClientRepairOrderError('invalid_request', message, response.status, location);
+    }
+    if (response.status === 401) {
+      throw new ClientRepairOrderError('unauthorized', message, response.status, location);
+    }
+    if (response.status === 404) {
+      throw new ClientRepairOrderError('not_found', message, response.status, location);
+    }
+    if (response.status === 503) {
+      throw new ClientRepairOrderError('maintenance', message, response.status, location);
+    }
+    throw new ClientRepairOrderError('unavailable', message, response.status, location);
   }
 }
 

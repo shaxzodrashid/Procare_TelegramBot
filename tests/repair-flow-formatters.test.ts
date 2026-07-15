@@ -279,6 +279,7 @@ describe('client repair-order presentation', () => {
           offer_url: null,
         },
         status_history: [],
+        initial_problems_approval: { status: 'approved', requires_action: false, note: null },
       },
       'uz',
     );
@@ -356,6 +357,7 @@ describe('client repair-order presentation', () => {
             changed_at: '2026-06-14T11:20:00.000Z',
           },
         ],
+        initial_problems_approval: { status: 'approved', requires_action: false, note: null },
       },
       'uz',
     );
@@ -416,6 +418,7 @@ describe('client repair-order presentation', () => {
           offer_url: null,
         },
         status_history: [],
+        initial_problems_approval: { status: 'approved', requires_action: false, note: null },
       },
       'uz',
     );
@@ -474,6 +477,7 @@ describe('client repair-order presentation', () => {
           offer_url: null,
         },
         status_history: [],
+        initial_problems_approval: { status: 'approved', requires_action: false, note: null },
       },
       'ru',
     );

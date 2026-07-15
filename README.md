@@ -257,20 +257,30 @@ same phone number, it sends the message as a Telegram reply to the original supp
 mapping is missing or Telegram no longer accepts the reply target, delivery falls back to a normal
 message.
 
-The optional `inline_keyboard` supports row-based button layouts. Supported button types are:
-`url`, for `http` or `https` links, and `repair_order`, for a Procare repair-order UUID. A
-`repair_order` button edits the Telegram message to show the repair-order details; the edited view
-includes Refresh and Back buttons so the user can return to the original API message. A shorthand
-single repair-order keyboard is also accepted:
+The optional `inline_keyboard` supports generated repair-order actions and custom row-based button
+layouts. Generated `details`, `approval`, and `rating` keyboards accept the trusted internal
+`repair_order_uuid`. Details preserve the exact original message entities and full keyboard for
+Back navigation. Approval uses confirmation, requires a rejection explanation, re-authorizes the
+client-owned order, and submits the decision to CRM. Rating currently shows 1–5 because the CRM
+rating API accepts grades 1 through 5. A generated details keyboard looks like this:
 
 ```json
 {
   "inline_keyboard": {
-    "type": "repair_order",
+    "type": "details",
     "repair_order_uuid": "11111111-1111-4111-8111-111111111111"
   }
 }
 ```
+
+The legacy top-level `repair_order` name remains an alias for `details`. Custom rows may contain URL
+and details/legacy repair-order buttons.
+
+When CRM supplies `crm_comment_id`, `repair_order_uuid`, and `order_number`, the bot persists the
+outbound Telegram message as a durable support-thread anchor. A registered client can use
+Telegram's Reply action on that message even when no support chat is active; the bot validates the
+stored Telegram/user/client mapping, reloads the client-owned order, forwards the reply to CRM, and
+activates only that order's support chat.
 
 It returns `400` for invalid payloads, unresolved variables, or Telegram-rejected rich-text syntax;
 `401` for a missing or invalid bearer token; `404` when no local user matches; `409` when the user is

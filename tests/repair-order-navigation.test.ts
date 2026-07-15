@@ -79,6 +79,7 @@ const detailOrder: CustomerRepairOrderDetail = {
   warranty: { period_months: null, warranty_until: null },
   documents: { checklist_url: null, warranty_document_url: null, offer_url: null },
   status_history: [],
+  initial_problems_approval: { status: 'approved', requires_action: false, note: null },
 };
 
 const createDependencies = (): BotDependencies => ({
@@ -97,6 +98,12 @@ const createDependencies = (): BotDependencies => ({
       return detailOrder;
     },
     async registerClientSupportComment() {
+      throw new Error('not used');
+    },
+    async submitRepairOrderApproval() {
+      throw new Error('not used');
+    },
+    async submitRepairOrderRating() {
       throw new Error('not used');
     },
   },

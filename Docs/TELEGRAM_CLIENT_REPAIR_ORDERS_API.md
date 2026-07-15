@@ -109,6 +109,7 @@ The detail response adds:
 - Legacy order-level warranty expiry metadata
 - Optional checklist, warranty-document, and offer URLs
 - Customer-visible status history
+- Current customer-approval state as `initial_problems_approval`
 
 Unavailable optional values are returned as `null`. Arrays are returned as empty arrays.
 
@@ -231,9 +232,19 @@ Example:
       "total_steps": 7,
       "changed_at": "2026-06-15T08:00:00.000Z"
     }
-  ]
+  ],
+  "initial_problems_approval": {
+    "status": "pending",
+    "requires_action": true,
+    "note": null
+  }
 }
 ```
+
+The bot offers approval controls only while `initial_problems_approval.status` is `pending` and
+`requires_action` is `true`. It reloads this client-owned detail immediately before calling the
+separate approval mutation endpoint. `status` is one of `none`, `pending`, `approved`, or
+`rejected`; `none` is returned when the order has not entered an approval-required status.
 
 `payment_status` is one of `unpaid`, `partial`, `paid`, or `overpaid`.
 

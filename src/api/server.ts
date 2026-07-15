@@ -10,6 +10,7 @@ import type {
   DirectMessageLocalizedMessages,
   DirectMessageDeliveryResult,
   DirectFileDeliveryResult,
+  DirectMessageAttachment,
 } from '../services/bot-notification.service.js';
 import type { TelegramParseMode } from '../utils/telegram-formatting.js';
 import type { Logger } from '../utils/logger.js';
@@ -31,6 +32,7 @@ export interface DirectMessageSender {
     crmCommentId?: string;
     repairOrderUuid?: string;
     orderNumber?: string;
+    attachments?: DirectMessageAttachment[];
   }): Promise<DirectMessageDeliveryResult>;
 }
 
@@ -114,13 +116,14 @@ export const createApiServer = (
       crmCommentId: parsed.crmCommentId,
       repairOrderUuid: parsed.repairOrderUuid,
       orderNumber: parsed.orderNumber,
+      attachments: parsed.attachments,
       ...(parsed.type !== undefined ? { type: parsed.type } : {}),
     });
 
     if (result.status === 'sent') {
       return reply.send({ status: 'sent', message: result.message });
     }
-    if (result.status === 'invalid_message') {
+    if (result.status === 'invalid_message' || result.status === 'invalid_attachments') {
       return reply.status(400).send({
         statusCode: 400,
         error: 'BadRequest',

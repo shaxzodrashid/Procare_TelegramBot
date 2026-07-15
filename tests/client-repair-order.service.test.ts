@@ -136,9 +136,208 @@ const detail = {
       changed_at: '2026-06-15T08:00:00.000Z',
     },
   ],
+  initial_problems_approval: { status: 'pending', requires_action: true, note: null },
 } as const;
 
 describe('HttpClientRepairOrderService', () => {
+  it('submits an approval once with Basic Auth and validates the 201 response', async () => {
+    let requestedUrl = '';
+    let requestedBody = '';
+    let authorization = '';
+    let calls = 0;
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 2,
+        fetchImpl: async (input, init) => {
+          calls += 1;
+          requestedUrl = String(input);
+          requestedBody = String(init?.body);
+          authorization = new Headers(init?.headers).get('authorization') ?? '';
+          return Response.json(
+            {
+              result: 'approved',
+              repair_order_id: detail.id,
+              status_id: '99999999-9999-4999-8999-999999999999',
+            },
+            { status: 201 },
+          );
+        },
+      },
+      logger,
+    );
+
+    const result = await service.submitRepairOrderApproval(detail.id, { result: 'approved' });
+
+    assert.equal(calls, 1);
+    assert.equal(
+      requestedUrl,
+      `http://crm.test/api/v1/telegram/repair-orders/${detail.id}/approval`,
+    );
+    assert.deepEqual(JSON.parse(requestedBody), { result: 'approved' });
+    assert.equal(authorization, `Basic ${Buffer.from('bot:secret').toString('base64')}`);
+    assert.equal(result.result, 'approved');
+  });
+
+  it('trims a rejection note and never retries the non-idempotent approval endpoint', async () => {
+    let calls = 0;
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 2,
+        fetchImpl: async (_input, init) => {
+          calls += 1;
+          if (calls === 1) {
+            assert.deepEqual(JSON.parse(String(init?.body)), {
+              result: 'rejected',
+              note: 'Use an original display.',
+            });
+          }
+          throw new Error('network unavailable');
+        },
+        sleep: async () => assert.fail('approval must not retry'),
+      },
+      logger,
+    );
+
+    await assert.rejects(
+      service.submitRepairOrderApproval(detail.id, {
+        result: 'rejected',
+        note: '  Use an original display.  ',
+      }),
+      (error: unknown) => error instanceof ClientRepairOrderError && error.code === 'unavailable',
+    );
+    assert.equal(calls, 1);
+  });
+
+  it('rejects a blank rejection note before making a request', async () => {
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () => assert.fail('request must not be sent'),
+      },
+      logger,
+    );
+
+    await assert.rejects(
+      service.submitRepairOrderApproval(detail.id, { result: 'rejected', note: '   ' }),
+      (error: unknown) =>
+        error instanceof ClientRepairOrderError && error.code === 'invalid_request',
+    );
+  });
+
+  it('preserves CRM error locations for approval concurrency handling', async () => {
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () =>
+          Response.json(
+            {
+              message: 'Repair order is not awaiting customer approval',
+              location: 'telegram_initial_problems_approval_not_pending',
+            },
+            { status: 400 },
+          ),
+      },
+      logger,
+    );
+
+    await assert.rejects(
+      service.submitRepairOrderApproval(detail.id, { result: 'approved' }),
+      (error: unknown) =>
+        error instanceof ClientRepairOrderError &&
+        error.code === 'invalid_request' &&
+        error.location === 'telegram_initial_problems_approval_not_pending',
+    );
+  });
+
+  it('submits ratings with the UUID query and safely retries a transient failure', async () => {
+    const delays: number[] = [];
+    let calls = 0;
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 2,
+        fetchImpl: async (input, init) => {
+          calls += 1;
+          assert.equal(
+            String(input),
+            `http://crm.test/api/v1/telegram/repair-orders/rating?repair_order_id=${detail.id}`,
+          );
+          assert.deepEqual(JSON.parse(String(init?.body)), { grade: 5 });
+          if (calls === 1) {
+            return Response.json({ message: 'maintenance' }, { status: 503 });
+          }
+          return Response.json({
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            repair_order_id: detail.id,
+            source: 'Telegram',
+            grade: 5,
+            notes: null,
+            created_at: '2026-07-14T08:00:00.000Z',
+            updated_at: '2026-07-14T08:00:00.000Z',
+          });
+        },
+        sleep: async (ms) => {
+          delays.push(ms);
+        },
+      },
+      logger,
+    );
+
+    const result = await service.submitRepairOrderRating(detail.id, { grade: 5 });
+
+    assert.equal(result.grade, 5);
+    assert.equal(calls, 2);
+    assert.deepEqual(delays, [250]);
+  });
+
+  it('rejects malformed rating responses', async () => {
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () =>
+          Response.json({
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            repair_order_id: detail.id,
+            source: 'Telegram',
+            grade: 10,
+            notes: null,
+            created_at: '2026-07-14T08:00:00.000Z',
+            updated_at: '2026-07-14T08:00:00.000Z',
+          }),
+      },
+      logger,
+    );
+
+    await assert.rejects(
+      service.submitRepairOrderRating(detail.id, { grade: 5 }),
+      (error: unknown) =>
+        error instanceof ClientRepairOrderError && error.code === 'invalid_response',
+    );
+  });
+
   it('authenticates and requests a paginated client-owned list', async () => {
     let requestedUrl = '';
     let authorization = '';
@@ -205,9 +404,42 @@ describe('HttpClientRepairOrderService', () => {
     assert.equal(result.status_history[0]?.progress_type, 'linear');
   });
 
+  it('rejects malformed customer approval state in repair-order detail', async () => {
+    const service = new HttpClientRepairOrderService(
+      {
+        baseUrl: 'http://crm.test',
+        username: 'bot',
+        password: 'secret',
+        timeoutMs: 1_000,
+        maxRetries: 0,
+        fetchImpl: async () =>
+          Response.json({
+            ...detail,
+            initial_problems_approval: {
+              status: 'pending',
+              requires_action: 'yes',
+              note: null,
+            },
+          }),
+      },
+      logger,
+    );
+
+    await assert.rejects(
+      service.getClientRepairOrder('client-id', detail.order_number),
+      (error: unknown) =>
+        error instanceof ClientRepairOrderError && error.code === 'invalid_response',
+    );
+  });
+
   it('treats a missing final_problems field as an empty rollout-safe detail state', async () => {
     const detailWithoutFinalProblems: Record<string, unknown> = { ...detail };
     delete detailWithoutFinalProblems.final_problems;
+    detailWithoutFinalProblems.initial_problems_approval = {
+      status: 'none',
+      requires_action: false,
+      note: null,
+    };
     const service = new HttpClientRepairOrderService(
       {
         baseUrl: 'http://crm.test',
@@ -224,6 +456,7 @@ describe('HttpClientRepairOrderService', () => {
 
     assert.equal(result.order_number, '1024');
     assert.equal(result.final_problems, undefined);
+    assert.equal(result.initial_problems_approval.status, 'none');
   });
 
   it('rejects invalid pagination before making a request', async () => {

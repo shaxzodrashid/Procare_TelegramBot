@@ -67,56 +67,85 @@ const detail: CustomerRepairOrderDetail = {
   warranty: { period_months: null, warranty_until: null },
   documents: { checklist_url: null, warranty_document_url: null, offer_url: null },
   status_history: [],
+  initial_problems_approval: { status: 'pending', requires_action: true, note: null },
 };
 
-const createDependencies = (): BotDependencies => ({
-  registrationService: {} as any,
-  repairOrderService: {} as any,
-  clientRepairOrderService: {
-    async listClientRepairOrders() {
-      throw new Error('not used');
+const createDependencies = (
+  order: CustomerRepairOrderDetail = detail,
+): BotDependencies & { approvals: any[]; ratings: any[] } => {
+  const approvals: any[] = [];
+  const ratings: any[] = [];
+  return {
+    registrationService: {} as any,
+    repairOrderService: {} as any,
+    clientRepairOrderService: {
+      async listClientRepairOrders() {
+        throw new Error('not used');
+      },
+      async getClientRepairOrder(clientId: string, orderReference: string) {
+        assert.equal(clientId, 'client-201');
+        assert.equal(orderReference, repairOrderUuid);
+        return order;
+      },
+      async registerClientSupportComment() {
+        throw new Error('not used');
+      },
+      async submitRepairOrderApproval(_repairOrderId: string, request: any) {
+        approvals.push(request);
+        return {
+          result: request.result,
+          repair_order_id: repairOrderUuid,
+          status_id: '99999999-9999-4999-8999-999999999999',
+        };
+      },
+      async submitRepairOrderRating(_repairOrderId: string, request: any) {
+        ratings.push(request);
+        return {
+          id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          repair_order_id: repairOrderUuid,
+          source: 'Telegram' as const,
+          grade: request.grade,
+          notes: null,
+          created_at: '2026-07-14T08:00:00.000Z',
+          updated_at: '2026-07-14T08:00:00.000Z',
+        };
+      },
     },
-    async getClientRepairOrder(clientId: string, orderReference: string) {
-      assert.equal(clientId, 'client-201');
-      assert.equal(orderReference, repairOrderUuid);
-      return detail;
-    },
-    async registerClientSupportComment() {
-      throw new Error('not used');
-    },
-  },
-  unknownClientStore: {} as any,
-  registeredUserStore: {
-    async findByTelegramId(telegramId: string) {
-      if (telegramId !== '700201') return null;
-      return {
-        user: {
-          id: '201',
-          telegram_id: '700201',
-          telegram_username: 'ali',
-          first_name: 'Ali',
-          last_name: 'Valiyev',
-          phone_number: '+998901234567',
-          locale: 'uz' as const,
-        },
-        client: {
-          crm_client_id: 'client-201',
-          customer_code: 'CC-201',
-          status: 'Active',
-          is_active: true,
-        },
-      };
-    },
-  } as any,
-  messageTemplateStore: {} as any,
-  supportMessageStore: {} as any,
-  logger,
-  allowManualPhoneEntry: true,
-  richMessagesEnabled: false,
-});
+    unknownClientStore: {} as any,
+    registeredUserStore: {
+      async findByTelegramId(telegramId: string) {
+        if (telegramId !== '700201') return null;
+        return {
+          user: {
+            id: '201',
+            telegram_id: '700201',
+            telegram_username: 'ali',
+            first_name: 'Ali',
+            last_name: 'Valiyev',
+            phone_number: '+998901234567',
+            locale: 'uz' as const,
+          },
+          client: {
+            crm_client_id: 'client-201',
+            customer_code: 'CC-201',
+            status: 'Active',
+            is_active: true,
+          },
+        };
+      },
+    } as any,
+    messageTemplateStore: {} as any,
+    supportMessageStore: {} as any,
+    logger,
+    allowManualPhoneEntry: true,
+    richMessagesEnabled: false,
+    approvals,
+    ratings,
+  };
+};
 
-const createTestBot = () => {
-  const bot = createBot('fake-token', createDependencies());
+const createTestBot = (dependencies = createDependencies()) => {
+  const bot = createBot('fake-token', dependencies);
   const apiCalls: Array<{ method: string; payload: any }> = [];
 
   bot.botInfo = {
@@ -140,10 +169,15 @@ const createTestBot = () => {
     } as any;
   });
 
-  return { bot, apiCalls };
+  return { bot, apiCalls, dependencies };
 };
 
-const callbackUpdate = (data: string, text: string, entities?: unknown[]) => ({
+const callbackUpdate = (
+  data: string,
+  text: string,
+  entities?: unknown[],
+  inlineKeyboard: any[][] = [[{ text: 'Open order', callback_data: `dm:ro:o:${repairOrderUuid}` }]],
+) => ({
   update_id: Math.floor(Math.random() * 1_000_000),
   callback_query: {
     id: `callback-${data}`,
@@ -158,20 +192,38 @@ const callbackUpdate = (data: string, text: string, entities?: unknown[]) => ({
       text,
       entities,
       reply_markup: {
-        inline_keyboard: [[{ text: 'Open order', callback_data: `dm:ro:o:${repairOrderUuid}` }]],
+        inline_keyboard: inlineKeyboard,
       },
     },
+  },
+});
+
+const textUpdate = (text: string) => ({
+  update_id: Math.floor(Math.random() * 1_000_000),
+  message: {
+    message_id: 888,
+    date: Math.floor(Date.now() / 1000),
+    chat: { id: 700201, type: 'private' as const, first_name: 'Ali' },
+    from: { id: 700201, is_bot: false, first_name: 'Ali' },
+    text,
   },
 });
 
 describe('direct message inline repair-order buttons', () => {
   it('edits the API message to repair-order detail and restores it on back', async () => {
     const { bot, apiCalls } = createTestBot();
+    const originalKeyboard = [
+      [{ text: 'Open order', callback_data: `dm:ro:o:${repairOrderUuid}` }],
+      [{ text: 'CRM', url: 'https://crm.example.test/orders/1024' }],
+    ];
 
     await bot.handleUpdate(
-      callbackUpdate(`dm:ro:o:${repairOrderUuid}`, 'Original API message', [
-        { type: 'bold', offset: 0, length: 8 },
-      ]) as any,
+      callbackUpdate(
+        `dm:ro:o:${repairOrderUuid}`,
+        'Original API message',
+        [{ type: 'bold', offset: 0, length: 8 }],
+        originalKeyboard,
+      ) as any,
     );
 
     const detailEdit = apiCalls.find((call) => call.method === 'editMessageText');
@@ -196,9 +248,255 @@ describe('direct message inline repair-order buttons', () => {
     assert.ok(backEdit);
     assert.equal(backEdit.payload.text, 'Original API message');
     assert.deepEqual(backEdit.payload.entities, [{ type: 'bold', offset: 0, length: 8 }]);
+    assert.deepEqual(backEdit.payload.reply_markup.inline_keyboard, originalKeyboard);
+  });
+
+  it('opens a localized approval action before showing the decision controls and supports Back', async () => {
+    const { bot, apiCalls, dependencies } = createTestBot();
+    const originalKeyboard = [
+      [{ text: 'Approve order', callback_data: `dm:ap:o:${repairOrderUuid}` }],
+      [{ text: 'Details', callback_data: `dm:ro:o:${repairOrderUuid}` }],
+    ];
+
+    await bot.handleUpdate(
+      callbackUpdate(
+        `dm:ap:o:${repairOrderUuid}`,
+        'Template message',
+        undefined,
+        originalKeyboard,
+      ) as any,
+    );
+
+    assert.equal(dependencies.approvals.length, 0);
+    const chooser = apiCalls.find((call) => call.method === 'editMessageReplyMarkup');
+    assert.ok(chooser);
+    assert.deepEqual(
+      chooser.payload.reply_markup.inline_keyboard[0].map(
+        (button: { callback_data: string }) => button.callback_data,
+      ),
+      [`dm:ap:r:${repairOrderUuid}`, `dm:ap:a:${repairOrderUuid}`],
+    );
+
+    apiCalls.length = 0;
+    await bot.handleUpdate(
+      callbackUpdate(
+        `dm:ap:b:${repairOrderUuid}`,
+        'Template message',
+        undefined,
+        chooser.payload.reply_markup.inline_keyboard,
+      ) as any,
+    );
+    const restored = apiCalls.find((call) => call.method === 'editMessageText');
+    assert.ok(restored);
+    assert.equal(restored.payload.text, 'Template message');
+    assert.deepEqual(restored.payload.reply_markup.inline_keyboard, originalKeyboard);
+  });
+
+  it('opens a localized rating action and removes the complete original action keyboard after rating', async () => {
+    const { bot, apiCalls, dependencies } = createTestBot();
+    const originalKeyboard = [
+      [{ text: 'Rate service', callback_data: `dm:rt:o:${repairOrderUuid}` }],
+      [{ text: 'Details', callback_data: `dm:ro:o:${repairOrderUuid}` }],
+    ];
+
+    await bot.handleUpdate(
+      callbackUpdate(
+        `dm:rt:o:${repairOrderUuid}`,
+        'Completed service',
+        undefined,
+        originalKeyboard,
+      ) as any,
+    );
+    const chooser = apiCalls.find((call) => call.method === 'editMessageReplyMarkup');
+    assert.ok(chooser);
     assert.equal(
-      backEdit.payload.reply_markup.inline_keyboard[0][0].callback_data,
-      `dm:ro:o:${repairOrderUuid}`,
+      chooser.payload.reply_markup.inline_keyboard[0][4].callback_data,
+      `dm:rt:5:${repairOrderUuid}`,
+    );
+
+    apiCalls.length = 0;
+    await bot.handleUpdate(
+      callbackUpdate(
+        `dm:rt:5:${repairOrderUuid}`,
+        'Completed service',
+        undefined,
+        chooser.payload.reply_markup.inline_keyboard,
+      ) as any,
+    );
+
+    assert.deepEqual(dependencies.ratings, [{ grade: 5 }]);
+    const completed = apiCalls.find((call) => call.method === 'editMessageText');
+    assert.ok(completed);
+    assert.equal(completed.payload.text, 'Completed service');
+    assert.deepEqual(completed.payload.reply_markup.inline_keyboard, []);
+  });
+
+  it('requires confirmation before sending a non-idempotent approval', async () => {
+    const { bot, apiCalls, dependencies } = createTestBot();
+    const approvalKeyboard = [
+      [
+        { text: 'Reject', callback_data: `dm:ap:r:${repairOrderUuid}` },
+        { text: 'Approve', callback_data: `dm:ap:a:${repairOrderUuid}` },
+      ],
+    ];
+
+    await bot.handleUpdate(
+      callbackUpdate(
+        `dm:ap:a:${repairOrderUuid}`,
+        'Please approve this order',
+        undefined,
+        approvalKeyboard,
+      ) as any,
+    );
+    assert.equal(dependencies.approvals.length, 0);
+    const confirmation = apiCalls.find((call) => call.method === 'editMessageText');
+    assert.ok(confirmation);
+    assert.match(confirmation.payload.text, /#1024/);
+    assert.equal(
+      confirmation.payload.reply_markup.inline_keyboard[0][1].callback_data,
+      `dm:ap:ca:${repairOrderUuid}`,
+    );
+
+    apiCalls.length = 0;
+    await bot.handleUpdate(
+      callbackUpdate(
+        `dm:ap:ca:${repairOrderUuid}`,
+        confirmation.payload.text,
+        undefined,
+        confirmation.payload.reply_markup.inline_keyboard,
+      ) as any,
+    );
+
+    assert.deepEqual(dependencies.approvals, [{ result: 'approved' }]);
+    const completed = apiCalls.find((call) => call.method === 'editMessageText');
+    assert.ok(completed);
+    assert.equal(completed.payload.text, 'Please approve this order');
+    assert.deepEqual(completed.payload.reply_markup.inline_keyboard, []);
+    assert.ok(
+      apiCalls.some(
+        (call) => call.method === 'sendMessage' && /tasdiqlandi/.test(call.payload.text),
+      ),
+    );
+  });
+
+  it('requires and confirms a trimmed rejection explanation', async () => {
+    const { bot, apiCalls, dependencies } = createTestBot();
+    const approvalKeyboard = [
+      [
+        { text: 'Reject', callback_data: `dm:ap:r:${repairOrderUuid}` },
+        { text: 'Approve', callback_data: `dm:ap:a:${repairOrderUuid}` },
+      ],
+    ];
+
+    await bot.handleUpdate(
+      callbackUpdate(
+        `dm:ap:r:${repairOrderUuid}`,
+        'Please review this order',
+        undefined,
+        approvalKeyboard,
+      ) as any,
+    );
+    assert.ok(
+      apiCalls.some((call) => call.method === 'sendMessage' && /nega/.test(call.payload.text)),
+    );
+
+    apiCalls.length = 0;
+    await bot.handleUpdate(textUpdate('  Please use an original display.  ') as any);
+    const review = apiCalls.find((call) => call.method === 'editMessageText');
+    assert.ok(review);
+    assert.match(review.payload.text, /Please use an original display\./);
+    assert.equal(dependencies.approvals.length, 0);
+
+    apiCalls.length = 0;
+    await bot.handleUpdate(
+      callbackUpdate(
+        `dm:ap:cr:${repairOrderUuid}`,
+        review.payload.text,
+        undefined,
+        review.payload.reply_markup.inline_keyboard,
+      ) as any,
+    );
+
+    assert.deepEqual(dependencies.approvals, [
+      { result: 'rejected', note: 'Please use an original display.' },
+    ]);
+    const completed = apiCalls.find((call) => call.method === 'editMessageText');
+    assert.ok(completed);
+    assert.equal(completed.payload.text, 'Please review this order');
+    assert.deepEqual(completed.payload.reply_markup.inline_keyboard, []);
+  });
+
+  it('cancels approval safely and restores the exact original keyboard', async () => {
+    const { bot, apiCalls, dependencies } = createTestBot();
+    const approvalKeyboard = [
+      [
+        { text: 'Reject', callback_data: `dm:ap:r:${repairOrderUuid}` },
+        { text: 'Approve', callback_data: `dm:ap:a:${repairOrderUuid}` },
+      ],
+      [{ text: 'Details', callback_data: `dm:ro:o:${repairOrderUuid}` }],
+    ];
+
+    await bot.handleUpdate(
+      callbackUpdate(
+        `dm:ap:a:${repairOrderUuid}`,
+        'Please decide',
+        undefined,
+        approvalKeyboard,
+      ) as any,
+    );
+    apiCalls.length = 0;
+    await bot.handleUpdate(callbackUpdate(`dm:ap:b:${repairOrderUuid}`, 'Confirmation') as any);
+
+    assert.equal(dependencies.approvals.length, 0);
+    const restored = apiCalls.find((call) => call.method === 'editMessageText');
+    assert.ok(restored);
+    assert.equal(restored.payload.text, 'Please decide');
+    assert.deepEqual(restored.payload.reply_markup.inline_keyboard, approvalKeyboard);
+  });
+
+  it('removes stale approval controls when CRM no longer requires action', async () => {
+    const noLongerPending: CustomerRepairOrderDetail = {
+      ...detail,
+      initial_problems_approval: { status: 'approved', requires_action: false, note: null },
+    };
+    const dependencies = createDependencies(noLongerPending);
+    const { bot, apiCalls } = createTestBot(dependencies);
+
+    await bot.handleUpdate(
+      callbackUpdate(`dm:ap:a:${repairOrderUuid}`, 'Please decide', undefined, [
+        [{ text: 'Approve', callback_data: `dm:ap:a:${repairOrderUuid}` }],
+      ]) as any,
+    );
+
+    assert.equal(dependencies.approvals.length, 0);
+    const completed = apiCalls.find((call) => call.method === 'editMessageText');
+    assert.ok(completed);
+    assert.deepEqual(completed.payload.reply_markup.inline_keyboard, []);
+    assert.ok(
+      apiCalls.some(
+        (call) =>
+          call.method === 'sendMessage' && /endi tasdiqlashni kutmayapti/.test(call.payload.text),
+      ),
+    );
+  });
+
+  it('submits a rating only after re-authorizing the repair order and removes the controls', async () => {
+    const { bot, apiCalls, dependencies } = createTestBot();
+    await bot.handleUpdate(
+      callbackUpdate(`dm:rt:5:${repairOrderUuid}`, 'Rate our service', undefined, [
+        [1, 2, 3, 4, 5].map((grade) => ({
+          text: String(grade),
+          callback_data: `dm:rt:${grade}:${repairOrderUuid}`,
+        })),
+      ]) as any,
+    );
+
+    assert.deepEqual(dependencies.ratings, [{ grade: 5 }]);
+    const keyboardEdit = apiCalls.find((call) => call.method === 'editMessageReplyMarkup');
+    assert.ok(keyboardEdit);
+    assert.deepEqual(keyboardEdit.payload.reply_markup.inline_keyboard, []);
+    assert.ok(
+      apiCalls.some((call) => call.method === 'sendMessage' && /5\/5/.test(call.payload.text)),
     );
   });
 });

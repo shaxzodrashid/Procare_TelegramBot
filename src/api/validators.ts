@@ -1,6 +1,8 @@
 import {
   TELEGRAM_TEXT_LIMIT,
+  type DirectMessageAttachment,
   type DirectMessageInlineKeyboard,
+  type DirectMessageRowsInlineKeyboard,
   type DirectMessageSupportReply,
   type DirectMessageVariables,
   type DirectMessageLocalizedVariables,
@@ -28,6 +30,7 @@ export interface SendMessageRequestBody {
   crm_comment_id?: unknown;
   repair_order_uuid?: unknown;
   order_number?: unknown;
+  attachments?: unknown;
 }
 
 export interface SendFileRequestBody {
@@ -49,6 +52,8 @@ const MAX_INLINE_KEYBOARD_BUTTONS_PER_ROW = 4;
 const MAX_INLINE_KEYBOARD_TEXT_LENGTH = 64;
 const MAX_VARIABLE_COUNT = 100;
 const MAX_VARIABLE_STRING_LENGTH = TELEGRAM_TEXT_LIMIT;
+const MAX_DIRECT_MESSAGE_ATTACHMENTS = 5;
+const MAX_ATTACHMENT_FILE_NAME_LENGTH = 255;
 
 const parseLocalizedMessages = (
   value: unknown,
@@ -230,13 +235,23 @@ const isHttpUrl = (value: string): boolean => {
 const parseKeyboardButton = (
   value: unknown,
 ):
-  | { ok: true; button: DirectMessageInlineKeyboard['rows'][number][number] }
+  | { ok: true; button: DirectMessageRowsInlineKeyboard['rows'][number][number] }
   | { ok: false; message: string } => {
   if (!isRecord(value)) return { ok: false, message: 'inline keyboard buttons must be objects' };
 
-  const { type, text } = value;
-  if (type !== 'url' && type !== 'repair_order') {
-    return { ok: false, message: 'inline keyboard button type must be url or repair_order' };
+  const { type, text, localized_text: localizedText } = value;
+  if (
+    type !== 'url' &&
+    type !== 'repair_order' &&
+    type !== 'details' &&
+    type !== 'approval' &&
+    type !== 'rating'
+  ) {
+    return {
+      ok: false,
+      message:
+        'inline keyboard button type must be url, details, approval, rating, or repair_order',
+    };
   }
 
   if (text !== undefined) {
@@ -261,6 +276,44 @@ const parseKeyboardButton = (
     return { ok: true, button: { type, text: text.trim(), url: value.url } };
   }
 
+  let parsedLocalizedText;
+  if (localizedText !== undefined) {
+    if (!isRecord(localizedText)) {
+      return { ok: false, message: 'inline keyboard localized_text must be an object' };
+    }
+    const { uz, ru, en } = localizedText;
+    for (const [locale, label] of [
+      ['uz', uz],
+      ['ru', ru],
+    ] as const) {
+      if (
+        typeof label !== 'string' ||
+        !label.trim() ||
+        label.trim().length > MAX_INLINE_KEYBOARD_TEXT_LENGTH
+      ) {
+        return {
+          ok: false,
+          message: `inline keyboard localized_text.${locale} must be a non-empty string with at most ${MAX_INLINE_KEYBOARD_TEXT_LENGTH} characters`,
+        };
+      }
+    }
+    if (
+      en !== undefined &&
+      en !== null &&
+      (typeof en !== 'string' || !en.trim() || en.trim().length > MAX_INLINE_KEYBOARD_TEXT_LENGTH)
+    ) {
+      return {
+        ok: false,
+        message: `inline keyboard localized_text.en must be null or a non-empty string with at most ${MAX_INLINE_KEYBOARD_TEXT_LENGTH} characters`,
+      };
+    }
+    parsedLocalizedText = {
+      uz: (uz as string).trim(),
+      ru: (ru as string).trim(),
+      en: typeof en === 'string' ? en.trim() : null,
+    };
+  }
+
   if (typeof value.repair_order_uuid !== 'string' || !UUID_PATTERN.test(value.repair_order_uuid)) {
     return { ok: false, message: 'repair_order buttons require a valid repair_order_uuid' };
   }
@@ -269,7 +322,8 @@ const parseKeyboardButton = (
     ok: true,
     button: {
       type,
-      text: typeof text === 'string' ? text.trim() : undefined,
+      ...(typeof text === 'string' ? { text: text.trim() } : {}),
+      ...(parsedLocalizedText ? { localizedText: parsedLocalizedText } : {}),
       repairOrderUuid: value.repair_order_uuid,
     },
   };
@@ -281,10 +335,43 @@ export const parseInlineKeyboard = (
   if (value === undefined) return { ok: true };
   if (!isRecord(value)) return { ok: false, message: 'inline_keyboard must be a JSON object' };
 
-  if (value.type === 'repair_order') {
-    const parsedButton = parseKeyboardButton(value);
-    if (!parsedButton.ok) return parsedButton;
-    return { ok: true, inlineKeyboard: { rows: [[parsedButton.button]] } };
+  if (
+    value.type === 'repair_order' ||
+    value.type === 'details' ||
+    value.type === 'approval' ||
+    value.type === 'rating'
+  ) {
+    if (
+      typeof value.repair_order_uuid !== 'string' ||
+      !UUID_PATTERN.test(value.repair_order_uuid)
+    ) {
+      return {
+        ok: false,
+        message: `${String(value.type)} keyboards require a valid repair_order_uuid`,
+      };
+    }
+    if (value.text !== undefined) {
+      if (value.type === 'approval' || value.type === 'rating') {
+        return { ok: false, message: `${String(value.type)} keyboards do not accept text` };
+      }
+      if (typeof value.text !== 'string' || value.text.trim().length === 0) {
+        return { ok: false, message: 'details keyboard text must be a non-empty string' };
+      }
+      if (value.text.trim().length > MAX_INLINE_KEYBOARD_TEXT_LENGTH) {
+        return {
+          ok: false,
+          message: `details keyboard text must be ${MAX_INLINE_KEYBOARD_TEXT_LENGTH} characters or fewer`,
+        };
+      }
+    }
+    return {
+      ok: true,
+      inlineKeyboard: {
+        type: value.type === 'repair_order' ? 'details' : value.type,
+        repairOrderUuid: value.repair_order_uuid,
+        ...(typeof value.text === 'string' ? { text: value.text.trim() } : {}),
+      },
+    };
   }
 
   if (!Array.isArray(value.rows)) {
@@ -298,7 +385,7 @@ export const parseInlineKeyboard = (
   }
 
   let buttonCount = 0;
-  const rows: DirectMessageInlineKeyboard['rows'] = [];
+  const rows: DirectMessageRowsInlineKeyboard['rows'] = [];
   for (const rawRow of value.rows) {
     if (
       !Array.isArray(rawRow) ||
@@ -311,7 +398,7 @@ export const parseInlineKeyboard = (
       };
     }
 
-    const row: DirectMessageInlineKeyboard['rows'][number] = [];
+    const row: DirectMessageRowsInlineKeyboard['rows'][number] = [];
     for (const rawButton of rawRow) {
       buttonCount += 1;
       if (buttonCount > MAX_INLINE_KEYBOARD_BUTTONS) {
@@ -353,6 +440,53 @@ export const parseSupportReply = (
   };
 };
 
+export const parseDirectMessageAttachments = (
+  value: unknown,
+): { ok: true; attachments?: DirectMessageAttachment[] } | { ok: false; message: string } => {
+  if (value === undefined) return { ok: true };
+  if (!Array.isArray(value) || value.length === 0) {
+    return { ok: false, message: 'attachments must be a non-empty array when provided' };
+  }
+  if (value.length > MAX_DIRECT_MESSAGE_ATTACHMENTS) {
+    return {
+      ok: false,
+      message: `attachments may contain at most ${MAX_DIRECT_MESSAGE_ATTACHMENTS} photos`,
+    };
+  }
+
+  const attachments: DirectMessageAttachment[] = [];
+  for (const [index, rawAttachment] of value.entries()) {
+    if (!isRecord(rawAttachment) || rawAttachment.type !== 'photo') {
+      return { ok: false, message: `attachments[${index}] must be a photo object` };
+    }
+    if (typeof rawAttachment.url !== 'string' || !isHttpUrl(rawAttachment.url)) {
+      return {
+        ok: false,
+        message: `attachments[${index}].url must be a valid HTTP or HTTPS URL`,
+      };
+    }
+    if (
+      rawAttachment.file_name !== undefined &&
+      (typeof rawAttachment.file_name !== 'string' ||
+        !rawAttachment.file_name.trim() ||
+        rawAttachment.file_name.trim().length > MAX_ATTACHMENT_FILE_NAME_LENGTH)
+    ) {
+      return {
+        ok: false,
+        message: `attachments[${index}].file_name must be a non-empty string with at most ${MAX_ATTACHMENT_FILE_NAME_LENGTH} characters`,
+      };
+    }
+    attachments.push({
+      type: 'photo',
+      url: rawAttachment.url,
+      ...(typeof rawAttachment.file_name === 'string'
+        ? { fileName: rawAttachment.file_name.trim() }
+        : {}),
+    });
+  }
+  return { ok: true, attachments };
+};
+
 export const parseSendMessageBody = (
   body: unknown,
 ):
@@ -370,6 +504,7 @@ export const parseSendMessageBody = (
       crmCommentId?: string;
       repairOrderUuid?: string;
       orderNumber?: string;
+      attachments?: DirectMessageAttachment[];
     }
   | { ok: false; message: string } => {
   if (!isRecord(body)) return { ok: false, message: 'Request body must be a JSON object' };
@@ -387,6 +522,7 @@ export const parseSendMessageBody = (
     crm_comment_id: rawCrmCommentId,
     repair_order_uuid: rawRepairOrderUuid,
     order_number: rawOrderNumber,
+    attachments: rawAttachments,
   } = body as SendMessageRequestBody;
   if (typeof rawPhoneNumber !== 'string') {
     return { ok: false, message: 'phone_number must be a string' };
@@ -465,8 +601,18 @@ export const parseSendMessageBody = (
   const parsedLocalizedMessages = parseLocalizedMessages(rawLocalizedMessages);
   if (!parsedLocalizedMessages.ok) return parsedLocalizedMessages;
 
-  if (!message && !parsedLocalizedMessages.localizedMessages) {
-    return { ok: false, message: 'message or localized_messages must be provided' };
+  const parsedAttachments = parseDirectMessageAttachments(rawAttachments);
+  if (!parsedAttachments.ok) return parsedAttachments;
+
+  if (!message && !parsedLocalizedMessages.localizedMessages && !parsedAttachments.attachments) {
+    return { ok: false, message: 'message, localized_messages, or attachments must be provided' };
+  }
+  if (
+    parsedInlineKeyboard.inlineKeyboard &&
+    !message &&
+    !parsedLocalizedMessages.localizedMessages
+  ) {
+    return { ok: false, message: 'inline_keyboard requires message text' };
   }
 
   return {
@@ -483,6 +629,7 @@ export const parseSendMessageBody = (
     crmCommentId,
     repairOrderUuid,
     orderNumber,
+    attachments: parsedAttachments.attachments,
   };
 };
 

@@ -186,6 +186,41 @@ export interface CustomerRepairOrderDetail extends CustomerRepairOrderListItem {
   warranty: CustomerRepairWarranty;
   documents: CustomerRepairDocuments;
   status_history: CustomerRepairStatusHistoryItem[];
+  initial_problems_approval: CustomerRepairOrderApprovalState;
+}
+
+export interface CustomerRepairOrderApprovalState {
+  status: 'none' | 'pending' | 'approved' | 'rejected';
+  requires_action: boolean;
+  note: string | null;
+}
+
+export interface CustomerRepairOrderApprovalRequest {
+  result: 'approved' | 'rejected';
+  note?: string;
+}
+
+export interface CustomerRepairOrderApprovalResponse {
+  result: 'approved' | 'rejected';
+  repair_order_id: string;
+  status_id: string;
+}
+
+export type CustomerRepairOrderRatingGrade = 1 | 2 | 3 | 4 | 5;
+
+export interface CustomerRepairOrderRatingRequest {
+  grade: CustomerRepairOrderRatingGrade;
+  notes?: string;
+}
+
+export interface CustomerRepairOrderRatingResponse {
+  id: string;
+  repair_order_id: string;
+  source: 'Telegram';
+  grade: CustomerRepairOrderRatingGrade;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export type CustomerSupportReplyTargetType = 'comment' | 'history' | 'audio';

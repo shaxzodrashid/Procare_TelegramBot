@@ -8,6 +8,7 @@ import {
   type CustomerSupportReplyTargetType,
 } from '../../types/client-repair-order.js';
 import type { SupportMessageContentType } from '../../types/support-message.js';
+import type { SupportMessageRecord } from '../../types/support-message.js';
 import { ClientRepairOrderError } from '../../services/client-repair-order.service.js';
 import { isTelegramBlockedError } from '../../services/bot-notification.service.js';
 import { escapeHtml } from '../../utils/html.js';
@@ -39,6 +40,59 @@ const startSupportComment = async (ctx: BotContext): Promise<void> => {
     reply_markup: supportCommentKeyboard(ctx.session.locale),
     parse_mode: 'HTML',
   });
+};
+
+const activateStoredSupportReply = async (
+  ctx: BotContext,
+  dependencies: BotDependencies,
+): Promise<{ handled: false } | { handled: true; target: SupportMessageRecord | null }> => {
+  const repliedMessage = ctx.message?.reply_to_message;
+  if (!repliedMessage || !ctx.chat || !ctx.from || !ctx.session.client) {
+    return { handled: false };
+  }
+
+  const target = await dependencies.supportMessageStore.findByTelegramMessageId(
+    repliedMessage.message_id,
+    String(ctx.chat.id),
+  );
+  if (
+    !target ||
+    target.direction !== 'outbound' ||
+    target.sender_type !== 'employee' ||
+    target.telegram_id !== String(ctx.from.id) ||
+    target.crm_client_id !== ctx.session.client.client_id
+  ) {
+    return { handled: false };
+  }
+
+  try {
+    const order = await dependencies.clientRepairOrderService.getClientRepairOrder(
+      ctx.session.client.client_id,
+      target.order_number,
+    );
+    if (order.id !== target.repair_order_id) {
+      dependencies.logger.error('Stored support reply points to a mismatched repair order', {
+        stored_repair_order_id: target.repair_order_id,
+        returned_repair_order_id: order.id,
+      });
+      return { handled: true, target: null };
+    }
+
+    clearAdminTemplateFlow(ctx.session);
+    clearSettingsFlow(ctx.session);
+    ctx.session.stage = 'support_comment_input';
+    ctx.session.supportComment = {
+      repairOrderId: target.repair_order_id,
+      orderNumber: target.order_number,
+      assignedAdminIds: order.assigned_admins.map((admin) => admin.id),
+      submitting: false,
+    };
+    return { handled: true, target };
+  } catch (error) {
+    dependencies.logger.error('Failed to activate support thread from stored CRM message', error);
+    await ctx.reply(t(ctx.session.locale, 'supportOrderUnavailable'));
+    return { handled: true, target: null };
+  }
 };
 
 const notifyAssignedAdmins = async (
@@ -115,13 +169,13 @@ const submitSupportComment = async (
       contentType: SupportMessageContentType;
     };
   },
-): Promise<void> => {
+): Promise<boolean> => {
   const draft = ctx.session.supportComment;
   if (ctx.session.stage !== 'support_comment_input' || !draft || !ctx.session.client) {
     await ctx.reply(t(ctx.session.locale, 'staleAction'));
-    return;
+    return false;
   }
-  if (draft.submitting) return;
+  if (draft.submitting) return false;
 
   const text = input.text?.trim();
   const photos = input.photos ?? [];
@@ -129,13 +183,13 @@ const submitSupportComment = async (
     await ctx.reply(t(ctx.session.locale, 'supportEmpty'), {
       reply_markup: supportCommentKeyboard(ctx.session.locale),
     });
-    return;
+    return false;
   }
   if (text && text.length > SUPPORT_COMMENT_MAX_LENGTH) {
     await ctx.reply(t(ctx.session.locale, 'supportTooLong'), {
       reply_markup: supportCommentKeyboard(ctx.session.locale),
     });
-    return;
+    return false;
   }
 
   // Trigger chat action to provide visual feedback in chat header
@@ -214,6 +268,7 @@ const submitSupportComment = async (
         )
         .catch(() => undefined);
     }
+    return true;
   } catch (error) {
     draft.submitting = false;
     dependencies.logger.error('Failed to register client support comment', error);
@@ -236,6 +291,7 @@ const submitSupportComment = async (
     await ctx.reply(t(ctx.session.locale, key), {
       reply_markup: supportCommentKeyboard(ctx.session.locale),
     });
+    return false;
   }
 };
 
@@ -406,7 +462,9 @@ export const registerSupportHandlers = (
 
   bot.on('message:photo', async (ctx, next) => {
     if (ctx.session.stage !== 'support_comment_input') {
-      return next();
+      const activation = await activateStoredSupportReply(ctx, dependencies);
+      if (!activation.handled) return next();
+      if (!activation.target) return;
     }
 
     const mediaGroupId = ctx.message.media_group_id;
@@ -495,8 +553,12 @@ export const registerSupportHandlers = (
   });
 
   bot.on('message:text', async (ctx, next) => {
+    let activatedFromReply = false;
     if (ctx.session.stage !== 'support_comment_input') {
-      return next();
+      const activation = await activateStoredSupportReply(ctx, dependencies);
+      if (!activation.handled) return next();
+      if (!activation.target) return;
+      activatedFromReply = true;
     }
 
     if (ctx.message.text === t(ctx.session.locale, 'supportEndChat')) {
@@ -520,7 +582,7 @@ export const registerSupportHandlers = (
       }
     }
 
-    await submitSupportComment(ctx, dependencies, {
+    const sent = await submitSupportComment(ctx, dependencies, {
       text: ctx.message.text,
       replyTargetType,
       replyTargetId,
@@ -531,5 +593,13 @@ export const registerSupportHandlers = (
         contentType: 'text',
       },
     });
+    if (activatedFromReply && sent) {
+      await ctx.reply(
+        t(ctx.session.locale, 'directSupportReplyActivated', {
+          number: ctx.session.supportComment?.orderNumber ?? '',
+        }),
+        { reply_markup: supportCommentKeyboard(ctx.session.locale) },
+      );
+    }
   });
 };
