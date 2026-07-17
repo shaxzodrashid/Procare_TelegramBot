@@ -29,7 +29,7 @@ It normalizes Uzbek phone formats to `+998XXXXXXXXX` before lookup.
 | `message`               | Conditional                          | string         | Legacy one-message fallback. Required only when `localized_messages` is absent.                                                                     |
 | `variables`             | No                                   | object         | Extra primitive placeholder values. Values may be string, number, boolean, or null.                                                                 |
 | `localized_variables`   | No                                   | object         | Extra locale-specific placeholder values. Each key has `uz`, `ru`, and optional `en` text; the Bot selects the recipient's locale before rendering. |
-| `inline_keyboard`       | No                                   | object         | Generated `details`, `approval`, or `rating` actions, or a custom row-based URL/details keyboard.                                                    |
+| `inline_keyboard`       | No                                   | object         | Generated `details`, `approval`, or `rating` actions, or a custom row-based keyboard containing URL, details, approval, or rating buttons.           |
 | `support_reply`         | No                                   | object         | Sends as a reply to a stored client support message when its mapping exists.                                                                        |
 | `type`                  | No                                   | string         | Existing message-template type. An active template of this type takes precedence.                                                                   |
 | `crm_comment_id`        | No                                   | UUID           | CRM comment ID used to persist an outbound support-message mapping.                                                                                 |
@@ -227,10 +227,12 @@ Telegram reply. Missing or rejected reply targets fall back to a normal Telegram
   accepted as an alias for `details`.
 - `layout` is an array of Telegram button rows. CRM controls row placement and button order. Every
   layout button accepts only `type` and visible `text`; `repair_order_uuid` remains at the keyboard
-  level so CRM cannot attach a different order to an individual action.
+  level so CRM cannot attach a different order to an individual action. Each `text` value must be
+  non-empty after trimming and contain at most 64 characters.
 - `details` requires exactly one button whose subtype is `details`. Without `layout`, optional
-  top-level `text` or the bot's localized default is used. Back restores the exact original Telegram
-  text entities and full original inline keyboard.
+  top-level `text` or the bot's localized default is used. Supplied top-level `text` must be
+  non-empty after trimming and contain at most 64 characters. Back restores the exact original
+  Telegram text entities and full original inline keyboard.
 - `approval` requires exactly one `reject` and one `approve` subtype. They may be placed as
   `REJECT | APPROVE`, `APPROVE | REJECT`, or as two one-button rows in either order. Approve requires
   an explicit confirmation.
@@ -242,17 +244,31 @@ Telegram reply. Missing or rejected reply targets fall back to a normal Telegram
   grade. After a successful submission the rating controls are removed. Rating retries are safe
   because CRM upserts the one current Telegram rating for the order.
 - Generated action keyboards always require a valid internal `repair_order_uuid`. A custom `layout`
-  cannot be combined with legacy top-level `text`. Omitting `layout` preserves the bot's default
-  localized action layouts for backward compatibility.
-- `inline_keyboard.rows` must contain 1–8 rows.
-- Each row must contain 1–4 buttons; the whole keyboard may contain at most 32 buttons.
-- `url` buttons require non-empty `text` and an `http` or `https` `url`.
-- Row buttons may use `details` or the legacy `repair_order` name. They require a valid
-  `repair_order_uuid`; `text` is optional and localized by the bot when omitted.
-- CRM template rows may also use `approval` and `rating` plus `localized_text` containing required
-  `uz` and `ru` labels and optional `en`. Those labels open the action flow; approval then shows
-  Reject/Approve and rating then shows grades 1–10 in two rows of five. Both chooser views provide
-  Back navigation.
+  cannot be combined with top-level `text`. Top-level `text` is supported only by `details`;
+  `approval` and `rating` reject it even when `layout` is omitted. Omitting `layout` preserves the
+  bot's default localized action layouts for backward compatibility.
+
+Custom row-based keyboards use `inline_keyboard.rows`:
+
+- `inline_keyboard` must be a JSON object and `rows` must be an array containing 1–8 rows.
+- Every row must be an array containing 1–4 button objects. The complete keyboard may contain at
+  most 32 buttons.
+- Every button requires one of these `type` values: `url`, `details`, `repair_order`, `approval`, or
+  `rating`. `repair_order` is the legacy row-button alias for `details`.
+- Any supplied `text` must be a non-empty string after trimming and contain at most 64 characters.
+- `url` buttons require `text` and an absolute `http` or `https` `url`.
+- Every non-URL button requires a syntactically valid `repair_order_uuid`.
+- `details`, `repair_order`, `approval`, and `rating` buttons may use `text`, `localized_text`, or
+  neither. When neither is supplied, the bot uses its localized default label.
+- When `localized_text` is supplied, it must be an object with required `uz` and `ru` strings.
+  Both must be non-empty after trimming and contain at most 64 characters. `en` is optional and may
+  be `null`; when it is a string, it has the same non-empty and 64-character requirements.
+- A row-based `details` or `repair_order` button opens the repair-order detail view. A row-based
+  `approval` button opens the Reject/Approve chooser, and a row-based `rating` button opens grades
+  1–10 in two rows of five. These flows provide Back navigation.
+- Callers provide semantic button types rather than Telegram `callback_data`. The bot generates
+  callback data internally from the action type and trusted `repair_order_uuid`; callers must not
+  depend on custom callback payloads.
 
 ## Staff comment photo attachments
 
