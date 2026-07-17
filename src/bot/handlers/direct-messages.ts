@@ -1,4 +1,5 @@
 import { InlineKeyboard, type Bot } from 'grammy';
+import type { InlineKeyboardMarkup, MessageEntity } from 'grammy/types';
 
 import { ClientRepairOrderError } from '../../services/client-repair-order.service.js';
 import type {
@@ -6,6 +7,7 @@ import type {
   CustomerRepairOrderRatingGrade,
 } from '../../types/client-repair-order.js';
 import { escapeHtml } from '../../utils/html.js';
+import { telegramFormattedText } from '../../utils/telegram-formatting.js';
 import { formatClientRepairOrderDetail } from '../formatters.js';
 import { safeHttpUrl } from '../helpers.js';
 import { t } from '../messages.js';
@@ -18,7 +20,20 @@ const repairOrderCallbackPattern =
 const approvalCallbackPattern =
   /^dm:ap:(?<action>o|a|r|ca|cr|b):(?<repairOrderUuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?::(?<orderNumber>[0-9]{1,15}))?$/i;
 const ratingCallbackPattern =
-  /^dm:rt:(?<action>o|b|10|[1-9]):(?<repairOrderUuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?::(?<orderNumber>[0-9]{1,15}))?$/i;
+  /^dm:rt:(?<action>o|b|[0-9]{1,2}):(?<repairOrderUuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?::(?<orderNumber>[0-9]{1,15}))?$/i;
+const TELEGRAM_CAPTION_LIMIT = 1024;
+
+interface DirectMessageContent {
+  text: string;
+  entities: MessageEntity[] | undefined;
+  contentType: 'text' | 'caption';
+}
+
+interface DirectMessageEditOptions {
+  parse_mode?: 'HTML';
+  entities?: MessageEntity[];
+  reply_markup?: InlineKeyboardMarkup;
+}
 
 const callbackMessageId = (ctx: BotContext): string | null => {
   const message = ctx.callbackQuery?.message;
@@ -26,10 +41,62 @@ const callbackMessageId = (ctx: BotContext): string | null => {
   return String(message.message_id);
 };
 
-const callbackMessageText = (ctx: BotContext): string | null => {
+const callbackMessageContent = (ctx: BotContext): DirectMessageContent | null => {
   const message = ctx.callbackQuery?.message;
-  if (!message || !('text' in message) || typeof message.text !== 'string') return null;
-  return message.text;
+  if (!message) return null;
+  if ('text' in message && typeof message.text === 'string') {
+    return {
+      text: message.text,
+      entities: message.entities,
+      contentType: 'text',
+    };
+  }
+  if ('caption' in message && typeof message.caption === 'string') {
+    return {
+      text: message.caption,
+      entities: message.caption_entities,
+      contentType: 'caption',
+    };
+  }
+  return null;
+};
+
+const editCurrentDirectMessage = async (
+  ctx: BotContext,
+  text: string,
+  options: DirectMessageEditOptions,
+): Promise<void> => {
+  const content = callbackMessageContent(ctx);
+  if (content?.contentType === 'caption') {
+    const { entities, ...captionOptions } = options;
+    await ctx.editMessageCaption({
+      caption: text,
+      ...captionOptions,
+      ...(entities ? { caption_entities: entities } : {}),
+    });
+    return;
+  }
+  await ctx.editMessageText(text, options);
+};
+
+const editStoredDirectMessage = async (
+  ctx: BotContext,
+  messageId: string,
+  contentType: 'text' | 'caption',
+  text: string,
+  options: DirectMessageEditOptions,
+): Promise<void> => {
+  if (!ctx.chat) return;
+  if (contentType === 'caption') {
+    const { entities, ...captionOptions } = options;
+    await ctx.api.editMessageCaption(ctx.chat.id, Number(messageId), {
+      caption: text,
+      ...captionOptions,
+      ...(entities ? { caption_entities: entities } : {}),
+    });
+    return;
+  }
+  await ctx.api.editMessageText(ctx.chat.id, Number(messageId), text, options);
 };
 
 const approvalActionFromVisibleButton = (ctx: BotContext, callbackAction: 'a' | 'r'): 'a' | 'r' => {
@@ -45,19 +112,17 @@ const approvalActionFromVisibleButton = (ctx: BotContext, callbackAction: 'a' | 
 
 const captureOriginalMessage = (ctx: BotContext, repairOrderUuid: string): string | null => {
   const messageId = callbackMessageId(ctx);
-  const text = callbackMessageText(ctx);
+  const content = callbackMessageContent(ctx);
   const inlineKeyboard = ctx.callbackQuery?.message?.reply_markup?.inline_keyboard;
-  if (!messageId || !text || !inlineKeyboard) return null;
+  if (!messageId || !content || !inlineKeyboard) return null;
 
   ctx.session.directMessageViews ??= {};
   const current = ctx.session.directMessageViews[messageId];
   if (current && current.repairOrderUuid !== repairOrderUuid) return null;
   ctx.session.directMessageViews[messageId] ??= {
-    text,
-    entities:
-      ctx.callbackQuery?.message && 'entities' in ctx.callbackQuery.message
-        ? ctx.callbackQuery.message.entities
-        : undefined,
+    text: content.text,
+    entities: content.entities,
+    contentType: content.contentType,
     repairOrderUuid,
     inlineKeyboard,
   };
@@ -78,7 +143,7 @@ const restoreOriginalMessage = async (ctx: BotContext, repairOrderUuid: string):
   }
 
   clearApprovalFlow(ctx.session);
-  await ctx.editMessageText(view.text, {
+  await editCurrentDirectMessage(ctx, view.text, {
     entities: view.entities,
     reply_markup: { inline_keyboard: view.inlineKeyboard },
   });
@@ -93,7 +158,7 @@ const completeOriginalMessage = async (
   const view = ctx.session.directMessageViews?.[messageId];
   if (!view || view.repairOrderUuid !== repairOrderUuid || !ctx.chat) return false;
 
-  await ctx.api.editMessageText(ctx.chat.id, Number(messageId), view.text, {
+  await editStoredDirectMessage(ctx, messageId, view.contentType, view.text, {
     entities: view.entities,
     reply_markup: { inline_keyboard: [] },
   });
@@ -234,9 +299,13 @@ const showDirectMessageRepairOrder = async (
   shouldCaptureOriginalMessage: boolean,
   knownOrderNumber?: string,
 ): Promise<void> => {
-  if (shouldCaptureOriginalMessage && !captureOriginalMessage(ctx, repairOrderUuid)) {
-    await ctx.reply(t(ctx.session.locale, 'staleAction'));
-    return;
+  let capturedMessageId: string | null = null;
+  if (shouldCaptureOriginalMessage) {
+    capturedMessageId = captureOriginalMessage(ctx, repairOrderUuid);
+    if (!capturedMessageId) {
+      await ctx.reply(t(ctx.session.locale, 'staleAction'));
+      return;
+    }
   }
 
   const order = await loadAuthorizedOrder(ctx, dependencies, repairOrderUuid, knownOrderNumber);
@@ -245,7 +314,15 @@ const showDirectMessageRepairOrder = async (
   try {
     const displayedOrder = await applyStatusNameOverridesToDetail(order, dependencies);
     const content = formatClientRepairOrderDetail(displayedOrder, ctx.session.locale);
-    await ctx.editMessageText(content.fallbackHtml, {
+    if (
+      callbackMessageContent(ctx)?.contentType === 'caption' &&
+      telegramFormattedText(content.fallbackHtml, 'HTML').length > TELEGRAM_CAPTION_LIMIT
+    ) {
+      if (capturedMessageId) delete ctx.session.directMessageViews?.[capturedMessageId];
+      await ctx.reply(content.fallbackHtml, { parse_mode: 'HTML' });
+      return;
+    }
+    await editCurrentDirectMessage(ctx, content.fallbackHtml, {
       parse_mode: 'HTML',
       reply_markup: directMessageRepairOrderKeyboard(ctx.session.locale, repairOrderUuid, {
         mapUrl: safeHttpUrl(displayedOrder.branch?.map_url),
@@ -314,12 +391,6 @@ const showRatingOptions = async (
       .text('4', `dm:rt:4:${repairOrderUuid}`)
       .text('5', `dm:rt:5:${repairOrderUuid}`)
       .row()
-      .text('6', `dm:rt:6:${repairOrderUuid}`)
-      .text('7', `dm:rt:7:${repairOrderUuid}`)
-      .text('8', `dm:rt:8:${repairOrderUuid}`)
-      .text('9', `dm:rt:9:${repairOrderUuid}`)
-      .text('10', `dm:rt:10:${repairOrderUuid}`)
-      .row()
       .text(t(ctx.session.locale, 'back'), `dm:rt:b:${repairOrderUuid}`),
   });
 };
@@ -356,7 +427,8 @@ const startApprovalAction = async (
   };
 
   if (action === 'a') {
-    await ctx.editMessageText(
+    await editCurrentDirectMessage(
+      ctx,
       t(ctx.session.locale, 'directApprovalConfirm', {
         number: escapeHtml(order.order_number),
       }),
@@ -411,28 +483,32 @@ const handleRejectionNote = async (
     flow.orderNumber,
   );
   if (!order) return;
+  const reviewText = t(ctx.session.locale, 'directRejectionReview', {
+    number: escapeHtml(order.order_number),
+    note: escapeHtml(note),
+  });
+  const view = ctx.session.directMessageViews?.[flow.messageId];
+  if (
+    view?.contentType === 'caption' &&
+    telegramFormattedText(reviewText, 'HTML').length > TELEGRAM_CAPTION_LIMIT
+  ) {
+    await ctx.reply(t(ctx.session.locale, 'directRejectionTooLong'));
+    return;
+  }
   flow.note = note;
   flow.mode = 'reject_confirmation';
   delete ctx.session.stage;
 
   if (!ctx.chat) return;
-  await ctx.api.editMessageText(
-    ctx.chat.id,
-    Number(flow.messageId),
-    t(ctx.session.locale, 'directRejectionReview', {
-      number: escapeHtml(order.order_number),
-      note: escapeHtml(note),
-    }),
-    {
-      parse_mode: 'HTML',
-      reply_markup: approvalBackKeyboard(ctx, flow.repairOrderUuid)
-        .text(
-          t(ctx.session.locale, 'directRejectionConfirmButton'),
-          `dm:ap:cr:${flow.repairOrderUuid}`,
-        )
-        .danger(),
-    },
-  );
+  await editStoredDirectMessage(ctx, flow.messageId, view?.contentType ?? 'text', reviewText, {
+    parse_mode: 'HTML',
+    reply_markup: approvalBackKeyboard(ctx, flow.repairOrderUuid)
+      .text(
+        t(ctx.session.locale, 'directRejectionConfirmButton'),
+        `dm:ap:cr:${flow.repairOrderUuid}`,
+      )
+      .danger(),
+  });
 };
 
 const submitApprovalAction = async (
@@ -617,7 +693,7 @@ export const registerDirectMessageHandlers = (
       return;
     }
     const grade = Number(action);
-    if (!Number.isInteger(grade) || grade < 1 || grade > 10) {
+    if (!Number.isInteger(grade) || grade < 1 || grade > 5) {
       await ctx.reply(t(ctx.session.locale, 'staleAction'));
       return;
     }

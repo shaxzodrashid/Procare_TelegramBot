@@ -221,6 +221,37 @@ const callbackUpdate = (
   },
 });
 
+const captionCallbackUpdate = (
+  data: string,
+  caption: string,
+  captionEntities?: unknown[],
+  inlineKeyboard: any[][] = [[{ text: 'Rate', callback_data: `dm:rt:o:${repairOrderUuid}` }]],
+) => ({
+  update_id: Math.floor(Math.random() * 1_000_000),
+  callback_query: {
+    id: `callback-${data}`,
+    from: { id: 700201, is_bot: false, first_name: 'Ali' },
+    chat_instance: 'chat-instance',
+    data,
+    message: {
+      message_id: 777,
+      date: Math.floor(Date.now() / 1000),
+      chat: { id: 700201, type: 'private' as const, first_name: 'Ali' },
+      from: { id: 99999, is_bot: true, first_name: 'TestBot' },
+      document: {
+        file_id: 'document-file-id',
+        file_unique_id: 'document-unique-id',
+        file_name: 'warranty.pdf',
+      },
+      caption,
+      caption_entities: captionEntities,
+      reply_markup: {
+        inline_keyboard: inlineKeyboard,
+      },
+    },
+  },
+});
+
 const textUpdate = (text: string) => ({
   update_id: Math.floor(Math.random() * 1_000_000),
   message: {
@@ -386,23 +417,23 @@ describe('direct message inline repair-order buttons', () => {
     );
     const chooser = apiCalls.find((call) => call.method === 'editMessageReplyMarkup');
     assert.ok(chooser);
-    assert.equal(chooser.payload.reply_markup.inline_keyboard.length, 3);
+    assert.equal(chooser.payload.reply_markup.inline_keyboard.length, 2);
     assert.equal(
-      chooser.payload.reply_markup.inline_keyboard[1][4].callback_data,
-      `dm:rt:10:${repairOrderUuid}`,
+      chooser.payload.reply_markup.inline_keyboard[0][4].callback_data,
+      `dm:rt:5:${repairOrderUuid}`,
     );
 
     apiCalls.length = 0;
     await bot.handleUpdate(
       callbackUpdate(
-        `dm:rt:10:${repairOrderUuid}`,
+        `dm:rt:5:${repairOrderUuid}`,
         'Completed service',
         undefined,
         chooser.payload.reply_markup.inline_keyboard,
       ) as any,
     );
 
-    assert.deepEqual(dependencies.ratings, [{ grade: 10 }]);
+    assert.deepEqual(dependencies.ratings, [{ grade: 5 }]);
     const completed = apiCalls.find((call) => call.method === 'editMessageText');
     assert.ok(completed);
     assert.equal(completed.payload.text, 'Completed service');
@@ -602,24 +633,104 @@ describe('direct message inline repair-order buttons', () => {
   it('submits a rating only after re-authorizing the repair order and removes the controls', async () => {
     const { bot, apiCalls, dependencies } = createTestBot();
     await bot.handleUpdate(
-      callbackUpdate(`dm:rt:10:${repairOrderUuid}`, 'Rate our service', undefined, [
+      callbackUpdate(`dm:rt:5:${repairOrderUuid}`, 'Rate our service', undefined, [
         [1, 2, 3, 4, 5].map((grade) => ({
-          text: String(grade),
-          callback_data: `dm:rt:${grade}:${repairOrderUuid}`,
-        })),
-        [6, 7, 8, 9, 10].map((grade) => ({
           text: String(grade),
           callback_data: `dm:rt:${grade}:${repairOrderUuid}`,
         })),
       ]) as any,
     );
 
-    assert.deepEqual(dependencies.ratings, [{ grade: 10 }]);
+    assert.deepEqual(dependencies.ratings, [{ grade: 5 }]);
     const keyboardEdit = apiCalls.find((call) => call.method === 'editMessageReplyMarkup');
     assert.ok(keyboardEdit);
     assert.deepEqual(keyboardEdit.payload.reply_markup.inline_keyboard, []);
     assert.ok(
-      apiCalls.some((call) => call.method === 'sendMessage' && /10\/10/.test(call.payload.text)),
+      apiCalls.some((call) => call.method === 'sendMessage' && /5\/5/.test(call.payload.text)),
+    );
+  });
+
+  it('keeps rating actions on a document caption and restores that caption after submission', async () => {
+    const { bot, apiCalls, dependencies } = createTestBot();
+    const originalKeyboard = [[{ text: 'Rate', callback_data: `dm:rt:o:${repairOrderUuid}` }]];
+    const captionEntities = [{ type: 'bold', offset: 0, length: 8 }];
+
+    await bot.handleUpdate(
+      captionCallbackUpdate(
+        `dm:rt:o:${repairOrderUuid}`,
+        'Warranty document',
+        captionEntities,
+        originalKeyboard,
+      ) as any,
+    );
+    const chooser = apiCalls.find((call) => call.method === 'editMessageReplyMarkup');
+    assert.ok(chooser);
+
+    apiCalls.length = 0;
+    await bot.handleUpdate(
+      captionCallbackUpdate(
+        `dm:rt:5:${repairOrderUuid}`,
+        'Warranty document',
+        captionEntities,
+        chooser.payload.reply_markup.inline_keyboard,
+      ) as any,
+    );
+
+    assert.deepEqual(dependencies.ratings, [{ grade: 5 }]);
+    const completed = apiCalls.find((call) => call.method === 'editMessageCaption');
+    assert.ok(completed);
+    assert.equal(completed.payload.caption, 'Warranty document');
+    assert.deepEqual(completed.payload.caption_entities, captionEntities);
+    assert.deepEqual(completed.payload.reply_markup.inline_keyboard, []);
+    assert.equal(
+      apiCalls.some((call) => call.method === 'editMessageText'),
+      false,
+    );
+  });
+
+  it('restores the exact document caption and keyboard when rating navigation goes Back', async () => {
+    const { bot, apiCalls } = createTestBot();
+    const originalKeyboard = [[{ text: 'Rate', callback_data: `dm:rt:o:${repairOrderUuid}` }]];
+    const captionEntities = [{ type: 'italic', offset: 0, length: 8 }];
+
+    await bot.handleUpdate(
+      captionCallbackUpdate(
+        `dm:rt:o:${repairOrderUuid}`,
+        'Warranty document',
+        captionEntities,
+        originalKeyboard,
+      ) as any,
+    );
+    const chooser = apiCalls.find((call) => call.method === 'editMessageReplyMarkup');
+    assert.ok(chooser);
+
+    apiCalls.length = 0;
+    await bot.handleUpdate(
+      captionCallbackUpdate(
+        `dm:rt:b:${repairOrderUuid}`,
+        'Warranty document',
+        captionEntities,
+        chooser.payload.reply_markup.inline_keyboard,
+      ) as any,
+    );
+
+    const restored = apiCalls.find((call) => call.method === 'editMessageCaption');
+    assert.ok(restored);
+    assert.equal(restored.payload.caption, 'Warranty document');
+    assert.deepEqual(restored.payload.caption_entities, captionEntities);
+    assert.deepEqual(restored.payload.reply_markup.inline_keyboard, originalKeyboard);
+  });
+
+  it('rejects legacy grades above five without calling CRM', async () => {
+    const { bot, apiCalls, dependencies } = createTestBot();
+
+    await bot.handleUpdate(
+      callbackUpdate(`dm:rt:10:${repairOrderUuid}`, 'Rate our service') as any,
+    );
+
+    assert.deepEqual(dependencies.ratings, []);
+    assert.ok(
+      apiCalls.some((call) => call.method === 'sendMessage' && /eskirgan/.test(call.payload.text)),
     );
   });
 });

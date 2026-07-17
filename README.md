@@ -276,7 +276,7 @@ layouts. Generated `details`, `approval`, and `rating` keyboards accept the trus
 Back navigation. Approval uses confirmation, requires a rejection explanation, re-authorizes the
 client-owned order using the callback's trusted numeric order number (with durable message mapping
 fallback for older deliveries), verifies the returned UUID, and submits the decision to CRM. Rating
-uses grades 1–10 in two rows of five. CRM can control row positions and order through `layout`;
+uses grades 1–5 in one row. CRM can control button order through `layout`;
 labels and Telegram Bot API 9.4 styles remain customizable for non-decision controls. Approval
 decisions are safety-canonicalized: `approve` is always the localized green Approve button and
 `reject` is always the localized red Reject button, regardless of authored label/style fields. For
@@ -310,14 +310,16 @@ old callback was reversed. For example, approval can put Approve above Reject:
 
 Purpose validation is strict: `details` requires one `details` button; `approval` requires exactly
 one `reject` and one `approve` button in one or two rows; `rating` requires each subtype from
-`rating_1` through `rating_10` exactly once in two rows of five. Omitting `layout` keeps the default
+`rating_1` through `rating_5` exactly once in one row of five. Omitting `layout` keeps the default
 localized layout for backward compatibility.
 
 The legacy top-level `repair_order` name remains an alias for `details`. Custom rows may contain URL,
 details, approval, and rating buttons. The complete request can also download and deliver up to five
 HTTP(S) photo or document attachments. Photos are limited to 5 MB each and documents to 20 MB each;
-when a keyboard is present, the bot keeps that keyboard on a separate editable localized text
-message so action navigation and Back restoration remain safe.
+one attachment carries the localized caption and keyboard directly when the caption fits Telegram's
+1,024-character limit. Caption-aware action navigation preserves Back restoration. Media groups keep
+the keyboard on a separate localized text message because Telegram does not support reply markup on
+an album.
 
 When CRM supplies `crm_comment_id`, `repair_order_uuid`, and `order_number`, the bot persists the
 outbound Telegram message as a durable support-thread anchor. A registered client can use

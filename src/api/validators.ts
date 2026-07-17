@@ -295,18 +295,7 @@ const parseLocalizedButtonText = (
   };
 };
 
-const RATING_BUTTON_TYPES = [
-  'rating_1',
-  'rating_2',
-  'rating_3',
-  'rating_4',
-  'rating_5',
-  'rating_6',
-  'rating_7',
-  'rating_8',
-  'rating_9',
-  'rating_10',
-] as const;
+const RATING_BUTTON_TYPES = ['rating_1', 'rating_2', 'rating_3', 'rating_4', 'rating_5'] as const;
 
 const parseActionKeyboardLayout = (
   keyboardType: DirectMessageActionInlineKeyboard['type'],
@@ -333,13 +322,10 @@ const parseActionKeyboardLayout = (
       message: 'approval layout must contain exactly two buttons in one or two rows',
     };
   }
-  if (
-    keyboardType === 'rating' &&
-    (value.length !== 2 || rowLengths.some((length) => length !== 5))
-  ) {
+  if (keyboardType === 'rating' && (value.length !== 1 || rowLengths[0] !== 5)) {
     return {
       ok: false,
-      message: 'rating layout must contain exactly ten buttons in two rows of five',
+      message: 'rating layout must contain exactly five buttons in one row',
     };
   }
 
@@ -436,7 +422,7 @@ const parseActionKeyboardLayout = (
         keyboardType === 'approval'
           ? 'approval layout requires one reject button and one approve button'
           : keyboardType === 'rating'
-            ? 'rating layout requires each type from rating_1 through rating_10 exactly once'
+            ? 'rating layout requires each type from rating_1 through rating_5 exactly once'
             : 'details layout requires one details button',
     };
   }

@@ -83,6 +83,7 @@ export interface BotSession {
     {
       text: string;
       entities?: MessageEntity[];
+      contentType: 'text' | 'caption';
       repairOrderUuid: string;
       inlineKeyboard: InlineKeyboardMarkup['inline_keyboard'];
     }

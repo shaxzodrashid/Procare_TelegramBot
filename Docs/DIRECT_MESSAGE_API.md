@@ -270,8 +270,8 @@ Telegram reply. Missing or rejected reply targets fall back to a normal Telegram
   callback; legacy deliveries resolve it from the exact Telegram message's durable mapping. The bot
   reloads the order through the client-owned detail endpoint, verifies that its UUID still matches
   `repair_order_uuid`, and requires `initial_problems_approval.requires_action = true`.
-- `rating` requires exactly ten subtypes, `rating_1` through `rating_10`, each used once. Its layout
-  must have two rows of five buttons. The subtype—not the visible text—determines the submitted
+- `rating` requires exactly five subtypes, `rating_1` through `rating_5`, each used once. Its layout
+  must have one row of five buttons. The subtype—not the visible text—determines the submitted
   grade. After a successful submission the rating controls are removed. Rating retries are safe
   because CRM upserts the one current Telegram rating for the order.
 - Generated action keyboards always require a valid internal `repair_order_uuid`. A custom `layout`
@@ -302,7 +302,7 @@ Custom row-based keyboards use `inline_keyboard.rows`:
   directly to the `InlineKeyboardButton.style` field introduced in Telegram Bot API 9.4.
 - A row-based `details` or `repair_order` button opens the repair-order detail view. A row-based
   `approval` button opens the Reject/Approve chooser, and a row-based `rating` button opens grades
-  1–10 in two rows of five. These flows provide Back navigation.
+  1–5 in one row. These flows provide Back navigation.
 - Callers provide semantic button types rather than Telegram `callback_data`. The bot generates
   callback data internally from the action type, trusted `repair_order_uuid`, and numeric
   `order_number` when supplied; callers must not depend on custom callback payloads.
@@ -354,10 +354,13 @@ Attachment `type` may be `photo` or `document`. Every URL must be HTTP(S), and e
 must be non-empty. Photos are limited to 5 MB each; documents are limited to 20 MB each. The complete
 request may contain at most five attachments.
 
-With a keyboard, attachments are sent first and the localized editable text message carries the
-keyboard so details/approval/rating navigation can safely edit and restore it. Without a keyboard, a
-single attachment may carry a rendered caption when the text fits Telegram's 1,024-character caption
-limit; otherwise the bot sends the text separately. Multiple photos use a Telegram media group.
+When there is exactly one attachment and the rendered text fits Telegram's 1,024-character caption
+limit, that photo or document is the direct message: it carries both the caption and inline keyboard.
+Caption-aware action navigation edits and restores the media caption safely; an order-detail view
+that exceeds the caption limit is sent as an additional text reply while the original attachment
+stays intact. If the original rendered caption is too long, the text is sent separately. Multiple
+photos use a Telegram media group and keep any inline keyboard on a separate text message because
+Telegram media groups do not accept reply markup.
 Documents or mixed attachment types are delivered in request order. The successful API response
 still returns the exact locale-selected text sent by the bot.
 

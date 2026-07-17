@@ -493,10 +493,6 @@ describe('BotDirectMessageService', () => {
           text: String(grade),
           callback_data: `dm:rt:${grade}:${repairOrderUuid}`,
         })),
-        [6, 7, 8, 9, 10].map((grade) => ({
-          text: String(grade),
-          callback_data: `dm:rt:${grade}:${repairOrderUuid}`,
-        })),
       ],
     );
   });
@@ -535,7 +531,7 @@ describe('BotDirectMessageService', () => {
       {
         type: 'rating',
         repairOrderUuid,
-        layout: [ratingButtons([1, 2, 3, 4, 5]), ratingButtons([6, 7, 8, 9, 10])],
+        layout: [ratingButtons([1, 2, 3, 4, 5])],
       },
       'uz',
     );
@@ -556,12 +552,12 @@ describe('BotDirectMessageService', () => {
         },
       ],
     ]);
-    assert.equal(rating?.inline_keyboard.length, 2);
+    assert.equal(rating?.inline_keyboard.length, 1);
     assert.deepEqual(
       rating?.inline_keyboard
         .flat()
         .map((button) => ('callback_data' in button ? button.callback_data : undefined)),
-      Array.from({ length: 10 }, (_, index) => `dm:rt:${index + 1}:${repairOrderUuid}`),
+      Array.from({ length: 5 }, (_, index) => `dm:rt:${index + 1}:${repairOrderUuid}`),
     );
   });
 
@@ -619,7 +615,7 @@ describe('BotDirectMessageService', () => {
     ]);
   });
 
-  it('downloads staff photos before delivery and keeps the keyboard on an editable text message', async () => {
+  it('delivers one staff photo as the captioned interactive message', async () => {
     const store = new MemoryTemplateStore(null);
     const users = new MemoryRegisteredUserLookup(directMessageUser());
     const { telegram, calls } = createTelegramDouble();
@@ -644,10 +640,11 @@ describe('BotDirectMessageService', () => {
     assert.deepEqual(result, { status: 'sent', message: 'Please approve' });
     assert.deepEqual(
       calls.map((call) => call.method),
-      ['sendPhoto', 'sendMessage'],
+      ['sendPhoto'],
     );
-    assert.equal((calls[0]?.options as { caption?: string }).caption, undefined);
-    assert.ok((calls[1]?.options as { reply_markup?: unknown }).reply_markup);
+    assert.equal((calls[0]?.options as { caption?: string }).caption, 'Please approve');
+    assert.equal((calls[0]?.options as { parse_mode?: string }).parse_mode, 'HTML');
+    assert.ok((calls[0]?.options as { reply_markup?: unknown }).reply_markup);
   });
 
   it('sends multiple staff photos as a media group before the keyboard message', async () => {
@@ -683,7 +680,7 @@ describe('BotDirectMessageService', () => {
     assert.ok((calls[1]?.options as { reply_markup?: unknown }).reply_markup);
   });
 
-  it('downloads a PDF document and keeps localized keyboard actions on an editable text message', async () => {
+  it('delivers one PDF as the localized captioned interactive message', async () => {
     const store = new MemoryTemplateStore(
       template({
         template_type: 'warranty',
@@ -740,12 +737,12 @@ describe('BotDirectMessageService', () => {
     assert.deepEqual(result, { status: 'sent', message: 'Гарантийный документ' });
     assert.deepEqual(
       calls.map((call) => call.method),
-      ['sendDocument', 'sendMessage'],
+      ['sendDocument'],
     );
     assert.equal(calls[0]?.text, 'warranty.pdf');
-    assert.equal(calls[1]?.text, 'Гарантийный документ');
+    assert.equal((calls[0]?.options as { caption?: string }).caption, 'Гарантийный документ');
     assert.deepEqual(
-      (calls[1]?.options as { reply_markup?: InlineKeyboard }).reply_markup?.inline_keyboard,
+      (calls[0]?.options as { reply_markup?: InlineKeyboard }).reply_markup?.inline_keyboard,
       [
         [
           {

@@ -367,7 +367,7 @@ const isRepairOrderRatingResponse = (value: unknown): value is CustomerRepairOrd
   typeof value.grade === 'number' &&
   Number.isInteger(value.grade) &&
   value.grade >= 1 &&
-  value.grade <= 10 &&
+  value.grade <= 5 &&
   isNullableString(value.notes) &&
   isIsoUtcTimestamp(value.created_at) &&
   isIsoUtcTimestamp(value.updated_at);
@@ -604,8 +604,8 @@ export class HttpClientRepairOrderService implements ClientRepairOrderGateway {
     if (!isUuid(repairOrderId)) {
       throw new ClientRepairOrderError('invalid_request', 'repairOrderId must be a UUID');
     }
-    if (!Number.isInteger(request.grade) || request.grade < 1 || request.grade > 10) {
-      throw new ClientRepairOrderError('invalid_request', 'grade must be an integer from 1 to 10');
+    if (!Number.isInteger(request.grade) || request.grade < 1 || request.grade > 5) {
+      throw new ClientRepairOrderError('invalid_request', 'grade must be an integer from 1 to 5');
     }
     const notes = request.notes?.trim();
     if (notes && notes.length > 2_000) {

@@ -152,7 +152,7 @@ describe('direct message API', () => {
       },
     });
     const repairOrderUuid = '11111111-1111-4111-8111-111111111111';
-    const ratingButtons = Array.from({ length: 10 }, (_, index) => ({
+    const ratingButtons = Array.from({ length: 5 }, (_, index) => ({
       type: `rating_${index + 1}`,
       text: String(index + 1),
     }));
@@ -170,7 +170,7 @@ describe('direct message API', () => {
       {
         type: 'rating',
         repair_order_uuid: repairOrderUuid,
-        layout: [ratingButtons.slice(0, 5), ratingButtons.slice(5)],
+        layout: [ratingButtons],
       },
     ];
 
@@ -300,12 +300,19 @@ describe('direct message API', () => {
         keyboard: {
           type: 'rating',
           repair_order_uuid: repairOrderUuid,
+          layout: [[1, 2, 3, 4].map((grade) => ({ type: `rating_${grade}`, text: String(grade) }))],
+        },
+        message: 'rating layout must contain exactly five buttons in one row',
+      },
+      {
+        keyboard: {
+          type: 'rating',
+          repair_order_uuid: repairOrderUuid,
           layout: [
-            [1, 2, 3, 4, 5].map((grade) => ({ type: `rating_${grade}`, text: String(grade) })),
-            [6, 7, 8, 9].map((grade) => ({ type: `rating_${grade}`, text: String(grade) })),
+            [1, 2, 3, 4, 6].map((grade) => ({ type: `rating_${grade}`, text: String(grade) })),
           ],
         },
-        message: 'rating layout must contain exactly ten buttons in two rows of five',
+        message: 'rating layout contains an incompatible button type',
       },
     ];
 

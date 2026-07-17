@@ -128,12 +128,7 @@ export type DirectMessageRatingButtonType =
   | 'rating_2'
   | 'rating_3'
   | 'rating_4'
-  | 'rating_5'
-  | 'rating_6'
-  | 'rating_7'
-  | 'rating_8'
-  | 'rating_9'
-  | 'rating_10';
+  | 'rating_5';
 
 export type DirectMessageActionButtonType =
   | 'details'
@@ -561,7 +556,7 @@ export class BotDirectMessageService {
       Boolean(params.messageText) &&
       telegramFormattedText(params.messageText, params.parseMode).length <= TELEGRAM_CAPTION_LIMIT;
     if (params.attachments.length === 1) {
-      const useAttachmentCaption = captionFits && !params.replyMarkup;
+      const useAttachmentCaption = captionFits;
       const attachment = params.attachments[0]!;
       const mediaMessage =
         attachment.type === 'document'
@@ -569,12 +564,14 @@ export class BotDirectMessageService {
               ...(useAttachmentCaption
                 ? { caption: params.messageText, parse_mode: params.parseMode }
                 : {}),
+              ...(params.replyMarkup ? { reply_markup: params.replyMarkup } : {}),
               ...(replyParameters ? { reply_parameters: replyParameters } : {}),
             })
           : await this.telegram.sendPhoto(params.chatId, attachment.file, {
               ...(useAttachmentCaption
                 ? { caption: params.messageText, parse_mode: params.parseMode }
                 : {}),
+              ...(params.replyMarkup ? { reply_markup: params.replyMarkup } : {}),
               ...(replyParameters ? { reply_parameters: replyParameters } : {}),
             });
       if (!params.messageText || useAttachmentCaption) return mediaMessage;
@@ -973,8 +970,7 @@ const appendDefaultRatingLayout = (
   orderNumber?: string,
 ): InlineKeyboard => {
   const suffix = callbackOrderNumberSuffix(orderNumber);
-  for (let grade = 1; grade <= 10; grade += 1) {
-    if (grade === 6) markup.row();
+  for (let grade = 1; grade <= 5; grade += 1) {
     markup.text(String(grade), `dm:rt:${grade}:${repairOrderUuid}${suffix}`);
   }
   return markup;
