@@ -3,7 +3,9 @@ import {
   type DirectMessageActionButton,
   type DirectMessageActionInlineKeyboard,
   type DirectMessageAttachment,
+  type DirectMessageButtonStyle,
   type DirectMessageInlineKeyboard,
+  type DirectMessageLocalizedButtonText,
   type DirectMessageRowsInlineKeyboard,
   type DirectMessageSupportReply,
   type DirectMessageVariables,
@@ -56,6 +58,7 @@ const MAX_VARIABLE_COUNT = 100;
 const MAX_VARIABLE_STRING_LENGTH = TELEGRAM_TEXT_LIMIT;
 const MAX_DIRECT_MESSAGE_ATTACHMENTS = 5;
 const MAX_ATTACHMENT_FILE_NAME_LENGTH = 255;
+const DIRECT_MESSAGE_BUTTON_STYLES = ['danger', 'success', 'primary'] as const;
 
 const parseLocalizedMessages = (
   value: unknown,
@@ -234,6 +237,64 @@ const isHttpUrl = (value: string): boolean => {
   }
 };
 
+const parseButtonStyle = (
+  value: unknown,
+  field: string,
+): { ok: true; style?: DirectMessageButtonStyle } | { ok: false; message: string } => {
+  if (value === undefined) return { ok: true };
+  if (
+    typeof value !== 'string' ||
+    !DIRECT_MESSAGE_BUTTON_STYLES.includes(value as DirectMessageButtonStyle)
+  ) {
+    return { ok: false, message: `${field} must be danger, success, or primary` };
+  }
+  return { ok: true, style: value as DirectMessageButtonStyle };
+};
+
+const parseLocalizedButtonText = (
+  value: unknown,
+  field: string,
+):
+  | { ok: true; localizedText?: DirectMessageLocalizedButtonText }
+  | { ok: false; message: string } => {
+  if (value === undefined) return { ok: true };
+  if (!isRecord(value)) return { ok: false, message: `${field} must be an object` };
+  const { uz, ru, en } = value;
+  for (const [locale, label] of [
+    ['uz', uz],
+    ['ru', ru],
+  ] as const) {
+    if (
+      typeof label !== 'string' ||
+      !label.trim() ||
+      label.trim().length > MAX_INLINE_KEYBOARD_TEXT_LENGTH
+    ) {
+      return {
+        ok: false,
+        message: `${field}.${locale} must be a non-empty string with at most ${MAX_INLINE_KEYBOARD_TEXT_LENGTH} characters`,
+      };
+    }
+  }
+  if (
+    en !== undefined &&
+    en !== null &&
+    (typeof en !== 'string' || !en.trim() || en.trim().length > MAX_INLINE_KEYBOARD_TEXT_LENGTH)
+  ) {
+    return {
+      ok: false,
+      message: `${field}.en must be null or a non-empty string with at most ${MAX_INLINE_KEYBOARD_TEXT_LENGTH} characters`,
+    };
+  }
+  return {
+    ok: true,
+    localizedText: {
+      uz: (uz as string).trim(),
+      ru: (ru as string).trim(),
+      en: typeof en === 'string' ? en.trim() : null,
+    },
+  };
+};
+
 const RATING_BUTTON_TYPES = [
   'rating_1',
   'rating_2',
@@ -301,12 +362,14 @@ const parseActionKeyboardLayout = (
         return { ok: false, message: 'inline_keyboard.layout buttons must be objects' };
       }
       const unsupportedFields = Object.keys(rawButton).filter(
-        (field) => field !== 'type' && field !== 'text',
+        (field) =>
+          field !== 'type' && field !== 'text' && field !== 'localized_text' && field !== 'style',
       );
       if (unsupportedFields.length > 0) {
         return {
           ok: false,
-          message: 'inline_keyboard.layout buttons accept only type and text',
+          message:
+            'inline_keyboard.layout buttons accept only type, text, localized_text, and style',
         };
       }
       if (typeof rawButton.type !== 'string' || !allowedTypes.has(rawButton.type)) {
@@ -315,21 +378,44 @@ const parseActionKeyboardLayout = (
           message: `${keyboardType} layout contains an incompatible button type`,
         };
       }
-      if (typeof rawButton.text !== 'string' || !rawButton.text.trim()) {
+      if (
+        rawButton.text !== undefined &&
+        (typeof rawButton.text !== 'string' || !rawButton.text.trim())
+      ) {
         return {
           ok: false,
           message: 'inline_keyboard.layout button text must be a non-empty string',
         };
       }
-      const text = rawButton.text.trim();
-      if (text.length > MAX_INLINE_KEYBOARD_TEXT_LENGTH) {
+      const text = typeof rawButton.text === 'string' ? rawButton.text.trim() : undefined;
+      if (text && text.length > MAX_INLINE_KEYBOARD_TEXT_LENGTH) {
         return {
           ok: false,
           message: `inline_keyboard.layout button text must be ${MAX_INLINE_KEYBOARD_TEXT_LENGTH} characters or fewer`,
         };
       }
+      const parsedLocalizedText = parseLocalizedButtonText(
+        rawButton.localized_text,
+        'inline_keyboard.layout button localized_text',
+      );
+      if (!parsedLocalizedText.ok) return parsedLocalizedText;
+      if (!text && !parsedLocalizedText.localizedText) {
+        return {
+          ok: false,
+          message: 'inline_keyboard.layout buttons require text or localized_text',
+        };
+      }
+      const parsedStyle = parseButtonStyle(rawButton.style, 'inline_keyboard.layout button style');
+      if (!parsedStyle.ok) return parsedStyle;
       buttonTypes.push(rawButton.type);
-      row.push({ type: rawButton.type as DirectMessageActionButton['type'], text });
+      row.push({
+        type: rawButton.type as DirectMessageActionButton['type'],
+        ...(text ? { text } : {}),
+        ...(parsedLocalizedText.localizedText
+          ? { localizedText: parsedLocalizedText.localizedText }
+          : {}),
+        ...(parsedStyle.style ? { style: parsedStyle.style } : {}),
+      });
     }
     layout.push(row);
   }
@@ -392,51 +478,32 @@ const parseKeyboardButton = (
     }
   }
 
+  const parsedLocalizedText = parseLocalizedButtonText(
+    localizedText,
+    'inline keyboard localized_text',
+  );
+  if (!parsedLocalizedText.ok) return parsedLocalizedText;
+  const parsedStyle = parseButtonStyle(value.style, 'inline keyboard button style');
+  if (!parsedStyle.ok) return parsedStyle;
+
   if (type === 'url') {
-    if (typeof text !== 'string' || text.trim().length === 0) {
-      return { ok: false, message: 'url buttons require text' };
+    if (typeof text !== 'string' && !parsedLocalizedText.localizedText) {
+      return { ok: false, message: 'url buttons require text or localized_text' };
     }
     if (typeof value.url !== 'string' || !isHttpUrl(value.url)) {
       return { ok: false, message: 'url buttons require an http or https url' };
     }
-    return { ok: true, button: { type, text: text.trim(), url: value.url } };
-  }
-
-  let parsedLocalizedText;
-  if (localizedText !== undefined) {
-    if (!isRecord(localizedText)) {
-      return { ok: false, message: 'inline keyboard localized_text must be an object' };
-    }
-    const { uz, ru, en } = localizedText;
-    for (const [locale, label] of [
-      ['uz', uz],
-      ['ru', ru],
-    ] as const) {
-      if (
-        typeof label !== 'string' ||
-        !label.trim() ||
-        label.trim().length > MAX_INLINE_KEYBOARD_TEXT_LENGTH
-      ) {
-        return {
-          ok: false,
-          message: `inline keyboard localized_text.${locale} must be a non-empty string with at most ${MAX_INLINE_KEYBOARD_TEXT_LENGTH} characters`,
-        };
-      }
-    }
-    if (
-      en !== undefined &&
-      en !== null &&
-      (typeof en !== 'string' || !en.trim() || en.trim().length > MAX_INLINE_KEYBOARD_TEXT_LENGTH)
-    ) {
-      return {
-        ok: false,
-        message: `inline keyboard localized_text.en must be null or a non-empty string with at most ${MAX_INLINE_KEYBOARD_TEXT_LENGTH} characters`,
-      };
-    }
-    parsedLocalizedText = {
-      uz: (uz as string).trim(),
-      ru: (ru as string).trim(),
-      en: typeof en === 'string' ? en.trim() : null,
+    return {
+      ok: true,
+      button: {
+        type,
+        ...(typeof text === 'string' ? { text: text.trim() } : {}),
+        ...(parsedLocalizedText.localizedText
+          ? { localizedText: parsedLocalizedText.localizedText }
+          : {}),
+        ...(parsedStyle.style ? { style: parsedStyle.style } : {}),
+        url: value.url,
+      },
     };
   }
 
@@ -449,7 +516,10 @@ const parseKeyboardButton = (
     button: {
       type,
       ...(typeof text === 'string' ? { text: text.trim() } : {}),
-      ...(parsedLocalizedText ? { localizedText: parsedLocalizedText } : {}),
+      ...(parsedLocalizedText.localizedText
+        ? { localizedText: parsedLocalizedText.localizedText }
+        : {}),
+      ...(parsedStyle.style ? { style: parsedStyle.style } : {}),
       repairOrderUuid: value.repair_order_uuid,
     },
   };
@@ -479,16 +549,33 @@ export const parseInlineKeyboard = (
     }
     const parsedLayout = parseActionKeyboardLayout(keyboardType, value.layout);
     if (!parsedLayout.ok) return parsedLayout;
-    if (parsedLayout.layout && value.text !== undefined) {
+    const parsedLocalizedText = parseLocalizedButtonText(
+      value.localized_text,
+      'details keyboard localized_text',
+    );
+    if (!parsedLocalizedText.ok) return parsedLocalizedText;
+    const parsedStyle = parseButtonStyle(value.style, 'details keyboard style');
+    if (!parsedStyle.ok) return parsedStyle;
+    if (
+      parsedLayout.layout &&
+      (value.text !== undefined || value.localized_text !== undefined || value.style !== undefined)
+    ) {
       return {
         ok: false,
-        message: 'generated keyboards cannot combine layout with top-level text',
+        message:
+          'generated keyboards cannot combine layout with top-level text, localized_text, or style',
+      };
+    }
+    if (
+      (value.type === 'approval' || value.type === 'rating') &&
+      (value.text !== undefined || value.localized_text !== undefined || value.style !== undefined)
+    ) {
+      return {
+        ok: false,
+        message: `${String(value.type)} keyboards accept button presentation only through layout`,
       };
     }
     if (value.text !== undefined) {
-      if (value.type === 'approval' || value.type === 'rating') {
-        return { ok: false, message: `${String(value.type)} keyboards do not accept text` };
-      }
       if (typeof value.text !== 'string' || value.text.trim().length === 0) {
         return { ok: false, message: 'details keyboard text must be a non-empty string' };
       }
@@ -505,6 +592,10 @@ export const parseInlineKeyboard = (
         type: keyboardType,
         repairOrderUuid: value.repair_order_uuid,
         ...(typeof value.text === 'string' ? { text: value.text.trim() } : {}),
+        ...(parsedLocalizedText.localizedText
+          ? { localizedText: parsedLocalizedText.localizedText }
+          : {}),
+        ...(parsedStyle.style ? { style: parsedStyle.style } : {}),
         ...(parsedLayout.layout ? { layout: parsedLayout.layout } : {}),
       },
     };
@@ -586,14 +677,20 @@ export const parseDirectMessageAttachments = (
   if (value.length > MAX_DIRECT_MESSAGE_ATTACHMENTS) {
     return {
       ok: false,
-      message: `attachments may contain at most ${MAX_DIRECT_MESSAGE_ATTACHMENTS} photos`,
+      message: `attachments may contain at most ${MAX_DIRECT_MESSAGE_ATTACHMENTS} files`,
     };
   }
 
   const attachments: DirectMessageAttachment[] = [];
   for (const [index, rawAttachment] of value.entries()) {
-    if (!isRecord(rawAttachment) || rawAttachment.type !== 'photo') {
-      return { ok: false, message: `attachments[${index}] must be a photo object` };
+    if (
+      !isRecord(rawAttachment) ||
+      (rawAttachment.type !== 'photo' && rawAttachment.type !== 'document')
+    ) {
+      return {
+        ok: false,
+        message: `attachments[${index}] must have type photo or document`,
+      };
     }
     if (typeof rawAttachment.url !== 'string' || !isHttpUrl(rawAttachment.url)) {
       return {
@@ -613,7 +710,7 @@ export const parseDirectMessageAttachments = (
       };
     }
     attachments.push({
-      type: 'photo',
+      type: rawAttachment.type,
       url: rawAttachment.url,
       ...(typeof rawAttachment.file_name === 'string'
         ? { fileName: rawAttachment.file_name.trim() }

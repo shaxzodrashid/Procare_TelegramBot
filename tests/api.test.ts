@@ -106,7 +106,12 @@ describe('direct message API', () => {
     const repairOrderUuid = '11111111-1111-4111-8111-111111111111';
 
     for (const inlineKeyboard of [
-      { type: 'details', repair_order_uuid: repairOrderUuid, text: 'Open details' },
+      {
+        type: 'details',
+        repair_order_uuid: repairOrderUuid,
+        localized_text: { uz: 'Batafsil', ru: 'Подробнее' },
+        style: 'primary',
+      },
       { type: 'approval', repair_order_uuid: repairOrderUuid },
       { type: 'rating', repair_order_uuid: repairOrderUuid },
     ]) {
@@ -125,7 +130,12 @@ describe('direct message API', () => {
     await app.close();
 
     assert.deepEqual(keyboards, [
-      { type: 'details', repairOrderUuid, text: 'Open details' },
+      {
+        type: 'details',
+        repairOrderUuid,
+        localizedText: { uz: 'Batafsil', ru: 'Подробнее', en: null },
+        style: 'primary',
+      },
       { type: 'approval', repairOrderUuid },
       { type: 'rating', repairOrderUuid },
     ]);
@@ -186,6 +196,68 @@ describe('direct message API', () => {
         repairOrderUuid: repair_order_uuid,
       })),
     );
+  });
+
+  it('accepts localized and styled buttons in generated action layouts', async () => {
+    let keyboard: unknown;
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(params) {
+          keyboard = params.inlineKeyboard;
+          return { status: 'sent' };
+        },
+      },
+    });
+    const repairOrderUuid = '11111111-1111-4111-8111-111111111111';
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Approval',
+        inline_keyboard: {
+          type: 'approval',
+          repair_order_uuid: repairOrderUuid,
+          layout: [
+            [
+              {
+                type: 'reject',
+                localized_text: { uz: 'Rad etish', ru: 'Отклонить' },
+                style: 'danger',
+              },
+              {
+                type: 'approve',
+                localized_text: { uz: 'Tasdiqlash', ru: 'Одобрить' },
+                style: 'success',
+              },
+            ],
+          ],
+        },
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(keyboard, {
+      type: 'approval',
+      repairOrderUuid,
+      layout: [
+        [
+          {
+            type: 'reject',
+            localizedText: { uz: 'Rad etish', ru: 'Отклонить', en: null },
+            style: 'danger',
+          },
+          {
+            type: 'approve',
+            localizedText: { uz: 'Tasdiqlash', ru: 'Одобрить', en: null },
+            style: 'success',
+          },
+        ],
+      ],
+    });
   });
 
   it('rejects layouts whose button inventory does not match the keyboard purpose', async () => {
@@ -330,7 +402,83 @@ describe('direct message API', () => {
     });
   });
 
-  it('accepts up to five trusted photo attachments and returns the exact sent text', async () => {
+  it('accepts localized and styled URL buttons plus a styled details row', async () => {
+    let captured: unknown;
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(params) {
+          captured = params.inlineKeyboard;
+          return { status: 'sent' };
+        },
+      },
+    });
+    const repairOrderUuid = '11111111-1111-4111-8111-111111111111';
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Documents',
+        inline_keyboard: {
+          rows: [
+            [
+              {
+                type: 'url',
+                localized_text: { uz: 'Shartnoma', ru: 'Договор' },
+                style: 'primary',
+                url: 'https://files.procare.uz/contract.pdf',
+              },
+              {
+                type: 'url',
+                localized_text: { uz: 'Hisob', ru: 'Счёт' },
+                url: 'https://files.procare.uz/invoice.pdf',
+              },
+            ],
+            [
+              {
+                type: 'details',
+                localized_text: { uz: 'Batafsil', ru: 'Подробнее' },
+                style: 'success',
+                repair_order_uuid: repairOrderUuid,
+              },
+            ],
+          ],
+        },
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(captured, {
+      rows: [
+        [
+          {
+            type: 'url',
+            localizedText: { uz: 'Shartnoma', ru: 'Договор', en: null },
+            style: 'primary',
+            url: 'https://files.procare.uz/contract.pdf',
+          },
+          {
+            type: 'url',
+            localizedText: { uz: 'Hisob', ru: 'Счёт', en: null },
+            url: 'https://files.procare.uz/invoice.pdf',
+          },
+        ],
+        [
+          {
+            type: 'details',
+            localizedText: { uz: 'Batafsil', ru: 'Подробнее', en: null },
+            style: 'success',
+            repairOrderUuid,
+          },
+        ],
+      ],
+    });
+  });
+
+  it('accepts trusted photo and document attachments and returns the exact sent text', async () => {
     let capturedAttachments: unknown;
     const app = createApiServer(config, logger, {
       directMessageSender: {
@@ -354,6 +502,11 @@ describe('direct message API', () => {
             url: 'https://files.procare.uz/comment/photo.jpg',
             file_name: 'diagnosis.jpg',
           },
+          {
+            type: 'document',
+            url: 'https://files.procare.uz/warranty.pdf',
+            file_name: 'warranty.pdf',
+          },
         ],
       },
     });
@@ -367,7 +520,50 @@ describe('direct message API', () => {
         url: 'https://files.procare.uz/comment/photo.jpg',
         fileName: 'diagnosis.jpg',
       },
+      {
+        type: 'document',
+        url: 'https://files.procare.uz/warranty.pdf',
+        fileName: 'warranty.pdf',
+      },
     ]);
+  });
+
+  it('rejects unsupported attachment types and more than five files', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(): Promise<DirectMessageDeliveryResult> {
+          return { status: 'sent' };
+        },
+      },
+    });
+
+    for (const invalid of [
+      {
+        attachments: [{ type: 'pdf', url: 'https://files.procare.uz/file.pdf' }],
+        message: 'attachments[0] must have type photo or document',
+      },
+      {
+        attachments: Array.from({ length: 6 }, (_, index) => ({
+          type: 'document',
+          url: `https://files.procare.uz/file-${index + 1}.pdf`,
+        })),
+        message: 'attachments may contain at most 5 files',
+      },
+    ]) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/messages/send',
+        headers: authHeaders,
+        payload: {
+          phone_number: '+998901234567',
+          message: 'Files',
+          attachments: invalid.attachments,
+        },
+      });
+      assert.equal(response.statusCode, 400);
+      assert.equal(response.json<{ message: string }>().message, invalid.message);
+    }
+    await app.close();
   });
 
   it('rejects unsupported fields on generated action keyboards', async () => {
@@ -398,7 +594,46 @@ describe('direct message API', () => {
     assert.equal(response.statusCode, 400);
     assert.equal(
       response.json<{ message: string }>().message,
-      'rating keyboards do not accept text',
+      'rating keyboards accept button presentation only through layout',
+    );
+  });
+
+  it('rejects unsupported inline button styles before sending', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(): Promise<DirectMessageDeliveryResult> {
+          return { status: 'sent' };
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998901234567',
+        message: 'Styled',
+        inline_keyboard: {
+          rows: [
+            [
+              {
+                type: 'url',
+                text: 'Open',
+                style: 'green',
+                url: 'https://procare.uz',
+              },
+            ],
+          ],
+        },
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(
+      response.json<{ message: string }>().message,
+      'inline keyboard button style must be danger, success, or primary',
     );
   });
 

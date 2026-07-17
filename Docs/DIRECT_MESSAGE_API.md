@@ -35,7 +35,7 @@ It normalizes Uzbek phone formats to `+998XXXXXXXXX` before lookup.
 | `crm_comment_id`        | No                                   | UUID           | CRM comment ID used to persist an outbound support-message mapping.                                                                                 |
 | `repair_order_uuid`     | No                                   | UUID           | Repair-order context when persisting an outbound support-message mapping.                                                                           |
 | `order_number`          | No                                   | string         | Order-number context when persisting an outbound support-message mapping.                                                                           |
-| `attachments`           | No                                   | array          | One to five trusted photo URLs. The bot downloads and size-checks every photo before Telegram delivery.                                              |
+| `attachments`           | No                                   | array          | One to five trusted photo or document URLs. The bot downloads and size-checks every file before Telegram delivery.                                   |
 
 At least one of `message`, `localized_messages`, or `attachments` is required. A keyboard requires
 message text. When both message forms are supplied and no
@@ -148,16 +148,31 @@ deterministic and preserves the final 4,096-character Telegram limit.
     "rows": [
       [
         {
-          "type": "repair_order",
-          "text": "Buyurtmani ko‘rish",
-          "repair_order_uuid": "11111111-1111-4111-8111-111111111111"
+          "type": "url",
+          "localized_text": {
+            "uz": "Shartnoma",
+            "ru": "Договор"
+          },
+          "url": "https://crm.procare.uz/orders/1024/contract"
+        },
+        {
+          "type": "url",
+          "localized_text": {
+            "uz": "Hisob-faktura",
+            "ru": "Счёт-фактура"
+          },
+          "url": "https://crm.procare.uz/orders/1024/invoice"
         }
       ],
       [
         {
-          "type": "url",
-          "text": "CRM",
-          "url": "https://crm.procare.uz/orders/1024"
+          "type": "details",
+          "localized_text": {
+            "uz": "Batafsil",
+            "ru": "Подробнее"
+          },
+          "style": "primary",
+          "repair_order_uuid": "11111111-1111-4111-8111-111111111111"
         }
       ]
     ]
@@ -215,8 +230,16 @@ Telegram reply. Missing or rejected reply targets fall back to a normal Telegram
       "repair_order_uuid": "11111111-1111-4111-8111-111111111111",
       "layout": [
         [
-          { "type": "reject", "text": "REJECT" },
-          { "type": "approve", "text": "APPROVE" }
+          {
+            "type": "reject",
+            "localized_text": { "uz": "Rad etish", "ru": "Отклонить" },
+            "style": "danger"
+          },
+          {
+            "type": "approve",
+            "localized_text": { "uz": "Tasdiqlash", "ru": "Одобрить" },
+            "style": "success"
+          }
         ]
       ]
     }
@@ -226,13 +249,13 @@ Telegram reply. Missing or rejected reply targets fall back to a normal Telegram
 - `type` may be `details`, `approval`, or `rating`. The legacy top-level `repair_order` type is
   accepted as an alias for `details`.
 - `layout` is an array of Telegram button rows. CRM controls row placement and button order. Every
-  layout button accepts only `type` and visible `text`; `repair_order_uuid` remains at the keyboard
-  level so CRM cannot attach a different order to an individual action. Each `text` value must be
-  non-empty after trimming and contain at most 64 characters.
+  layout button accepts `type`, `text`, `localized_text`, and `style`; `repair_order_uuid` remains at
+  the keyboard level so CRM cannot attach a different order to an individual action. Every layout
+  button requires either `text` or `localized_text`.
 - `details` requires exactly one button whose subtype is `details`. Without `layout`, optional
-  top-level `text` or the bot's localized default is used. Supplied top-level `text` must be
-  non-empty after trimming and contain at most 64 characters. Back restores the exact original
-  Telegram text entities and full original inline keyboard.
+  top-level `text`, `localized_text`, or the bot's localized default is used. A top-level `style` may
+  also be supplied. Back restores the exact original Telegram text entities and full original inline
+  keyboard.
 - `approval` requires exactly one `reject` and one `approve` subtype. They may be placed as
   `REJECT | APPROVE`, `APPROVE | REJECT`, or as two one-button rows in either order. Approve requires
   an explicit confirmation.
@@ -244,9 +267,10 @@ Telegram reply. Missing or rejected reply targets fall back to a normal Telegram
   grade. After a successful submission the rating controls are removed. Rating retries are safe
   because CRM upserts the one current Telegram rating for the order.
 - Generated action keyboards always require a valid internal `repair_order_uuid`. A custom `layout`
-  cannot be combined with top-level `text`. Top-level `text` is supported only by `details`;
-  `approval` and `rating` reject it even when `layout` is omitted. Omitting `layout` preserves the
-  bot's default localized action layouts for backward compatibility.
+  cannot be combined with top-level `text`, `localized_text`, or `style`. Top-level button
+  presentation is supported only by `details`; `approval` and `rating` customize their buttons
+  through `layout`. Omitting `layout` preserves the bot's default localized action layouts. Default
+  approval controls render Reject as `danger` and Approve as `success`.
 
 Custom row-based keyboards use `inline_keyboard.rows`:
 
@@ -256,13 +280,17 @@ Custom row-based keyboards use `inline_keyboard.rows`:
 - Every button requires one of these `type` values: `url`, `details`, `repair_order`, `approval`, or
   `rating`. `repair_order` is the legacy row-button alias for `details`.
 - Any supplied `text` must be a non-empty string after trimming and contain at most 64 characters.
-- `url` buttons require `text` and an absolute `http` or `https` `url`.
+- `url` buttons require `text` or `localized_text` and an absolute `http` or `https` `url`.
 - Every non-URL button requires a syntactically valid `repair_order_uuid`.
-- `details`, `repair_order`, `approval`, and `rating` buttons may use `text`, `localized_text`, or
-  neither. When neither is supplied, the bot uses its localized default label.
+- Every button type, including `url`, may use `text` or `localized_text`. For non-URL action buttons,
+  omitting both uses the bot's localized default label. When both are supplied, `text` is the
+  explicit fallback and the locale-selected `localized_text` takes precedence.
 - When `localized_text` is supplied, it must be an object with required `uz` and `ru` strings.
   Both must be non-empty after trimming and contain at most 64 characters. `en` is optional and may
   be `null`; when it is a string, it has the same non-empty and 64-character requirements.
+- Every row or layout button may set `style` to `danger` (red), `success` (green), or `primary`
+  (blue). Omitting `style` leaves Telegram's client-specific default appearance. These values map
+  directly to the `InlineKeyboardButton.style` field introduced in Telegram Bot API 9.4.
 - A row-based `details` or `repair_order` button opens the repair-order detail view. A row-based
   `approval` button opens the Reject/Approve chooser, and a row-based `rating` button opens grades
   1–10 in two rows of five. These flows provide Back navigation.
@@ -270,32 +298,59 @@ Custom row-based keyboards use `inline_keyboard.rows`:
   callback data internally from the action type and trusted `repair_order_uuid`; callers must not
   depend on custom callback payloads.
 
-## Staff comment photo attachments
+Telegram accepts one inline-keyboard object per message. Multiple controls and layouts are expressed
+as rows inside that object; they are not sent as separate keyboards.
+
+## URL attachments
 
 ```json
 {
   "phone_number": "+998901234567",
-  "message": "Please review the diagnosis.",
+  "localized_messages": {
+    "uz": "Kafolat hujjatingiz tayyor.",
+    "ru": "Ваш гарантийный документ готов."
+  },
   "repair_order_uuid": "11111111-1111-4111-8111-111111111111",
   "order_number": "1024",
   "attachments": [
     {
-      "type": "photo",
-      "url": "https://storage.example.test/comment/photo-medium.jpg",
-      "file_name": "diagnosis.jpg"
+      "type": "document",
+      "url": "https://storage.example.test/documents/warranty.pdf",
+      "file_name": "warranty-1024.pdf"
     }
   ],
   "inline_keyboard": {
-    "type": "approval",
-    "repair_order_uuid": "11111111-1111-4111-8111-111111111111"
+    "rows": [
+      [
+        {
+          "type": "url",
+          "localized_text": { "uz": "Onlayn nusxa", "ru": "Онлайн-копия" },
+          "url": "https://storage.example.test/documents/warranty.pdf"
+        }
+      ],
+      [
+        {
+          "type": "details",
+          "localized_text": { "uz": "Batafsil", "ru": "Подробнее" },
+          "style": "primary",
+          "repair_order_uuid": "11111111-1111-4111-8111-111111111111"
+        }
+      ]
+    ]
   }
 }
 ```
 
-Only `photo` attachments are accepted. Every URL must be HTTP(S); each downloaded file must be
-non-empty and no larger than 5 MB. With a keyboard, photos are sent first and the editable text
-message carries the keyboard so details/approval/rating navigation can safely edit and restore it.
-The successful API response still returns the exact text sent by the bot.
+Attachment `type` may be `photo` or `document`. Every URL must be HTTP(S), and every downloaded file
+must be non-empty. Photos are limited to 5 MB each; documents are limited to 20 MB each. The complete
+request may contain at most five attachments.
+
+With a keyboard, attachments are sent first and the localized editable text message carries the
+keyboard so details/approval/rating navigation can safely edit and restore it. Without a keyboard, a
+single attachment may carry a rendered caption when the text fits Telegram's 1,024-character caption
+limit; otherwise the bot sends the text separately. Multiple photos use a Telegram media group.
+Documents or mixed attachment types are delivered in request order. The successful API response
+still returns the exact locale-selected text sent by the bot.
 
 The bot does not persist attachment files to local disk or object storage. It holds downloaded
 bytes in memory only for the Telegram API call. The authenticated caller owns the source object's
@@ -331,10 +386,13 @@ thread.
 
 1. `200 Sent localized message` — uses the localized-delivery request and returns the rendered
    final message.
-2. `400 Invalid body` — omits both `message` and `localized_messages`.
-3. `400 Unresolved variable` — includes a placeholder without a supplied or built-in value.
-4. `401 Unauthorized`.
-5. `404 User not found`.
-6. `409 Telegram user blocked`.
-7. `502 Telegram delivery failed`.
-8. `503 Delivery unavailable`.
+2. `200 Sent localized document` — downloads a PDF URL and sends locale-selected text plus a
+   localized, styled two-row keyboard.
+3. `400 Invalid body` — omits `message`, `localized_messages`, and `attachments`.
+4. `400 Invalid button style` — supplies a style outside `danger`, `success`, and `primary`.
+5. `400 Unresolved variable` — includes a placeholder without a supplied or built-in value.
+6. `401 Unauthorized`.
+7. `404 User not found`.
+8. `409 Telegram user blocked`.
+9. `502 Telegram delivery failed`.
+10. `503 Delivery unavailable`.

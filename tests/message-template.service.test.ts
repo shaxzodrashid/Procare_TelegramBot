@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { Api } from 'grammy';
+import type { Api, InlineKeyboard } from 'grammy';
 
 import {
   BotDirectMessageService,
@@ -473,8 +473,16 @@ describe('BotDirectMessageService', () => {
         ?.inline_keyboard,
       [
         [
-          { text: '❌ Rad etish', callback_data: `dm:ap:r:${repairOrderUuid}` },
-          { text: '✅ Tasdiqlash', callback_data: `dm:ap:a:${repairOrderUuid}` },
+          {
+            text: '❌ Rad etish',
+            callback_data: `dm:ap:r:${repairOrderUuid}`,
+            style: 'danger',
+          },
+          {
+            text: '✅ Tasdiqlash',
+            callback_data: `dm:ap:a:${repairOrderUuid}`,
+            style: 'success',
+          },
         ],
       ],
     );
@@ -504,9 +512,24 @@ describe('BotDirectMessageService', () => {
       {
         type: 'approval',
         repairOrderUuid,
-        layout: [[{ type: 'approve', text: 'APPROVE' }], [{ type: 'reject', text: 'REJECT' }]],
+        layout: [
+          [
+            {
+              type: 'approve',
+              localizedText: { uz: 'TASDIQLASH', ru: 'ОДОБРИТЬ' },
+              style: 'success',
+            },
+          ],
+          [
+            {
+              type: 'reject',
+              localizedText: { uz: 'RAD ETISH', ru: 'ОТКЛОНИТЬ' },
+              style: 'danger',
+            },
+          ],
+        ],
       },
-      'uz',
+      'ru',
     );
     const rating = buildDirectMessageInlineKeyboard(
       {
@@ -518,8 +541,20 @@ describe('BotDirectMessageService', () => {
     );
 
     assert.deepEqual(approval?.inline_keyboard, [
-      [{ text: 'APPROVE', callback_data: `dm:ap:a:${repairOrderUuid}` }],
-      [{ text: 'REJECT', callback_data: `dm:ap:r:${repairOrderUuid}` }],
+      [
+        {
+          text: 'ОДОБРИТЬ',
+          callback_data: `dm:ap:a:${repairOrderUuid}`,
+          style: 'success',
+        },
+      ],
+      [
+        {
+          text: 'ОТКЛОНИТЬ',
+          callback_data: `dm:ap:r:${repairOrderUuid}`,
+          style: 'danger',
+        },
+      ],
     ]);
     assert.equal(rating?.inline_keyboard.length, 2);
     assert.deepEqual(
@@ -535,6 +570,15 @@ describe('BotDirectMessageService', () => {
     const keyboard = buildDirectMessageInlineKeyboard(
       {
         rows: [
+          [
+            {
+              type: 'url',
+              text: 'Document fallback',
+              localizedText: { uz: 'Hujjat', ru: 'Документ' },
+              style: 'primary',
+              url: 'https://files.procare.uz/document.pdf',
+            },
+          ],
           [
             {
               type: 'details',
@@ -562,6 +606,13 @@ describe('BotDirectMessageService', () => {
     );
 
     assert.deepEqual(keyboard?.inline_keyboard, [
+      [
+        {
+          text: 'Документ',
+          url: 'https://files.procare.uz/document.pdf',
+          style: 'primary',
+        },
+      ],
       [{ text: 'Открыть', callback_data: `dm:ro:o:${repairOrderUuid}` }],
       [{ text: 'Подтвердить', callback_data: `dm:ap:o:${repairOrderUuid}` }],
       [{ text: 'Оценить', callback_data: `dm:rt:o:${repairOrderUuid}` }],
@@ -630,6 +681,114 @@ describe('BotDirectMessageService', () => {
       ['sendMediaGroup', 'sendMessage'],
     );
     assert.ok((calls[1]?.options as { reply_markup?: unknown }).reply_markup);
+  });
+
+  it('downloads a PDF document and keeps localized keyboard actions on an editable text message', async () => {
+    const store = new MemoryTemplateStore(null);
+    const users = new MemoryRegisteredUserLookup(directMessageUser({ locale: 'ru' }));
+    const { telegram, calls } = createTelegramDouble();
+    const service = new BotDirectMessageService(users, store, telegram, undefined, {
+      fetchImpl: async () =>
+        new Response(Buffer.from('%PDF-test'), {
+          status: 200,
+          headers: { 'content-type': 'application/pdf', 'content-length': '9' },
+        }),
+    });
+    const repairOrderUuid = '11111111-1111-4111-8111-111111111111';
+
+    const result = await service.sendDirectMessage({
+      phoneNumber: '+998901234567',
+      localizedMessages: {
+        uz: 'Kafolat hujjati',
+        ru: 'Гарантийный документ',
+      },
+      attachments: [
+        {
+          type: 'document',
+          url: 'https://files.test/warranty.pdf',
+          fileName: 'warranty.pdf',
+        },
+      ],
+      inlineKeyboard: {
+        rows: [
+          [
+            {
+              type: 'url',
+              localizedText: { uz: 'Onlayn nusxa', ru: 'Онлайн-копия' },
+              style: 'primary',
+              url: 'https://files.test/warranty.pdf',
+            },
+          ],
+          [
+            {
+              type: 'details',
+              localizedText: { uz: 'Batafsil', ru: 'Подробнее' },
+              repairOrderUuid,
+            },
+          ],
+        ],
+      },
+    });
+
+    assert.deepEqual(result, { status: 'sent', message: 'Гарантийный документ' });
+    assert.deepEqual(
+      calls.map((call) => call.method),
+      ['sendDocument', 'sendMessage'],
+    );
+    assert.equal(calls[0]?.text, 'warranty.pdf');
+    assert.equal(calls[1]?.text, 'Гарантийный документ');
+    assert.deepEqual(
+      (calls[1]?.options as { reply_markup?: InlineKeyboard }).reply_markup?.inline_keyboard,
+      [
+        [
+          {
+            text: 'Онлайн-копия',
+            url: 'https://files.test/warranty.pdf',
+            style: 'primary',
+          },
+        ],
+        [{ text: 'Подробнее', callback_data: `dm:ro:o:${repairOrderUuid}` }],
+      ],
+    );
+  });
+
+  it('rejects photo and document downloads that exceed their declared size limits', async () => {
+    for (const attachment of [
+      {
+        type: 'photo' as const,
+        url: 'https://files.test/large.jpg',
+        contentLength: 5 * 1024 * 1024 + 1,
+        expected: 'exceeds 5 MB',
+      },
+      {
+        type: 'document' as const,
+        url: 'https://files.test/large.pdf',
+        contentLength: 20 * 1024 * 1024 + 1,
+        expected: 'exceeds 20 MB',
+      },
+    ]) {
+      const store = new MemoryTemplateStore(null);
+      const users = new MemoryRegisteredUserLookup(directMessageUser());
+      const { telegram, calls } = createTelegramDouble();
+      const service = new BotDirectMessageService(users, store, telegram, undefined, {
+        fetchImpl: async () =>
+          new Response(Buffer.from('too large'), {
+            status: 200,
+            headers: { 'content-length': String(attachment.contentLength) },
+          }),
+      });
+
+      const result = await service.sendDirectMessage({
+        phoneNumber: '+998901234567',
+        message: 'Attachment',
+        attachments: [{ type: attachment.type, url: attachment.url }],
+      });
+
+      assert.equal(result.status, 'invalid_attachments');
+      assert.match(result.message ?? '', new RegExp(attachment.expected));
+      assert.equal(calls.length, 0);
+      assert.equal(store.logs[0]?.status, 'failed');
+    }
   });
 
   it('sends support replies against the stored Telegram message target', async () => {

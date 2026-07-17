@@ -1,6 +1,6 @@
 export type SupportMessageSenderType = 'client' | 'employee';
 export type SupportMessageDirection = 'inbound' | 'outbound';
-export type SupportMessageContentType = 'text' | 'photo';
+export type SupportMessageContentType = 'text' | 'photo' | 'document';
 
 export interface SupportMessageRecord {
   crm_comment_id: string;

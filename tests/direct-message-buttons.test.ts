@@ -276,6 +276,12 @@ describe('direct message inline repair-order buttons', () => {
       ),
       [`dm:ap:r:${repairOrderUuid}`, `dm:ap:a:${repairOrderUuid}`],
     );
+    assert.deepEqual(
+      chooser.payload.reply_markup.inline_keyboard[0].map(
+        (button: { style: string }) => button.style,
+      ),
+      ['danger', 'success'],
+    );
 
     apiCalls.length = 0;
     await bot.handleUpdate(

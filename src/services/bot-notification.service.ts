@@ -76,7 +76,8 @@ type TelegramDirectMessageApi = Pick<
 
 const TELEGRAM_CAPTION_LIMIT = 1024;
 export const TELEGRAM_TEXT_LIMIT = 4096;
-const MAX_DIRECT_MESSAGE_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const MAX_DIRECT_MESSAGE_PHOTO_BYTES = 5 * 1024 * 1024;
+const MAX_DIRECT_MESSAGE_DOCUMENT_BYTES = 20 * 1024 * 1024;
 const TELEGRAM_PARSE_MODE_HTML = 'HTML';
 const DIRECT_MESSAGE_DISPATCH_TYPE = 'api_direct_message';
 const DIRECT_MESSAGE_PLACEHOLDER_PATTERN = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
@@ -98,16 +99,21 @@ export interface DirectMessageLocalizedVariable {
 
 export type DirectMessageLocalizedVariables = Record<string, DirectMessageLocalizedVariable>;
 
-export interface DirectMessageUrlButton {
+export type DirectMessageButtonStyle = 'danger' | 'success' | 'primary';
+
+interface DirectMessageButtonPresentation {
+  text?: string;
+  localizedText?: DirectMessageLocalizedButtonText;
+  style?: DirectMessageButtonStyle;
+}
+
+export interface DirectMessageUrlButton extends DirectMessageButtonPresentation {
   type: 'url';
-  text: string;
   url: string;
 }
 
-export interface DirectMessageRepairOrderButton {
+export interface DirectMessageRepairOrderButton extends DirectMessageButtonPresentation {
   type: 'repair_order' | 'details' | 'approval' | 'rating';
-  text?: string;
-  localizedText?: DirectMessageLocalizedButtonText;
   repairOrderUuid: string;
 }
 
@@ -135,15 +141,16 @@ export type DirectMessageActionButtonType =
   | 'approve'
   | DirectMessageRatingButtonType;
 
-export interface DirectMessageActionButton {
+export interface DirectMessageActionButton extends DirectMessageButtonPresentation {
   type: DirectMessageActionButtonType;
-  text: string;
 }
 
 export interface DirectMessageActionInlineKeyboard {
   type: 'details' | 'approval' | 'rating';
   repairOrderUuid: string;
   text?: string;
+  localizedText?: DirectMessageLocalizedButtonText;
+  style?: DirectMessageButtonStyle;
   layout?: DirectMessageActionButton[][];
 }
 
@@ -162,9 +169,14 @@ export interface DirectMessageLocalizedButtonText {
 }
 
 export interface DirectMessageAttachment {
-  type: 'photo';
+  type: 'photo' | 'document';
   url: string;
   fileName?: string;
+}
+
+interface DownloadedDirectMessageAttachment {
+  type: DirectMessageAttachment['type'];
+  file: InputFile;
 }
 
 const errorMessage = (error: unknown): string =>
@@ -463,7 +475,7 @@ export class BotDirectMessageService {
 
   private async downloadDirectMessageAttachments(
     attachments: DirectMessageAttachment[] | undefined,
-  ): Promise<InputFile[]> {
+  ): Promise<DownloadedDirectMessageAttachment[]> {
     return Promise.all(
       (attachments ?? []).map(async (attachment, index) => {
         const response = await this.fetchImpl(attachment.url);
@@ -471,18 +483,55 @@ export class BotDirectMessageService {
           throw new Error(`attachment ${index + 1} download returned HTTP ${response.status}`);
         }
         const declaredLength = Number(response.headers.get('content-length'));
-        if (
-          Number.isFinite(declaredLength) &&
-          declaredLength > MAX_DIRECT_MESSAGE_ATTACHMENT_BYTES
-        ) {
-          throw new Error(`attachment ${index + 1} exceeds 5 MB`);
+        const maximumBytes =
+          attachment.type === 'document'
+            ? MAX_DIRECT_MESSAGE_DOCUMENT_BYTES
+            : MAX_DIRECT_MESSAGE_PHOTO_BYTES;
+        if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {
+          throw new Error(
+            `attachment ${index + 1} exceeds ${attachment.type === 'document' ? 20 : 5} MB`,
+          );
         }
-        const buffer = Buffer.from(await response.arrayBuffer());
+        const reader = response.body?.getReader();
+        const chunks: Buffer[] = [];
+        let downloadedBytes = 0;
+        if (reader) {
+          try {
+            while (true) {
+              const chunk = await reader.read();
+              if (chunk.done) break;
+              downloadedBytes += chunk.value.byteLength;
+              if (downloadedBytes > maximumBytes) {
+                await reader.cancel();
+                throw new Error(
+                  `attachment ${index + 1} exceeds ${attachment.type === 'document' ? 20 : 5} MB`,
+                );
+              }
+              chunks.push(Buffer.from(chunk.value));
+            }
+          } finally {
+            reader.releaseLock();
+          }
+        }
+        const buffer = reader
+          ? Buffer.concat(chunks, downloadedBytes)
+          : Buffer.from(await response.arrayBuffer());
         if (!buffer.length) throw new Error(`attachment ${index + 1} is empty`);
-        if (buffer.length > MAX_DIRECT_MESSAGE_ATTACHMENT_BYTES) {
-          throw new Error(`attachment ${index + 1} exceeds 5 MB`);
+        if (buffer.length > maximumBytes) {
+          throw new Error(
+            `attachment ${index + 1} exceeds ${attachment.type === 'document' ? 20 : 5} MB`,
+          );
         }
-        return new InputFile(buffer, attachment.fileName ?? `photo-${index + 1}.jpg`);
+        return {
+          type: attachment.type,
+          file: new InputFile(
+            buffer,
+            attachment.fileName ??
+              (attachment.type === 'document'
+                ? `document-${index + 1}.pdf`
+                : `photo-${index + 1}.jpg`),
+          ),
+        };
       }),
     );
   }
@@ -493,7 +542,7 @@ export class BotDirectMessageService {
     parseMode: TelegramParseMode;
     replyMarkup: InlineKeyboard | undefined;
     replyTarget: SupportMessageReplyTarget | null;
-    attachments: InputFile[];
+    attachments: DownloadedDirectMessageAttachment[];
   }): Promise<{ message_id: number; chat: { id: number }; date: number }> {
     const replyParameters = params.replyTarget
       ? {
@@ -512,30 +561,56 @@ export class BotDirectMessageService {
       Boolean(params.messageText) &&
       telegramFormattedText(params.messageText, params.parseMode).length <= TELEGRAM_CAPTION_LIMIT;
     if (params.attachments.length === 1) {
-      const usePhotoCaption = captionFits && !params.replyMarkup;
-      const photo = await this.telegram.sendPhoto(params.chatId, params.attachments[0]!, {
-        ...(usePhotoCaption ? { caption: params.messageText, parse_mode: params.parseMode } : {}),
-        ...(replyParameters ? { reply_parameters: replyParameters } : {}),
-      });
-      if (!params.messageText || usePhotoCaption) return photo;
+      const useAttachmentCaption = captionFits && !params.replyMarkup;
+      const attachment = params.attachments[0]!;
+      const mediaMessage =
+        attachment.type === 'document'
+          ? await this.telegram.sendDocument(params.chatId, attachment.file, {
+              ...(useAttachmentCaption
+                ? { caption: params.messageText, parse_mode: params.parseMode }
+                : {}),
+              ...(replyParameters ? { reply_parameters: replyParameters } : {}),
+            })
+          : await this.telegram.sendPhoto(params.chatId, attachment.file, {
+              ...(useAttachmentCaption
+                ? { caption: params.messageText, parse_mode: params.parseMode }
+                : {}),
+              ...(replyParameters ? { reply_parameters: replyParameters } : {}),
+            });
+      if (!params.messageText || useAttachmentCaption) return mediaMessage;
       return this.telegram.sendMessage(params.chatId, params.messageText, {
         ...(params.replyMarkup ? { reply_markup: params.replyMarkup } : {}),
         parse_mode: params.parseMode,
       });
     }
 
-    const useAlbumCaption = captionFits && !params.replyMarkup;
-    const media = params.attachments.map((attachment, index) =>
-      InputMediaBuilder.photo(attachment, {
-        ...(index === 0 && useAlbumCaption
-          ? { caption: params.messageText, parse_mode: params.parseMode }
-          : {}),
-      }),
-    );
-    const album = await this.telegram.sendMediaGroup(params.chatId, media, {
-      ...(replyParameters ? { reply_parameters: replyParameters } : {}),
-    });
-    if (!params.messageText || useAlbumCaption) return album[0]!;
+    const onlyPhotos = params.attachments.every((attachment) => attachment.type === 'photo');
+    if (onlyPhotos) {
+      const useAlbumCaption = captionFits && !params.replyMarkup;
+      const media = params.attachments.map((attachment, index) =>
+        InputMediaBuilder.photo(attachment.file, {
+          ...(index === 0 && useAlbumCaption
+            ? { caption: params.messageText, parse_mode: params.parseMode }
+            : {}),
+        }),
+      );
+      const album = await this.telegram.sendMediaGroup(params.chatId, media, {
+        ...(replyParameters ? { reply_parameters: replyParameters } : {}),
+      });
+      if (!params.messageText || useAlbumCaption) return album[0]!;
+    } else {
+      let lastMediaMessage: { message_id: number; chat: { id: number }; date: number } | undefined;
+      for (const [index, attachment] of params.attachments.entries()) {
+        const mediaOptions =
+          index === 0 && replyParameters ? { reply_parameters: replyParameters } : {};
+        lastMediaMessage =
+          attachment.type === 'document'
+            ? await this.telegram.sendDocument(params.chatId, attachment.file, mediaOptions)
+            : await this.telegram.sendPhoto(params.chatId, attachment.file, mediaOptions);
+      }
+      if (!params.messageText) return lastMediaMessage!;
+    }
+
     return this.telegram.sendMessage(params.chatId, params.messageText, {
       ...(params.replyMarkup ? { reply_markup: params.replyMarkup } : {}),
       parse_mode: params.parseMode,
@@ -623,7 +698,7 @@ export class BotDirectMessageService {
       }
     }
 
-    let attachments: InputFile[];
+    let attachments: DownloadedDirectMessageAttachment[];
     try {
       attachments = await this.downloadDirectMessageAttachments(params.attachments);
     } catch (error) {
@@ -687,9 +762,14 @@ export class BotDirectMessageService {
               telegram_message_date: new Date(sentMessage.date * 1000),
               sender_type: 'employee',
               direction: 'outbound',
-              content_type: attachments.length && !messageText ? 'photo' : 'text',
+              content_type:
+                attachments.length && !messageText
+                  ? attachments.some((attachment) => attachment.type === 'document')
+                    ? 'document'
+                    : 'photo'
+                  : 'text',
               text: messageText || null,
-              photo_count: attachments.length,
+              photo_count: attachments.filter((attachment) => attachment.type === 'photo').length,
               reply_to_support_message_id: replyTarget?.id ?? null,
             });
           } catch (saveError) {
@@ -790,21 +870,28 @@ const defaultRepairOrderButtonText = (locale: string): string =>
   t(directMessageLocale(locale), 'directDetails');
 
 const localizedButtonText = (
-  button: DirectMessageRepairOrderButton,
+  button: DirectMessageButtonPresentation,
   locale: string,
 ): string | undefined => {
-  if (button.text?.trim()) return button.text.trim();
   const localized = button.localizedText;
-  if (!localized) return undefined;
-  const preferred = locale === 'ru' ? localized.ru : localized.uz;
-  return (
-    preferred?.trim() ||
-    localized.uz?.trim() ||
-    localized.ru?.trim() ||
-    localized.en?.trim() ||
-    undefined
-  );
+  if (localized) {
+    const preferred = locale === 'ru' ? localized.ru : localized.uz;
+    return (
+      preferred?.trim() ||
+      localized.uz?.trim() ||
+      localized.ru?.trim() ||
+      localized.en?.trim() ||
+      button.text?.trim() ||
+      undefined
+    );
+  }
+  return button.text?.trim() || undefined;
 };
+
+const applyButtonStyle = (
+  markup: InlineKeyboard,
+  style: DirectMessageButtonStyle | undefined,
+): InlineKeyboard => (style ? markup.style(style) : markup);
 
 const actionButtonCallbackData = (
   button: DirectMessageActionButton,
@@ -820,11 +907,17 @@ const appendActionLayout = (
   markup: InlineKeyboard,
   layout: DirectMessageActionButton[][],
   repairOrderUuid: string,
+  locale: string,
 ): InlineKeyboard => {
   layout.forEach((row, rowIndex) => {
     if (rowIndex > 0) markup.row();
     row.forEach((button) => {
-      markup.text(button.text, actionButtonCallbackData(button, repairOrderUuid));
+      const text = localizedButtonText(button, locale);
+      if (!text) return;
+      applyButtonStyle(
+        markup.text(text, actionButtonCallbackData(button, repairOrderUuid)),
+        button.style,
+      );
     });
   });
   return markup;
@@ -850,12 +943,15 @@ export const buildDirectMessageInlineKeyboard = (
   const markup = new InlineKeyboard();
   if ('type' in keyboard) {
     if (keyboard.layout) {
-      return appendActionLayout(markup, keyboard.layout, keyboard.repairOrderUuid);
+      return appendActionLayout(markup, keyboard.layout, keyboard.repairOrderUuid, locale);
     }
     if (keyboard.type === 'details') {
-      return markup.text(
-        keyboard.text?.trim() || defaultRepairOrderButtonText(locale),
-        `dm:ro:o:${keyboard.repairOrderUuid}`,
+      return applyButtonStyle(
+        markup.text(
+          localizedButtonText(keyboard, locale) ?? defaultRepairOrderButtonText(locale),
+          `dm:ro:o:${keyboard.repairOrderUuid}`,
+        ),
+        keyboard.style,
       );
     }
     if (keyboard.type === 'approval') {
@@ -864,10 +960,12 @@ export const buildDirectMessageInlineKeyboard = (
           t(directMessageLocale(locale), 'directApprovalReject'),
           `dm:ap:r:${keyboard.repairOrderUuid}`,
         )
+        .danger()
         .text(
           t(directMessageLocale(locale), 'directApprovalApprove'),
           `dm:ap:a:${keyboard.repairOrderUuid}`,
-        );
+        )
+        .success();
     }
 
     return appendDefaultRatingLayout(markup, keyboard.repairOrderUuid);
@@ -877,28 +975,39 @@ export const buildDirectMessageInlineKeyboard = (
     if (rowIndex > 0) markup.row();
     row.forEach((button) => {
       if (button.type === 'url') {
-        markup.url(button.text, button.url);
+        const text = localizedButtonText(button, locale);
+        if (!text) return;
+        applyButtonStyle(markup.url(text, button.url), button.style);
         return;
       }
 
       const text = localizedButtonText(button, locale);
       if (button.type === 'approval') {
-        markup.text(
-          text ?? t(directMessageLocale(locale), 'directApprovalAction'),
-          `dm:ap:o:${button.repairOrderUuid}`,
+        applyButtonStyle(
+          markup.text(
+            text ?? t(directMessageLocale(locale), 'directApprovalAction'),
+            `dm:ap:o:${button.repairOrderUuid}`,
+          ),
+          button.style,
         );
         return;
       }
       if (button.type === 'rating') {
-        markup.text(
-          text ?? t(directMessageLocale(locale), 'directRatingAction'),
-          `dm:rt:o:${button.repairOrderUuid}`,
+        applyButtonStyle(
+          markup.text(
+            text ?? t(directMessageLocale(locale), 'directRatingAction'),
+            `dm:rt:o:${button.repairOrderUuid}`,
+          ),
+          button.style,
         );
         return;
       }
-      markup.text(
-        text ?? defaultRepairOrderButtonText(locale),
-        `dm:ro:o:${button.repairOrderUuid}`,
+      applyButtonStyle(
+        markup.text(
+          text ?? defaultRepairOrderButtonText(locale),
+          `dm:ro:o:${button.repairOrderUuid}`,
+        ),
+        button.style,
       );
     });
   });

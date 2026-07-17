@@ -218,7 +218,9 @@ const showApprovalOptions = async (
   await ctx.editMessageReplyMarkup({
     reply_markup: new InlineKeyboard()
       .text(t(ctx.session.locale, 'directApprovalReject'), `dm:ap:r:${repairOrderUuid}`)
+      .danger()
       .text(t(ctx.session.locale, 'directApprovalApprove'), `dm:ap:a:${repairOrderUuid}`)
+      .success()
       .row()
       .text(t(ctx.session.locale, 'back'), `dm:ap:b:${repairOrderUuid}`),
   });
@@ -288,10 +290,9 @@ const startApprovalAction = async (
       }),
       {
         parse_mode: 'HTML',
-        reply_markup: approvalBackKeyboard(ctx, repairOrderUuid).text(
-          t(ctx.session.locale, 'directApprovalConfirmButton'),
-          `dm:ap:ca:${repairOrderUuid}`,
-        ),
+        reply_markup: approvalBackKeyboard(ctx, repairOrderUuid)
+          .text(t(ctx.session.locale, 'directApprovalConfirmButton'), `dm:ap:ca:${repairOrderUuid}`)
+          .success(),
       },
     );
     return;
@@ -347,10 +348,12 @@ const handleRejectionNote = async (
     }),
     {
       parse_mode: 'HTML',
-      reply_markup: approvalBackKeyboard(ctx, flow.repairOrderUuid).text(
-        t(ctx.session.locale, 'directRejectionConfirmButton'),
-        `dm:ap:cr:${flow.repairOrderUuid}`,
-      ),
+      reply_markup: approvalBackKeyboard(ctx, flow.repairOrderUuid)
+        .text(
+          t(ctx.session.locale, 'directRejectionConfirmButton'),
+          `dm:ap:cr:${flow.repairOrderUuid}`,
+        )
+        .danger(),
     },
   );
 };

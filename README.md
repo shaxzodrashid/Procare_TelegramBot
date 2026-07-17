@@ -198,20 +198,28 @@ Request:
   "support_reply": {
     "target_crm_comment_id": "22222222-2222-4222-8222-222222222222"
   },
+  "attachments": [
+    {
+      "type": "document",
+      "url": "https://files.procare.uz/warranty.pdf",
+      "file_name": "warranty.pdf"
+    }
+  ],
   "inline_keyboard": {
     "rows": [
       [
         {
-          "type": "repair_order",
-          "text": "Buyurtmani ko‘rish",
-          "repair_order_uuid": "11111111-1111-4111-8111-111111111111"
+          "type": "url",
+          "localized_text": { "uz": "CRM", "ru": "CRM" },
+          "url": "https://crm.procare.uz/orders/1024"
         }
       ],
       [
         {
-          "type": "url",
-          "text": "CRM",
-          "url": "https://crm.procare.uz/orders/1024"
+          "type": "details",
+          "localized_text": { "uz": "Batafsil", "ru": "Подробнее" },
+          "style": "primary",
+          "repair_order_uuid": "11111111-1111-4111-8111-111111111111"
         }
       ]
     ]
@@ -224,8 +232,9 @@ matching `localized_messages.uz` or `localized_messages.ru` value from that user
 renders message variables, and sends the resulting Telegram message to that user's `telegram_id`.
 `localized_messages` requires non-empty Uzbek and Russian strings and may be sent without `message`.
 The legacy `message` field remains an optional fallback for callers that have only one locale; at
-least one of `message` or `localized_messages` is required. If both are supplied, the localized
-variant takes precedence for Uzbek and Russian users.
+least one of `message`, `localized_messages`, or `attachments` is required. A keyboard additionally
+requires message text through `message` or `localized_messages`. If both message forms are supplied,
+the localized variant takes precedence for Uzbek and Russian users.
 
 Rich text supports Telegram `HTML` and modern `MarkdownV2` through `parse_mode`; `HTML` remains the
 default for backward compatibility. The message template keeps its authored markup, while every
@@ -262,15 +271,31 @@ layouts. Generated `details`, `approval`, and `rating` keyboards accept the trus
 `repair_order_uuid`. Details preserve the exact original message entities and full keyboard for
 Back navigation. Approval uses confirmation, requires a rejection explanation, re-authorizes the
 client-owned order, and submits the decision to CRM. Rating uses grades 1–10 in two rows of five.
-CRM can control action labels, row positions, and order through `layout`; each layout button contains
-only its semantic `type` and visible `text`. For example, approval can put Approve above Reject:
+CRM can control action labels, row positions, order, and Telegram Bot API 9.4 button styles through
+`layout`. All URL and action buttons accept `text` or recipient-selected `localized_text`; `style`
+may be `danger`, `success`, or `primary`. For example, approval can put Approve above Reject:
 
 ```json
 {
   "inline_keyboard": {
     "type": "approval",
     "repair_order_uuid": "11111111-1111-4111-8111-111111111111",
-    "layout": [[{ "type": "approve", "text": "APPROVE" }], [{ "type": "reject", "text": "REJECT" }]]
+    "layout": [
+      [
+        {
+          "type": "approve",
+          "localized_text": { "uz": "Tasdiqlash", "ru": "Одобрить" },
+          "style": "success"
+        }
+      ],
+      [
+        {
+          "type": "reject",
+          "localized_text": { "uz": "Rad etish", "ru": "Отклонить" },
+          "style": "danger"
+        }
+      ]
+    ]
   }
 }
 ```
@@ -280,8 +305,11 @@ one `reject` and one `approve` button in one or two rows; `rating` requires each
 `rating_1` through `rating_10` exactly once in two rows of five. Omitting `layout` keeps the default
 localized layout for backward compatibility.
 
-The legacy top-level `repair_order` name remains an alias for `details`. Custom rows may contain URL
-and details/legacy repair-order buttons.
+The legacy top-level `repair_order` name remains an alias for `details`. Custom rows may contain URL,
+details, approval, and rating buttons. The complete request can also download and deliver up to five
+HTTP(S) photo or document attachments. Photos are limited to 5 MB each and documents to 20 MB each;
+when a keyboard is present, the bot keeps that keyboard on a separate editable localized text
+message so action navigation and Back restoration remain safe.
 
 When CRM supplies `crm_comment_id`, `repair_order_uuid`, and `order_number`, the bot persists the
 outbound Telegram message as a durable support-thread anchor. A registered client can use
