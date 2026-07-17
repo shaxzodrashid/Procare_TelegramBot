@@ -23,6 +23,7 @@ import { isMessageTemplateType, type MessageTemplateType } from '../types/messag
 
 export interface SendMessageRequestBody {
   phone_number?: unknown;
+  crm_client_id?: unknown;
   message?: unknown;
   localized_messages?: unknown;
   variables?: unknown;
@@ -711,7 +712,8 @@ export const parseSendMessageBody = (
 ):
   | {
       ok: true;
-      phoneNumber: string;
+      phoneNumber?: string;
+      crmClientId?: string;
       message?: string;
       localizedMessages?: DirectMessageLocalizedMessages;
       variables: DirectMessageVariables;
@@ -730,6 +732,7 @@ export const parseSendMessageBody = (
 
   const {
     phone_number: rawPhoneNumber,
+    crm_client_id: rawCrmClientId,
     message: rawMessage,
     localized_messages: rawLocalizedMessages,
     variables: rawVariables,
@@ -743,12 +746,34 @@ export const parseSendMessageBody = (
     order_number: rawOrderNumber,
     attachments: rawAttachments,
   } = body as SendMessageRequestBody;
-  if (typeof rawPhoneNumber !== 'string') {
-    return { ok: false, message: 'phone_number must be a string' };
+  if (rawPhoneNumber !== undefined && rawCrmClientId !== undefined) {
+    return { ok: false, message: 'provide exactly one of phone_number or crm_client_id' };
   }
-  const phoneNumber = normalizeUzPhone(rawPhoneNumber);
-  if (!phoneNumber)
-    return { ok: false, message: 'phone_number must be a valid Uzbek phone number' };
+  if (rawPhoneNumber === undefined && rawCrmClientId === undefined) {
+    return { ok: false, message: 'phone_number or crm_client_id is required' };
+  }
+
+  let phoneNumber: string | undefined;
+  if (rawPhoneNumber !== undefined) {
+    if (typeof rawPhoneNumber !== 'string') {
+      return { ok: false, message: 'phone_number must be a string' };
+    }
+    phoneNumber = normalizeUzPhone(rawPhoneNumber) ?? undefined;
+    if (!phoneNumber) {
+      return { ok: false, message: 'phone_number must be a valid Uzbek phone number' };
+    }
+  }
+
+  let crmClientId: string | undefined;
+  if (rawCrmClientId !== undefined) {
+    if (typeof rawCrmClientId !== 'string') {
+      return { ok: false, message: 'crm_client_id must be a string' };
+    }
+    crmClientId = rawCrmClientId.trim();
+    if (!crmClientId || crmClientId.length > 255) {
+      return { ok: false, message: 'crm_client_id must be between 1 and 255 characters' };
+    }
+  }
 
   let message: string | undefined;
   if (rawMessage !== undefined) {
@@ -837,6 +862,7 @@ export const parseSendMessageBody = (
   return {
     ok: true,
     phoneNumber,
+    crmClientId,
     message,
     localizedMessages: parsedLocalizedMessages.localizedMessages,
     variables: parsedVariables.variables,

@@ -131,6 +131,10 @@ class MemoryRegisteredUserLookup {
   async findByPhoneNumber(phoneNumber: string): Promise<RegisteredUserMessageTarget | null> {
     return this.user?.phone_number === phoneNumber ? this.user : null;
   }
+
+  async findClientByCrmClientId(crmClientId: string): Promise<RegisteredUserMessageTarget | null> {
+    return this.user?.crm_client_id === crmClientId ? this.user : null;
+  }
 }
 
 class MemorySupportMessageLookup {
@@ -266,6 +270,23 @@ describe('BotNotificationService', () => {
 });
 
 describe('BotDirectMessageService', () => {
+  it('resolves CRM template recipients by stable CRM client ID instead of order phone', async () => {
+    const store = new MemoryTemplateStore(null);
+    const users = new MemoryRegisteredUserLookup(
+      directMessageUser({ phone_number: '+998331234567', crm_client_id: 'client-8193' }),
+    );
+    const { telegram, calls } = createTelegramDouble();
+    const service = new BotDirectMessageService(users, store, telegram);
+
+    const result = await service.sendDirectMessage({
+      crmClientId: 'client-8193',
+      message: 'Buyurtma topshirildi',
+    });
+
+    assert.deepEqual(result, { status: 'sent', message: 'Buyurtma topshirildi' });
+    assert.equal(calls[0]?.chatId, '1001');
+  });
+
   it('sends plain Telegram messages to the user found by phone number', async () => {
     const store = new MemoryTemplateStore(null);
     const users = new MemoryRegisteredUserLookup(directMessageUser());

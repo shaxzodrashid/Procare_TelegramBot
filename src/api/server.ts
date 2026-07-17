@@ -20,7 +20,8 @@ import { parseSendMessageBody, parseSendFileBody } from './validators.js';
 
 export interface DirectMessageSender {
   sendDirectMessage(params: {
-    phoneNumber: string;
+    phoneNumber?: string;
+    crmClientId?: string;
     message?: string;
     localizedMessages?: DirectMessageLocalizedMessages;
     variables: DirectMessageVariables;
@@ -106,6 +107,7 @@ export const createApiServer = (
 
     const result = await dependencies.directMessageSender.sendDirectMessage({
       phoneNumber: parsed.phoneNumber,
+      crmClientId: parsed.crmClientId,
       message: parsed.message,
       localizedMessages: parsed.localizedMessages,
       variables: parsed.variables,
@@ -134,7 +136,7 @@ export const createApiServer = (
       return reply.status(404).send({
         statusCode: 404,
         error: 'NotFound',
-        message: 'No registered Telegram user was found for this phone number',
+        message: 'No registered Telegram client was found for this recipient identifier',
       });
     }
     if (result.status === 'blocked') {

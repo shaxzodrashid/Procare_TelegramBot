@@ -15,6 +15,7 @@ export interface RegisteredUserStore {
   saveEmployee(record: RegisteredEmployeeRecord): Promise<void>;
   updateSettings(update: RegisteredUserSettingsUpdate): Promise<void>;
   findByPhoneNumber(phoneNumber: string): Promise<RegisteredUserMessageTarget | null>;
+  findClientByCrmClientId(crmClientId: string): Promise<RegisteredUserMessageTarget | null>;
   findActiveEmployeesByCrmAdminIds(
     crmAdminIds: string[],
   ): Promise<RegisteredEmployeeMessageTarget[]>;
@@ -147,6 +148,39 @@ export class PostgresRegisteredUserStore implements RegisteredUserStore {
       locale: row.language_code === 'ru' ? 'ru' : 'uz',
       is_blocked: row.is_blocked,
       crm_client_id: row.crm_client_id ? String(row.crm_client_id) : undefined,
+    };
+  }
+
+  async findClientByCrmClientId(crmClientId: string): Promise<RegisteredUserMessageTarget | null> {
+    const row = (await this.database('users')
+      .leftJoin('clients', 'users.id', 'clients.user_id')
+      .select(
+        'users.id',
+        'users.telegram_id',
+        'users.telegram_username',
+        'users.first_name',
+        'users.last_name',
+        'users.phone_number',
+        'users.language_code',
+        'users.is_blocked',
+        'clients.crm_client_id',
+      )
+      .where({ 'clients.crm_client_id': crmClientId, 'clients.is_active': true })
+      .orderBy('clients.updated_at', 'desc')
+      .first()) as (UserMessageTargetRow & { crm_client_id: string }) | undefined;
+
+    if (!row) return null;
+
+    return {
+      id: String(row.id),
+      telegram_id: String(row.telegram_id),
+      telegram_username: row.telegram_username,
+      first_name: row.first_name ?? '',
+      last_name: row.last_name,
+      phone_number: row.phone_number,
+      locale: row.language_code === 'ru' ? 'ru' : 'uz',
+      is_blocked: row.is_blocked,
+      crm_client_id: String(row.crm_client_id),
     };
   }
 

@@ -34,7 +34,8 @@ export interface TemplateMessageDeliveryResult {
 }
 
 export interface SendDirectMessageParams {
-  phoneNumber: string;
+  phoneNumber?: string;
+  crmClientId?: string;
   message?: string;
   localizedMessages?: DirectMessageLocalizedMessages;
   variables?: DirectMessageVariables;
@@ -348,7 +349,10 @@ export class BotDirectMessageService {
   private readonly logger?: Logger;
 
   constructor(
-    private readonly users: Pick<RegisteredUserStore, 'findByPhoneNumber'>,
+    private readonly users: Pick<
+      RegisteredUserStore,
+      'findByPhoneNumber' | 'findClientByCrmClientId'
+    >,
     private readonly templates: Pick<
       MessageTemplateStore,
       'logDispatch' | 'setUserBlocked' | 'findActiveTemplateByType'
@@ -615,7 +619,11 @@ export class BotDirectMessageService {
   }
 
   async sendDirectMessage(params: SendDirectMessageParams): Promise<DirectMessageDeliveryResult> {
-    const user = await this.users.findByPhoneNumber(params.phoneNumber);
+    const user = params.crmClientId
+      ? await this.users.findClientByCrmClientId(params.crmClientId)
+      : params.phoneNumber
+        ? await this.users.findByPhoneNumber(params.phoneNumber)
+        : null;
     if (!user) return { status: 'not_found' };
 
     const template =

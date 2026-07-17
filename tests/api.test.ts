@@ -93,6 +93,86 @@ describe('health API', () => {
 });
 
 describe('direct message API', () => {
+  it('accepts the CRM production contract with client identity and a five-grade rating', async () => {
+    let captured: unknown;
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage(params) {
+          captured = params;
+          return { status: 'sent', message: 'Buyurtma topshirildi' };
+        },
+      },
+    });
+    const repairOrderUuid = '11111111-1111-4111-8111-111111111111';
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        crm_client_id: '22222222-2222-4222-8222-222222222222',
+        message: 'Buyurtma topshirildi',
+        inline_keyboard: {
+          type: 'rating',
+          repair_order_uuid: repairOrderUuid,
+          layout: [
+            [1, 2, 3, 4, 5].map((grade) => ({ type: `rating_${grade}`, text: String(grade) })),
+          ],
+        },
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(captured, {
+      phoneNumber: undefined,
+      crmClientId: '22222222-2222-4222-8222-222222222222',
+      message: 'Buyurtma topshirildi',
+      localizedMessages: undefined,
+      variables: {},
+      localizedVariables: {},
+      parseMode: 'HTML',
+      inlineKeyboard: {
+        type: 'rating',
+        repairOrderUuid,
+        layout: [
+          [1, 2, 3, 4, 5].map((grade) => ({ type: `rating_${grade}`, text: String(grade) })),
+        ],
+      },
+      supportReply: undefined,
+      crmCommentId: undefined,
+      repairOrderUuid: undefined,
+      orderNumber: undefined,
+      attachments: undefined,
+    });
+  });
+
+  it('rejects ambiguous recipient identifiers', async () => {
+    const app = createApiServer(config, logger, {
+      directMessageSender: {
+        async sendDirectMessage() {
+          return { status: 'sent' as const };
+        },
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/send',
+      headers: authHeaders,
+      payload: {
+        phone_number: '+998330094112',
+        crm_client_id: '22222222-2222-4222-8222-222222222222',
+        message: 'Ambiguous',
+      },
+    });
+    await app.close();
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(
+      response.json<{ message: string }>().message,
+      'provide exactly one of phone_number or crm_client_id',
+    );
+  });
+
   it('accepts the details, approval, and rating action keyboard contracts', async () => {
     const keyboards: unknown[] = [];
     const app = createApiServer(config, logger, {

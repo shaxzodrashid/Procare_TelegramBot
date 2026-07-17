@@ -55,6 +55,10 @@ const createDatabaseDouble = (
           });
           return this;
         },
+        orderBy(column: string, direction: string) {
+          calls.push({ table, action: 'orderBy', payload: { column, direction } });
+          return this;
+        },
         delete() {
           calls.push({ table, action: 'delete' });
           return Promise.resolve(1);
@@ -235,6 +239,35 @@ describe('PostgresRegisteredUserStore', () => {
     assert.deepEqual(
       calls.find((call) => call.table === 'users' && call.action === 'where')?.payload,
       { 'users.phone_number': '+998901234567' },
+    );
+  });
+
+  it('finds an active Telegram client by authoritative CRM client ID', async () => {
+    const now = new Date('2026-07-17T12:00:00.000Z');
+    const { database, calls } = createDatabaseDouble('44', now, {
+      id: 46,
+      telegram_id: 1005,
+      telegram_username: 'customer',
+      first_name: 'Customer',
+      last_name: null,
+      phone_number: '+998331234567',
+      language_code: 'uz',
+      is_blocked: false,
+      crm_client_id: 'client-8193',
+    });
+    const store = new PostgresRegisteredUserStore(database);
+
+    const user = await store.findClientByCrmClientId('client-8193');
+
+    assert.equal(user?.phone_number, '+998331234567');
+    assert.equal(user?.crm_client_id, 'client-8193');
+    assert.deepEqual(
+      calls.find((call) => call.table === 'users' && call.action === 'where')?.payload,
+      { 'clients.crm_client_id': 'client-8193', 'clients.is_active': true },
+    );
+    assert.deepEqual(
+      calls.find((call) => call.table === 'users' && call.action === 'orderBy')?.payload,
+      { column: 'clients.updated_at', direction: 'desc' },
     );
   });
 

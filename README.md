@@ -229,9 +229,12 @@ Request:
 }
 ```
 
-The API normalizes Uzbek phone numbers, finds the local `users` row by `phone_number`, selects the
-matching `localized_messages.uz` or `localized_messages.ru` value from that user's stored locale,
-renders message variables, and sends the resulting Telegram message to that user's `telegram_id`.
+The API requires exactly one recipient identifier. It can normalize an Uzbek `phone_number` and
+find the matching local user, or resolve a client-only recipient by stable `crm_client_id` through
+the local `clients` registration row. Automated repair-order delivery should use `crm_client_id` so
+a stale order contact phone cannot select an employee or another Telegram account. The Bot selects
+the matching `localized_messages.uz` or `localized_messages.ru` value from that user's stored
+locale, renders message variables, and sends the result to that user's `telegram_id`.
 `localized_messages` requires non-empty Uzbek and Russian strings and may be sent without `message`.
 The legacy `message` field remains an optional fallback for callers that have only one locale; at
 least one of `message`, `localized_messages`, or `attachments` is required. A keyboard additionally

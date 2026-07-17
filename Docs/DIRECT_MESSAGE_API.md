@@ -1,10 +1,10 @@
-# Send Direct Message by Phone API
+# Send Direct Message API
 
 ## Postman placement
 
 - Workspace: `Procare_TelegramBot`
 - Collection: `Bot APIs / Messages`
-- Request: `Send Direct Message by Phone`
+- Request: `Send Direct Message`
 
 ## Endpoint
 
@@ -14,14 +14,17 @@ Authorization: Bearer {{API_MESSAGE_SEND_TOKEN}}
 Content-Type: application/json
 ```
 
-The API sends a Telegram message to the registered user identified by `phone_number`.
-It normalizes Uzbek phone formats to `+998XXXXXXXXX` before lookup.
+The API sends a Telegram message to the registered client identified by exactly one of
+`phone_number` or `crm_client_id`. CRM-triggered repair-order delivery should use the stable
+`crm_client_id`; manual and legacy callers may use a phone number, which the Bot normalizes to
+`+998XXXXXXXXX` before lookup.
 
 ## Request body
 
 | Field                   | Required                             | Type           | Description                                                                                                                                         |
 | ----------------------- | ------------------------------------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `phone_number`          | Yes                                  | string         | Registered Uzbek phone number.                                                                                                                      |
+| `phone_number`          | Conditional                          | string         | Registered Uzbek phone number. Mutually exclusive with `crm_client_id`.                                                                             |
+| `crm_client_id`         | Conditional                          | string         | Stable CRM client ID stored with the Telegram registration. Mutually exclusive with `phone_number`; preferred for repair-order automation.          |
 | `localized_messages`    | Conditional                          | object         | Locale-specific message variants. Requires both `uz` and `ru`.                                                                                      |
 | `localized_messages.uz` | When `localized_messages` is present | string         | Uzbek message template.                                                                                                                             |
 | `localized_messages.ru` | When `localized_messages` is present | string         | Russian message template.                                                                                                                           |
