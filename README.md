@@ -78,7 +78,9 @@ status catalog and set Uzbek/Russian names for the status IDs returned by CRM.
 
 Telegram IDs listed in `DEVELOPER_TELEGRAM_IDS` receive a Developer menu. Developers can view the
 upstream API endpoints used by the bot and create or update Uzbek/Russian localizations for each
-endpoint-specific error `location` token returned by the CRM/API error envelope.
+endpoint-specific error `location` token returned by the CRM/API error envelope. The bot also sends
+these accounts private, secret-redacted diagnostic reports for Telegram update errors, including
+handled failures that are written through the handler logger.
 
 ## Technology
 

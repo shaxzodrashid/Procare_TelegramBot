@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 
 import { createBot } from '../src/bot/create-bot.js';
 import type { BotDependencies } from '../src/bot/create-bot.js';
+import { ClientRepairOrderError } from '../src/services/client-repair-order.service.js';
 import type { CustomerRepairOrderDetail } from '../src/types/client-repair-order.js';
 import type { Logger } from '../src/utils/logger.js';
 
@@ -210,6 +211,54 @@ const textUpdate = (text: string) => ({
 });
 
 describe('direct message inline repair-order buttons', () => {
+  it('sends developers the full CRM not-found report before showing the safe order message', async () => {
+    const dependencies = createDependencies();
+    dependencies.developerTelegramIds = new Set(['990001', '990002']);
+    dependencies.clientRepairOrderService.getClientRepairOrder = async () => {
+      throw new ClientRepairOrderError(
+        'not_found',
+        'Repair order is hidden from this client',
+        404,
+        'telegram_client_repair_order_not_found',
+      );
+    };
+    const { bot, apiCalls } = createTestBot(dependencies);
+
+    await bot.handleUpdate(
+      callbackUpdate(`dm:ro:o:${repairOrderUuid}`, 'Original API message') as any,
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    const userReply = apiCalls.find(
+      (call) => call.method === 'sendMessage' && String(call.payload.chat_id) === '700201',
+    );
+    assert.ok(userReply);
+    assert.match(userReply.payload.text, /buyurtma topilmadi/i);
+
+    for (const developerTelegramId of dependencies.developerTelegramIds) {
+      const report = apiCalls
+        .filter(
+          (call) =>
+            call.method === 'sendMessage' && String(call.payload.chat_id) === developerTelegramId,
+        )
+        .map((call) => String(call.payload.text))
+        .join('\n');
+      assert.match(report, /DEVELOPER ERROR REPORT/);
+      assert.match(
+        report,
+        /Direct-message repair order was not found or is not visible to the client/,
+      );
+      assert.match(report, /ClientRepairOrderError/);
+      assert.match(report, /Repair order is hidden from this client/);
+      assert.match(report, /"code": "not_found"/);
+      assert.match(report, /"status": 404/);
+      assert.match(report, /telegram_client_repair_order_not_found/);
+      assert.match(report, new RegExp(repairOrderUuid));
+      assert.match(report, /"client_id": "client-201"/);
+      assert.match(report, /"update_id":/);
+    }
+  });
+
   it('edits the API message to repair-order detail and restores it on back', async () => {
     const { bot, apiCalls } = createTestBot();
     const originalKeyboard = [

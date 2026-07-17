@@ -268,6 +268,14 @@ export const showClientRepairOrderDetail = async (
     );
   } catch (error) {
     if (error instanceof ClientRepairOrderError && error.code === 'not_found') {
+      dependencies.logger.error(
+        'Client repair order was not found or is not visible to the client',
+        error,
+        {
+          client_id: client.client_id,
+          order_number: orderNumber,
+        },
+      );
       await sendOrEditPlainWindow(ctx, t(ctx.session.locale, 'orderNotFound'), {}, preferEdit);
       return;
     }

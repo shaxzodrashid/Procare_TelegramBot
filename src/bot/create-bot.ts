@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 import { Bot, session, GrammyError, HttpError } from 'grammy';
 import type { ClientRegistrationGateway } from '../services/client-registration.service.js';
 import type { ClientRepairOrderGateway } from '../services/client-repair-order.service.js';
@@ -13,6 +15,10 @@ import type { RepairOrderGateway } from '../services/repair-order.service.js';
 import type { SupportMessageStore } from '../services/support-message.store.js';
 import type { UnknownClientStore } from '../services/unknown-client.store.js';
 import type { Logger } from '../utils/logger.js';
+import {
+  createDeveloperErrorReportingLogger,
+  notifyDevelopersOfError,
+} from '../services/developer-error-notification.service.js';
 import type { BotContext } from './context.js';
 import { t } from './messages.js';
 import {
@@ -78,12 +84,25 @@ export { createRestartGateMiddleware, createSessionRestorationMiddleware } from 
 
 export const createBot = (token: string, dependencies: BotDependencies): Bot<BotContext> => {
   const bot = new Bot<BotContext>(token);
+  const errorContextStorage = new AsyncLocalStorage<BotContext>();
+  const runtimeDependencies: BotDependencies = {
+    ...dependencies,
+    logger: createDeveloperErrorReportingLogger({
+      logger: dependencies.logger,
+      api: bot.api,
+      developerTelegramIds: dependencies.developerTelegramIds,
+      contextStorage: errorContextStorage,
+    }),
+  };
 
   // Configure Telegram API request/response logging
   bot.api.config.use(createTelegramApiLoggingTransformer(dependencies.logger));
 
   // Initialize session support
   bot.use(session({ initial: initialSession }));
+
+  // Keep the current update attached to handler-level error logs without mixing concurrent users.
+  bot.use((ctx, next) => errorContextStorage.run(ctx, next));
 
   bot.use(async (ctx, next) => {
     if (ctx.from && dependencies.developerTelegramIds?.has(String(ctx.from.id))) {
@@ -95,26 +114,26 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
   });
 
   // A changed deployment must invalidate persisted users before their sessions are restored.
-  bot.use(createRestartGateMiddleware(dependencies));
+  bot.use(createRestartGateMiddleware(runtimeDependencies));
 
   // Automatically restore sessions for registered users
-  bot.use(createSessionRestorationMiddleware(dependencies));
+  bot.use(createSessionRestorationMiddleware(runtimeDependencies));
 
   // Diagnostic update tracing middleware
   bot.use(async (ctx, next) => {
     const startedAt = Date.now();
-    dependencies.logger.debug(`Incoming Telegram update ${ctx.update.update_id}`);
-    dependencies.logger.extra(`Incoming Telegram update ${ctx.update.update_id}`, {
+    runtimeDependencies.logger.debug(`Incoming Telegram update ${ctx.update.update_id}`);
+    runtimeDependencies.logger.extra(`Incoming Telegram update ${ctx.update.update_id}`, {
       update: summarizeTelegramUpdate(ctx),
     });
     try {
       await next();
     } finally {
       const durationMs = Date.now() - startedAt;
-      dependencies.logger.info(
+      runtimeDependencies.logger.info(
         `Telegram update ${ctx.update.update_id} processed in ${durationMs}ms`,
       );
-      dependencies.logger.extra(`Telegram update ${ctx.update.update_id} completed`, {
+      runtimeDependencies.logger.extra(`Telegram update ${ctx.update.update_id} completed`, {
         durationMs,
         session: summarizeSession(ctx.session),
       });
@@ -122,21 +141,21 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
   });
 
   // Register feature handlers
-  registerSupportHandlers(bot, token, dependencies);
-  registerCommandHandlers(bot, dependencies);
-  registerRegistrationHandlers(bot, dependencies);
-  registerSettingsHandlers(bot, dependencies);
-  registerRepairOrdersHandlers(bot, dependencies);
-  registerDirectMessageHandlers(bot, dependencies);
-  registerUnknownFlowHandlers(bot, dependencies);
-  registerAdminClientsHandlers(bot, dependencies);
-  registerAdminTemplatesHandlers(bot, dependencies);
-  registerAdminStatusNamesHandlers(bot, dependencies);
-  registerAdminExportHandlers(bot, dependencies);
-  if (dependencies.apiErrorLocalizationStore) {
+  registerSupportHandlers(bot, token, runtimeDependencies);
+  registerCommandHandlers(bot, runtimeDependencies);
+  registerRegistrationHandlers(bot, runtimeDependencies);
+  registerSettingsHandlers(bot, runtimeDependencies);
+  registerRepairOrdersHandlers(bot, runtimeDependencies);
+  registerDirectMessageHandlers(bot, runtimeDependencies);
+  registerUnknownFlowHandlers(bot, runtimeDependencies);
+  registerAdminClientsHandlers(bot, runtimeDependencies);
+  registerAdminTemplatesHandlers(bot, runtimeDependencies);
+  registerAdminStatusNamesHandlers(bot, runtimeDependencies);
+  registerAdminExportHandlers(bot, runtimeDependencies);
+  if (runtimeDependencies.apiErrorLocalizationStore) {
     registerDeveloperHandlers(bot, {
-      ...dependencies,
-      apiErrorLocalizationStore: dependencies.apiErrorLocalizationStore,
+      ...runtimeDependencies,
+      apiErrorLocalizationStore: runtimeDependencies.apiErrorLocalizationStore,
     });
   }
 
@@ -169,6 +188,14 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
     } else {
       dependencies.logger.error('Unhandled bot update error', cause);
     }
+    void notifyDevelopersOfError({
+      api: bot.api,
+      developerTelegramIds: dependencies.developerTelegramIds,
+      logger: dependencies.logger,
+      ctx: error.ctx,
+      source: 'Unhandled bot update error',
+      error: cause,
+    });
   });
 
   return bot;

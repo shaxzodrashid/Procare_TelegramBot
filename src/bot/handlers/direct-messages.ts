@@ -117,6 +117,14 @@ const loadAuthorizedOrder = async (
     return order;
   } catch (error) {
     if (error instanceof ClientRepairOrderError && error.code === 'not_found') {
+      dependencies.logger.error(
+        'Direct-message repair order was not found or is not visible to the client',
+        error,
+        {
+          client_id: client.client_id,
+          repair_order_id: repairOrderUuid,
+        },
+      );
       await ctx.reply(t(ctx.session.locale, 'orderNotFound'));
       return null;
     }
@@ -411,6 +419,9 @@ const submitApprovalAction = async (
       (error.code === 'not_found' ||
         error.location === 'telegram_initial_problems_approval_not_pending')
     ) {
+      dependencies.logger.error('Repair-order approval action is no longer available', error, {
+        repair_order_id: repairOrderUuid,
+      });
       await completeOriginalMessage(ctx, flow.messageId, repairOrderUuid);
       clearApprovalFlow(ctx.session);
       await ctx.reply(t(ctx.session.locale, 'directApprovalNoLongerPending'));
@@ -438,6 +449,9 @@ const submitRating = async (
     await ctx.reply(t(ctx.session.locale, 'directRatingAccepted', { grade: String(grade) }));
   } catch (error) {
     if (error instanceof ClientRepairOrderError && error.code === 'not_found') {
+      dependencies.logger.error('Repair-order rating target was not found', error, {
+        repair_order_id: repairOrderUuid,
+      });
       await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
       await ctx.reply(t(ctx.session.locale, 'orderNotFound'));
       return;
