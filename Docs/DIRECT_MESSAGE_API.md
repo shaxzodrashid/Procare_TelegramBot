@@ -251,26 +251,35 @@ Telegram reply. Missing or rejected reply targets fall back to a normal Telegram
 - `layout` is an array of Telegram button rows. CRM controls row placement and button order. Every
   layout button accepts `type`, `text`, `localized_text`, and `style`; `repair_order_uuid` remains at
   the keyboard level so CRM cannot attach a different order to an individual action. Every layout
-  button requires either `text` or `localized_text`.
+  button requires either `text` or `localized_text`. For approval decisions, the bot accepts these
+  presentation fields for contract compatibility but deliberately renders canonical localized
+  labels and colors from the semantic subtype.
 - `details` requires exactly one button whose subtype is `details`. Without `layout`, optional
   top-level `text`, `localized_text`, or the bot's localized default is used. A top-level `style` may
   also be supplied. Back restores the exact original Telegram text entities and full original inline
   keyboard.
 - `approval` requires exactly one `reject` and one `approve` subtype. They may be placed as
   `REJECT | APPROVE`, `APPROVE | REJECT`, or as two one-button rows in either order. Approve requires
-  an explicit confirmation.
+  an explicit confirmation. The bot always renders `reject` as the localized red Reject control and
+  `approve` as the localized green Approve control, so authored labels or styles cannot make the
+  visible action contradict its callback. For already-delivered legacy keyboards, the handler also
+  treats a `success` button as Approve and a `danger` button as Reject if its stored callback was
+  reversed.
   Reject requires a 1–4,000 character explanation and then an explicit confirmation. Before each
-  CRM decision, the bot reloads the order through the client-owned detail endpoint and requires
-  `initial_problems_approval.requires_action = true`.
+  CRM decision, new deliveries use the trusted numeric `order_number` embedded in the bot-generated
+  callback; legacy deliveries resolve it from the exact Telegram message's durable mapping. The bot
+  reloads the order through the client-owned detail endpoint, verifies that its UUID still matches
+  `repair_order_uuid`, and requires `initial_problems_approval.requires_action = true`.
 - `rating` requires exactly ten subtypes, `rating_1` through `rating_10`, each used once. Its layout
   must have two rows of five buttons. The subtype—not the visible text—determines the submitted
   grade. After a successful submission the rating controls are removed. Rating retries are safe
   because CRM upserts the one current Telegram rating for the order.
 - Generated action keyboards always require a valid internal `repair_order_uuid`. A custom `layout`
   cannot be combined with top-level `text`, `localized_text`, or `style`. Top-level button
-  presentation is supported only by `details`; `approval` and `rating` customize their buttons
-  through `layout`. Omitting `layout` preserves the bot's default localized action layouts. Default
-  approval controls render Reject as `danger` and Approve as `success`.
+  presentation is supported only by `details`; `rating` customizes its buttons through `layout`,
+  while approval `layout` controls placement only. Omitting `layout` preserves the bot's default
+  localized action layouts. Approval controls always render Reject as `danger` and Approve as
+  `success`.
 
 Custom row-based keyboards use `inline_keyboard.rows`:
 
@@ -295,8 +304,8 @@ Custom row-based keyboards use `inline_keyboard.rows`:
   `approval` button opens the Reject/Approve chooser, and a row-based `rating` button opens grades
   1–10 in two rows of five. These flows provide Back navigation.
 - Callers provide semantic button types rather than Telegram `callback_data`. The bot generates
-  callback data internally from the action type and trusted `repair_order_uuid`; callers must not
-  depend on custom callback payloads.
+  callback data internally from the action type, trusted `repair_order_uuid`, and numeric
+  `order_number` when supplied; callers must not depend on custom callback payloads.
 
 Telegram accepts one inline-keyboard object per message. Multiple controls and layouts are expressed
 as rows inside that object; they are not sent as separate keyboards.

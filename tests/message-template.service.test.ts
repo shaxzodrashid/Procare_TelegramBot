@@ -469,18 +469,18 @@ describe('BotDirectMessageService', () => {
       [[{ text: '🧾 Детали заказа', callback_data: `dm:ro:o:${repairOrderUuid}` }]],
     );
     assert.deepEqual(
-      buildDirectMessageInlineKeyboard({ type: 'approval', repairOrderUuid }, 'uz')
+      buildDirectMessageInlineKeyboard({ type: 'approval', repairOrderUuid }, 'uz', '1024')
         ?.inline_keyboard,
       [
         [
           {
             text: '❌ Rad etish',
-            callback_data: `dm:ap:r:${repairOrderUuid}`,
+            callback_data: `dm:ap:r:${repairOrderUuid}:1024`,
             style: 'danger',
           },
           {
             text: '✅ Tasdiqlash',
-            callback_data: `dm:ap:a:${repairOrderUuid}`,
+            callback_data: `dm:ap:a:${repairOrderUuid}:1024`,
             style: 'success',
           },
         ],
@@ -516,15 +516,15 @@ describe('BotDirectMessageService', () => {
           [
             {
               type: 'approve',
-              localizedText: { uz: 'TASDIQLASH', ru: 'ОДОБРИТЬ' },
-              style: 'success',
+              localizedText: { uz: 'RAD ETISH', ru: 'ОТКЛОНИТЬ' },
+              style: 'danger',
             },
           ],
           [
             {
               type: 'reject',
-              localizedText: { uz: 'RAD ETISH', ru: 'ОТКЛОНИТЬ' },
-              style: 'danger',
+              localizedText: { uz: 'TASDIQLASH', ru: 'ОДОБРИТЬ' },
+              style: 'success',
             },
           ],
         ],
@@ -543,14 +543,14 @@ describe('BotDirectMessageService', () => {
     assert.deepEqual(approval?.inline_keyboard, [
       [
         {
-          text: 'ОДОБРИТЬ',
+          text: '✅ Одобрить',
           callback_data: `dm:ap:a:${repairOrderUuid}`,
           style: 'success',
         },
       ],
       [
         {
-          text: 'ОТКЛОНИТЬ',
+          text: '❌ Отклонить',
           callback_data: `dm:ap:r:${repairOrderUuid}`,
           style: 'danger',
         },

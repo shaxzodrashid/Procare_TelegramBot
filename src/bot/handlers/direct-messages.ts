@@ -14,11 +14,11 @@ import type { BotDependencies } from '../create-bot.js';
 import { applyStatusNameOverridesToDetail } from './repair-orders.js';
 
 const repairOrderCallbackPattern =
-  /^dm:ro:(?<action>o|r|b):(?<repairOrderUuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+  /^dm:ro:(?<action>o|r|b):(?<repairOrderUuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?::(?<orderNumber>[0-9]{1,15}))?$/i;
 const approvalCallbackPattern =
-  /^dm:ap:(?<action>o|a|r|ca|cr|b):(?<repairOrderUuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+  /^dm:ap:(?<action>o|a|r|ca|cr|b):(?<repairOrderUuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?::(?<orderNumber>[0-9]{1,15}))?$/i;
 const ratingCallbackPattern =
-  /^dm:rt:(?<action>o|b|10|[1-9]):(?<repairOrderUuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+  /^dm:rt:(?<action>o|b|10|[1-9]):(?<repairOrderUuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?::(?<orderNumber>[0-9]{1,15}))?$/i;
 
 const callbackMessageId = (ctx: BotContext): string | null => {
   const message = ctx.callbackQuery?.message;
@@ -30,6 +30,17 @@ const callbackMessageText = (ctx: BotContext): string | null => {
   const message = ctx.callbackQuery?.message;
   if (!message || !('text' in message) || typeof message.text !== 'string') return null;
   return message.text;
+};
+
+const approvalActionFromVisibleButton = (ctx: BotContext, callbackAction: 'a' | 'r'): 'a' | 'r' => {
+  const callbackData = ctx.callbackQuery?.data;
+  const rows = ctx.callbackQuery?.message?.reply_markup?.inline_keyboard;
+  const button = rows
+    ?.flat()
+    .find((candidate) => 'callback_data' in candidate && candidate.callback_data === callbackData);
+  if (button?.style === 'success') return 'a';
+  if (button?.style === 'danger') return 'r';
+  return callbackAction;
 };
 
 const captureOriginalMessage = (ctx: BotContext, repairOrderUuid: string): string | null => {
@@ -94,6 +105,7 @@ const loadAuthorizedOrder = async (
   ctx: BotContext,
   dependencies: BotDependencies,
   repairOrderUuid: string,
+  knownOrderNumber?: string,
 ): Promise<CustomerRepairOrderDetail | null> => {
   const client = ctx.session.client;
   if (!client) {
@@ -101,10 +113,57 @@ const loadAuthorizedOrder = async (
     return null;
   }
 
+  let orderNumber = knownOrderNumber;
+  if (!orderNumber) {
+    const messageId = ctx.callbackQuery?.message?.message_id;
+    const chatId = ctx.chat?.id;
+    if (messageId === undefined || chatId === undefined) {
+      dependencies.logger.error('Direct-message repair order has no Telegram message context', {
+        client_id: client.client_id,
+        repair_order_id: repairOrderUuid,
+      });
+      await ctx.reply(t(ctx.session.locale, 'directActionUnavailable'));
+      return null;
+    }
+
+    let mappedOrder;
+    try {
+      mappedOrder = await dependencies.supportMessageStore.findByTelegramMessageId(
+        messageId,
+        String(chatId),
+      );
+    } catch (error) {
+      dependencies.logger.error('Failed to resolve direct-message repair-order context', error, {
+        client_id: client.client_id,
+        repair_order_id: repairOrderUuid,
+        telegram_message_id: messageId,
+      });
+      await ctx.reply(t(ctx.session.locale, 'directActionUnavailable'));
+      return null;
+    }
+
+    if (
+      !mappedOrder ||
+      mappedOrder.repair_order_id !== repairOrderUuid ||
+      mappedOrder.crm_client_id !== client.client_id
+    ) {
+      dependencies.logger.error('Direct-message repair-order context is missing or mismatched', {
+        client_id: client.client_id,
+        repair_order_id: repairOrderUuid,
+        telegram_message_id: messageId,
+        mapped_client_id: mappedOrder?.crm_client_id,
+        mapped_repair_order_id: mappedOrder?.repair_order_id,
+      });
+      await ctx.reply(t(ctx.session.locale, 'orderNotFound'));
+      return null;
+    }
+    orderNumber = mappedOrder.order_number;
+  }
+
   try {
     const order = await dependencies.clientRepairOrderService.getClientRepairOrder(
       client.client_id,
-      repairOrderUuid,
+      orderNumber,
     );
     if (order.id !== repairOrderUuid) {
       dependencies.logger.error('CRM returned a mismatched direct-message repair order', {
@@ -173,13 +232,14 @@ const showDirectMessageRepairOrder = async (
   dependencies: BotDependencies,
   repairOrderUuid: string,
   shouldCaptureOriginalMessage: boolean,
+  knownOrderNumber?: string,
 ): Promise<void> => {
   if (shouldCaptureOriginalMessage && !captureOriginalMessage(ctx, repairOrderUuid)) {
     await ctx.reply(t(ctx.session.locale, 'staleAction'));
     return;
   }
 
-  const order = await loadAuthorizedOrder(ctx, dependencies, repairOrderUuid);
+  const order = await loadAuthorizedOrder(ctx, dependencies, repairOrderUuid, knownOrderNumber);
   if (!order) return;
 
   try {
@@ -207,13 +267,14 @@ const showApprovalOptions = async (
   ctx: BotContext,
   dependencies: BotDependencies,
   repairOrderUuid: string,
+  knownOrderNumber?: string,
 ): Promise<void> => {
   const messageId = captureOriginalMessage(ctx, repairOrderUuid);
   if (!messageId) {
     await ctx.reply(t(ctx.session.locale, 'staleAction'));
     return;
   }
-  const order = await loadAuthorizedOrder(ctx, dependencies, repairOrderUuid);
+  const order = await loadAuthorizedOrder(ctx, dependencies, repairOrderUuid, knownOrderNumber);
   if (!order) return;
   if (
     order.initial_problems_approval.status !== 'pending' ||
@@ -238,12 +299,13 @@ const showRatingOptions = async (
   ctx: BotContext,
   dependencies: BotDependencies,
   repairOrderUuid: string,
+  knownOrderNumber?: string,
 ): Promise<void> => {
   if (!captureOriginalMessage(ctx, repairOrderUuid)) {
     await ctx.reply(t(ctx.session.locale, 'staleAction'));
     return;
   }
-  if (!(await loadAuthorizedOrder(ctx, dependencies, repairOrderUuid))) return;
+  if (!(await loadAuthorizedOrder(ctx, dependencies, repairOrderUuid, knownOrderNumber))) return;
   await ctx.editMessageReplyMarkup({
     reply_markup: new InlineKeyboard()
       .text('1', `dm:rt:1:${repairOrderUuid}`)
@@ -267,13 +329,14 @@ const startApprovalAction = async (
   dependencies: BotDependencies,
   repairOrderUuid: string,
   action: 'a' | 'r',
+  knownOrderNumber?: string,
 ): Promise<void> => {
   const messageId = captureOriginalMessage(ctx, repairOrderUuid);
   if (!messageId) {
     await ctx.reply(t(ctx.session.locale, 'staleAction'));
     return;
   }
-  const order = await loadAuthorizedOrder(ctx, dependencies, repairOrderUuid);
+  const order = await loadAuthorizedOrder(ctx, dependencies, repairOrderUuid, knownOrderNumber);
   if (!order) return;
   if (
     order.initial_problems_approval.status !== 'pending' ||
@@ -286,6 +349,7 @@ const startApprovalAction = async (
 
   ctx.session.directMessageApproval = {
     repairOrderUuid,
+    orderNumber: order.order_number,
     messageId,
     mode: action === 'a' ? 'approve_confirmation' : 'rejection_note',
     submitting: false,
@@ -340,7 +404,12 @@ const handleRejectionNote = async (
     return;
   }
 
-  const order = await loadAuthorizedOrder(ctx, dependencies, flow.repairOrderUuid);
+  const order = await loadAuthorizedOrder(
+    ctx,
+    dependencies,
+    flow.repairOrderUuid,
+    flow.orderNumber,
+  );
   if (!order) return;
   flow.note = note;
   flow.mode = 'reject_confirmation';
@@ -386,7 +455,7 @@ const submitApprovalAction = async (
     return;
   }
 
-  const order = await loadAuthorizedOrder(ctx, dependencies, repairOrderUuid);
+  const order = await loadAuthorizedOrder(ctx, dependencies, repairOrderUuid, flow.orderNumber);
   if (!order) return;
   if (
     order.initial_problems_approval.status !== 'pending' ||
@@ -437,8 +506,9 @@ const submitRating = async (
   dependencies: BotDependencies,
   repairOrderUuid: string,
   grade: CustomerRepairOrderRatingGrade,
+  knownOrderNumber?: string,
 ): Promise<void> => {
-  if (!(await loadAuthorizedOrder(ctx, dependencies, repairOrderUuid))) return;
+  if (!(await loadAuthorizedOrder(ctx, dependencies, repairOrderUuid, knownOrderNumber))) return;
 
   try {
     await dependencies.clientRepairOrderService.submitRepairOrderRating(repairOrderUuid, { grade });
@@ -470,6 +540,7 @@ export const registerDirectMessageHandlers = (
     const match = repairOrderCallbackPattern.exec(ctx.callbackQuery.data);
     const action = match?.groups?.action;
     const repairOrderUuid = match?.groups?.repairOrderUuid;
+    const orderNumber = match?.groups?.orderNumber;
     if (!action || !repairOrderUuid) {
       await ctx.reply(t(ctx.session.locale, 'staleAction'));
       return;
@@ -479,7 +550,13 @@ export const registerDirectMessageHandlers = (
       await restoreOriginalMessage(ctx, repairOrderUuid);
       return;
     }
-    await showDirectMessageRepairOrder(ctx, dependencies, repairOrderUuid, action === 'o');
+    await showDirectMessageRepairOrder(
+      ctx,
+      dependencies,
+      repairOrderUuid,
+      action === 'o',
+      orderNumber,
+    );
   });
 
   bot.callbackQuery(approvalCallbackPattern, async (ctx) => {
@@ -487,6 +564,7 @@ export const registerDirectMessageHandlers = (
     const match = approvalCallbackPattern.exec(ctx.callbackQuery.data);
     const action = match?.groups?.action;
     const repairOrderUuid = match?.groups?.repairOrderUuid;
+    const orderNumber = match?.groups?.orderNumber;
     if (!action || !repairOrderUuid) {
       await ctx.reply(t(ctx.session.locale, 'staleAction'));
       return;
@@ -497,11 +575,19 @@ export const registerDirectMessageHandlers = (
       return;
     }
     if (action === 'o') {
-      await showApprovalOptions(ctx, dependencies, repairOrderUuid);
+      await showApprovalOptions(ctx, dependencies, repairOrderUuid, orderNumber);
       return;
     }
     if (action === 'a' || action === 'r') {
-      await startApprovalAction(ctx, dependencies, repairOrderUuid, action);
+      const visibleAction = approvalActionFromVisibleButton(ctx, action);
+      if (visibleAction !== action) {
+        dependencies.logger.warn('Corrected a legacy approval callback using its visible style', {
+          repair_order_id: repairOrderUuid,
+          callback_action: action,
+          visible_action: visibleAction,
+        });
+      }
+      await startApprovalAction(ctx, dependencies, repairOrderUuid, visibleAction, orderNumber);
       return;
     }
     await submitApprovalAction(
@@ -517,6 +603,7 @@ export const registerDirectMessageHandlers = (
     const match = ratingCallbackPattern.exec(ctx.callbackQuery.data);
     const repairOrderUuid = match?.groups?.repairOrderUuid;
     const action = match?.groups?.action;
+    const orderNumber = match?.groups?.orderNumber;
     if (!repairOrderUuid || !action) {
       await ctx.reply(t(ctx.session.locale, 'staleAction'));
       return;
@@ -526,7 +613,7 @@ export const registerDirectMessageHandlers = (
       return;
     }
     if (action === 'o') {
-      await showRatingOptions(ctx, dependencies, repairOrderUuid);
+      await showRatingOptions(ctx, dependencies, repairOrderUuid, orderNumber);
       return;
     }
     const grade = Number(action);
@@ -534,7 +621,13 @@ export const registerDirectMessageHandlers = (
       await ctx.reply(t(ctx.session.locale, 'staleAction'));
       return;
     }
-    await submitRating(ctx, dependencies, repairOrderUuid, grade as CustomerRepairOrderRatingGrade);
+    await submitRating(
+      ctx,
+      dependencies,
+      repairOrderUuid,
+      grade as CustomerRepairOrderRatingGrade,
+      orderNumber,
+    );
   });
 
   bot.on('message:text', async (ctx, next) => {

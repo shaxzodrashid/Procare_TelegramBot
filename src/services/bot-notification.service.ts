@@ -716,7 +716,11 @@ export class BotDirectMessageService {
     }
 
     try {
-      const replyMarkup = buildDirectMessageInlineKeyboard(params.inlineKeyboard, user.locale);
+      const replyMarkup = buildDirectMessageInlineKeyboard(
+        params.inlineKeyboard,
+        user.locale,
+        params.orderNumber,
+      );
       const replyTarget = params.supportReply
         ? await this.supportMessages?.findReplyTargetByCrmCommentId(
             params.supportReply.targetCrmCommentId,
@@ -893,14 +897,19 @@ const applyButtonStyle = (
   style: DirectMessageButtonStyle | undefined,
 ): InlineKeyboard => (style ? markup.style(style) : markup);
 
+const callbackOrderNumberSuffix = (orderNumber?: string): string =>
+  orderNumber && /^[0-9]{1,15}$/.test(orderNumber) ? `:${orderNumber}` : '';
+
 const actionButtonCallbackData = (
   button: DirectMessageActionButton,
   repairOrderUuid: string,
+  orderNumber?: string,
 ): string => {
-  if (button.type === 'details') return `dm:ro:o:${repairOrderUuid}`;
-  if (button.type === 'reject') return `dm:ap:r:${repairOrderUuid}`;
-  if (button.type === 'approve') return `dm:ap:a:${repairOrderUuid}`;
-  return `dm:rt:${button.type.slice('rating_'.length)}:${repairOrderUuid}`;
+  const suffix = callbackOrderNumberSuffix(orderNumber);
+  if (button.type === 'details') return `dm:ro:o:${repairOrderUuid}${suffix}`;
+  if (button.type === 'reject') return `dm:ap:r:${repairOrderUuid}${suffix}`;
+  if (button.type === 'approve') return `dm:ap:a:${repairOrderUuid}${suffix}`;
+  return `dm:rt:${button.type.slice('rating_'.length)}:${repairOrderUuid}${suffix}`;
 };
 
 const appendActionLayout = (
@@ -908,6 +917,7 @@ const appendActionLayout = (
   layout: DirectMessageActionButton[][],
   repairOrderUuid: string,
   locale: string,
+  orderNumber?: string,
 ): InlineKeyboard => {
   layout.forEach((row, rowIndex) => {
     if (rowIndex > 0) markup.row();
@@ -915,9 +925,42 @@ const appendActionLayout = (
       const text = localizedButtonText(button, locale);
       if (!text) return;
       applyButtonStyle(
-        markup.text(text, actionButtonCallbackData(button, repairOrderUuid)),
+        markup.text(text, actionButtonCallbackData(button, repairOrderUuid, orderNumber)),
         button.style,
       );
+    });
+  });
+  return markup;
+};
+
+const appendApprovalLayout = (
+  markup: InlineKeyboard,
+  layout: DirectMessageActionButton[][],
+  repairOrderUuid: string,
+  locale: string,
+  orderNumber?: string,
+): InlineKeyboard => {
+  const resolvedLocale = directMessageLocale(locale);
+  layout.forEach((row, rowIndex) => {
+    if (rowIndex > 0) markup.row();
+    row.forEach((button) => {
+      if (button.type === 'approve') {
+        markup
+          .text(
+            t(resolvedLocale, 'directApprovalApprove'),
+            actionButtonCallbackData(button, repairOrderUuid, orderNumber),
+          )
+          .success();
+        return;
+      }
+      if (button.type === 'reject') {
+        markup
+          .text(
+            t(resolvedLocale, 'directApprovalReject'),
+            actionButtonCallbackData(button, repairOrderUuid, orderNumber),
+          )
+          .danger();
+      }
     });
   });
   return markup;
@@ -926,10 +969,12 @@ const appendActionLayout = (
 const appendDefaultRatingLayout = (
   markup: InlineKeyboard,
   repairOrderUuid: string,
+  orderNumber?: string,
 ): InlineKeyboard => {
+  const suffix = callbackOrderNumberSuffix(orderNumber);
   for (let grade = 1; grade <= 10; grade += 1) {
     if (grade === 6) markup.row();
-    markup.text(String(grade), `dm:rt:${grade}:${repairOrderUuid}`);
+    markup.text(String(grade), `dm:rt:${grade}:${repairOrderUuid}${suffix}`);
   }
   return markup;
 };
@@ -937,19 +982,36 @@ const appendDefaultRatingLayout = (
 export const buildDirectMessageInlineKeyboard = (
   keyboard: DirectMessageInlineKeyboard | undefined,
   locale: string,
+  orderNumber?: string,
 ): InlineKeyboard | undefined => {
   if (!keyboard) return undefined;
 
   const markup = new InlineKeyboard();
   if ('type' in keyboard) {
     if (keyboard.layout) {
-      return appendActionLayout(markup, keyboard.layout, keyboard.repairOrderUuid, locale);
+      if (keyboard.type === 'approval') {
+        return appendApprovalLayout(
+          markup,
+          keyboard.layout,
+          keyboard.repairOrderUuid,
+          locale,
+          orderNumber,
+        );
+      }
+      return appendActionLayout(
+        markup,
+        keyboard.layout,
+        keyboard.repairOrderUuid,
+        locale,
+        orderNumber,
+      );
     }
+    const suffix = callbackOrderNumberSuffix(orderNumber);
     if (keyboard.type === 'details') {
       return applyButtonStyle(
         markup.text(
           localizedButtonText(keyboard, locale) ?? defaultRepairOrderButtonText(locale),
-          `dm:ro:o:${keyboard.repairOrderUuid}`,
+          `dm:ro:o:${keyboard.repairOrderUuid}${suffix}`,
         ),
         keyboard.style,
       );
@@ -958,17 +1020,17 @@ export const buildDirectMessageInlineKeyboard = (
       return markup
         .text(
           t(directMessageLocale(locale), 'directApprovalReject'),
-          `dm:ap:r:${keyboard.repairOrderUuid}`,
+          `dm:ap:r:${keyboard.repairOrderUuid}${suffix}`,
         )
         .danger()
         .text(
           t(directMessageLocale(locale), 'directApprovalApprove'),
-          `dm:ap:a:${keyboard.repairOrderUuid}`,
+          `dm:ap:a:${keyboard.repairOrderUuid}${suffix}`,
         )
         .success();
     }
 
-    return appendDefaultRatingLayout(markup, keyboard.repairOrderUuid);
+    return appendDefaultRatingLayout(markup, keyboard.repairOrderUuid, orderNumber);
   }
 
   keyboard.rows.forEach((row, rowIndex) => {
@@ -986,7 +1048,7 @@ export const buildDirectMessageInlineKeyboard = (
         applyButtonStyle(
           markup.text(
             text ?? t(directMessageLocale(locale), 'directApprovalAction'),
-            `dm:ap:o:${button.repairOrderUuid}`,
+            `dm:ap:o:${button.repairOrderUuid}${callbackOrderNumberSuffix(orderNumber)}`,
           ),
           button.style,
         );
@@ -996,7 +1058,7 @@ export const buildDirectMessageInlineKeyboard = (
         applyButtonStyle(
           markup.text(
             text ?? t(directMessageLocale(locale), 'directRatingAction'),
-            `dm:rt:o:${button.repairOrderUuid}`,
+            `dm:rt:o:${button.repairOrderUuid}${callbackOrderNumberSuffix(orderNumber)}`,
           ),
           button.style,
         );
@@ -1005,7 +1067,7 @@ export const buildDirectMessageInlineKeyboard = (
       applyButtonStyle(
         markup.text(
           text ?? defaultRepairOrderButtonText(locale),
-          `dm:ro:o:${button.repairOrderUuid}`,
+          `dm:ro:o:${button.repairOrderUuid}${callbackOrderNumberSuffix(orderNumber)}`,
         ),
         button.style,
       );

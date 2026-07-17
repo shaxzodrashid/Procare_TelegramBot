@@ -272,10 +272,14 @@ The optional `inline_keyboard` supports generated repair-order actions and custo
 layouts. Generated `details`, `approval`, and `rating` keyboards accept the trusted internal
 `repair_order_uuid`. Details preserve the exact original message entities and full keyboard for
 Back navigation. Approval uses confirmation, requires a rejection explanation, re-authorizes the
-client-owned order, and submits the decision to CRM. Rating uses grades 1–10 in two rows of five.
-CRM can control action labels, row positions, order, and Telegram Bot API 9.4 button styles through
-`layout`. All URL and action buttons accept `text` or recipient-selected `localized_text`; `style`
-may be `danger`, `success`, or `primary`. For example, approval can put Approve above Reject:
+client-owned order using the callback's trusted numeric order number (with durable message mapping
+fallback for older deliveries), verifies the returned UUID, and submits the decision to CRM. Rating
+uses grades 1–10 in two rows of five. CRM can control row positions and order through `layout`;
+labels and Telegram Bot API 9.4 styles remain customizable for non-decision controls. Approval
+decisions are safety-canonicalized: `approve` is always the localized green Approve button and
+`reject` is always the localized red Reject button, regardless of authored label/style fields. For
+already-delivered legacy keyboards, the handler follows the visible `success`/`danger` style when an
+old callback was reversed. For example, approval can put Approve above Reject:
 
 ```json
 {

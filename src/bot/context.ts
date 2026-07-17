@@ -89,6 +89,7 @@ export interface BotSession {
   >;
   directMessageApproval?: {
     repairOrderUuid: string;
+    orderNumber: string;
     messageId: string;
     mode: 'approve_confirmation' | 'rejection_note' | 'reject_confirmation';
     note?: string;

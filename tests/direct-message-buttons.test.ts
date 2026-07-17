@@ -85,7 +85,7 @@ const createDependencies = (
       },
       async getClientRepairOrder(clientId: string, orderReference: string) {
         assert.equal(clientId, 'client-201');
-        assert.equal(orderReference, repairOrderUuid);
+        assert.equal(orderReference, detail.order_number);
         return order;
       },
       async registerClientSupportComment() {
@@ -136,7 +136,29 @@ const createDependencies = (
       },
     } as any,
     messageTemplateStore: {} as any,
-    supportMessageStore: {} as any,
+    supportMessageStore: {
+      async findByTelegramMessageId(messageId: number, chatId: string) {
+        assert.equal(messageId, 777);
+        assert.equal(chatId, '700201');
+        return {
+          crm_comment_id: '22222222-2222-4222-8222-222222222222',
+          crm_client_id: 'client-201',
+          repair_order_id: repairOrderUuid,
+          order_number: detail.order_number,
+          user_id: '201',
+          telegram_id: '700201',
+          telegram_chat_id: '700201',
+          telegram_message_id: 777,
+          telegram_message_date: new Date('2026-07-17T06:00:00.000Z'),
+          sender_type: 'employee' as const,
+          direction: 'outbound' as const,
+          content_type: 'text' as const,
+          text: 'Template message',
+          photo_count: 0,
+          reply_to_support_message_id: null,
+        };
+      },
+    } as any,
     logger,
     allowManualPhoneEntry: true,
     richMessagesEnabled: false,
@@ -433,6 +455,47 @@ describe('direct message inline repair-order buttons', () => {
         (call) => call.method === 'sendMessage' && /tasdiqlandi/.test(call.payload.text),
       ),
     );
+  });
+
+  it('treats the canonical green callback as approval and uses its embedded order number', async () => {
+    const dependencies = createDependencies();
+    dependencies.supportMessageStore.findByTelegramMessageId = async () =>
+      assert.fail('an embedded order number must not require a database lookup');
+    const { bot, apiCalls } = createTestBot(dependencies);
+    const callbackData = `dm:ap:a:${repairOrderUuid}:${detail.order_number}`;
+
+    await bot.handleUpdate(
+      callbackUpdate(callbackData, 'Please decide', undefined, [
+        [
+          { text: '❌ Rad etish', callback_data: `dm:ap:r:${repairOrderUuid}:1024` },
+          { text: '✅ Tasdiqlash', callback_data: callbackData, style: 'success' },
+        ],
+      ]) as any,
+    );
+
+    assert.equal(dependencies.approvals.length, 0);
+    const confirmation = apiCalls.find((call) => call.method === 'editMessageText');
+    assert.ok(confirmation);
+    assert.match(confirmation.payload.text, /tasdiqlaysizmi/i);
+  });
+
+  it('corrects a legacy green button whose stored callback says reject', async () => {
+    const { bot, apiCalls, dependencies } = createTestBot();
+    const legacyCallback = `dm:ap:r:${repairOrderUuid}`;
+
+    await bot.handleUpdate(
+      callbackUpdate(legacyCallback, 'Please decide', undefined, [
+        [
+          { text: 'Rad etish', callback_data: `dm:ap:a:${repairOrderUuid}`, style: 'danger' },
+          { text: 'Tasdiqlash', callback_data: legacyCallback, style: 'success' },
+        ],
+      ]) as any,
+    );
+
+    assert.equal(dependencies.approvals.length, 0);
+    const confirmation = apiCalls.find((call) => call.method === 'editMessageText');
+    assert.ok(confirmation);
+    assert.match(confirmation.payload.text, /tasdiqlaysizmi/i);
   });
 
   it('requires and confirms a trimmed rejection explanation', async () => {
