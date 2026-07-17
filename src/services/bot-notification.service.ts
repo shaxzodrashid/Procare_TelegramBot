@@ -621,9 +621,10 @@ export class BotDirectMessageService {
     const user = await this.users.findByPhoneNumber(params.phoneNumber);
     if (!user) return { status: 'not_found' };
 
-    const template = params.type
-      ? await this.templates.findActiveTemplateByType(params.type)
-      : null;
+    const template =
+      params.type && !params.localizedMessages
+        ? await this.templates.findActiveTemplateByType(params.type)
+        : null;
 
     const dispatchType = template ? params.type! : DIRECT_MESSAGE_DISPATCH_TYPE;
 

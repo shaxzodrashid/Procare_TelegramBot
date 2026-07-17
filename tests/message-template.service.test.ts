@@ -684,7 +684,13 @@ describe('BotDirectMessageService', () => {
   });
 
   it('downloads a PDF document and keeps localized keyboard actions on an editable text message', async () => {
-    const store = new MemoryTemplateStore(null);
+    const store = new MemoryTemplateStore(
+      template({
+        template_type: 'warranty',
+        content_uz: 'Bot kafolat shabloni',
+        content_ru: 'Шаблон гарантии из бота',
+      }),
+    );
     const users = new MemoryRegisteredUserLookup(directMessageUser({ locale: 'ru' }));
     const { telegram, calls } = createTelegramDouble();
     const service = new BotDirectMessageService(users, store, telegram, undefined, {
@@ -702,6 +708,7 @@ describe('BotDirectMessageService', () => {
         uz: 'Kafolat hujjati',
         ru: 'Гарантийный документ',
       },
+      type: 'warranty',
       attachments: [
         {
           type: 'document',
@@ -750,6 +757,8 @@ describe('BotDirectMessageService', () => {
         [{ text: 'Подробнее', callback_data: `dm:ro:o:${repairOrderUuid}` }],
       ],
     );
+    assert.equal(store.logs[0]?.dispatch_type, 'api_direct_message');
+    assert.equal(store.logs[0]?.template_id, null);
   });
 
   it('rejects photo and document downloads that exceed their declared size limits', async () => {

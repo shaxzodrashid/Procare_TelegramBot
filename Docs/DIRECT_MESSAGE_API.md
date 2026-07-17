@@ -31,16 +31,16 @@ It normalizes Uzbek phone formats to `+998XXXXXXXXX` before lookup.
 | `localized_variables`   | No                                   | object         | Extra locale-specific placeholder values. Each key has `uz`, `ru`, and optional `en` text; the Bot selects the recipient's locale before rendering. |
 | `inline_keyboard`       | No                                   | object         | Generated `details`, `approval`, or `rating` actions, or a custom row-based keyboard containing URL, details, approval, or rating buttons.           |
 | `support_reply`         | No                                   | object         | Sends as a reply to a stored client support message when its mapping exists.                                                                        |
-| `type`                  | No                                   | string         | Existing message-template type. An active template of this type takes precedence.                                                                   |
+| `type`                  | No                                   | string         | Legacy bot-template hint. It may replace the single `message` fallback, but never explicit `localized_messages`.                                     |
 | `crm_comment_id`        | No                                   | UUID           | CRM comment ID used to persist an outbound support-message mapping.                                                                                 |
 | `repair_order_uuid`     | No                                   | UUID           | Repair-order context when persisting an outbound support-message mapping.                                                                           |
 | `order_number`          | No                                   | string         | Order-number context when persisting an outbound support-message mapping.                                                                           |
 | `attachments`           | No                                   | array          | One to five trusted photo or document URLs. The bot downloads and size-checks every file before Telegram delivery.                                   |
 
 At least one of `message`, `localized_messages`, or `attachments` is required. A keyboard requires
-message text. When both message forms are supplied and no
-active `type` template replaces the content, `localized_messages` takes precedence: Russian users
-receive `localized_messages.ru`; all other users receive `localized_messages.uz`.
+message text. When `localized_messages` is supplied, it is authoritative even if the legacy `type`
+hint is also present: Russian users receive `localized_messages.ru`; all other users receive
+`localized_messages.uz`. An active `type` template can replace only the single `message` fallback.
 
 The selected message is rendered with primitive and locale-specific variables before sending. The
 response returns that exact final text passed to Telegram. A `localized_variables` value takes

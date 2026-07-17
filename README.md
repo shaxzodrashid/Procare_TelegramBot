@@ -236,7 +236,9 @@ renders message variables, and sends the resulting Telegram message to that user
 The legacy `message` field remains an optional fallback for callers that have only one locale; at
 least one of `message`, `localized_messages`, or `attachments` is required. A keyboard additionally
 requires message text through `message` or `localized_messages`. If both message forms are supplied,
-the localized variant takes precedence for Uzbek and Russian users.
+the localized variant takes precedence for Uzbek and Russian users. Explicit `localized_messages`
+also remain authoritative when the legacy `type` bot-template hint is present; `type` may replace
+only the single `message` fallback.
 
 Rich text supports Telegram `HTML` and modern `MarkdownV2` through `parse_mode`; `HTML` remains the
 default for backward compatibility. The message template keeps its authored markup, while every
