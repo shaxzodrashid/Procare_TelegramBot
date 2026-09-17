@@ -110,14 +110,14 @@ When no active/open client matches but an active/open administrator does:
 
 ## Response summary
 
-| HTTP status | Meaning | Bot action |
-| --- | --- | --- |
-| `200` | Active client or administrator found | Select client/employee flow |
-| `400` | Invalid request body or phone number | Ask for a valid Uzbek number |
-| `401` | Missing, malformed, invalid, or unconfigured Basic Auth | Do not retry until credentials are fixed |
-| `404` | No active/open client or administrator matched | Start unknown-client flow |
-| `500` | Unexpected API or database failure | Treat as temporarily unavailable |
-| `503` | CRM API is in maintenance mode | Show maintenance message and retry later |
+| HTTP status | Meaning                                                 | Bot action                               |
+| ----------- | ------------------------------------------------------- | ---------------------------------------- |
+| `200`       | Active client or administrator found                    | Select client/employee flow              |
+| `400`       | Invalid request body or phone number                    | Ask for a valid Uzbek number             |
+| `401`       | Missing, malformed, invalid, or unconfigured Basic Auth | Do not retry until credentials are fixed |
+| `404`       | No active/open client or administrator matched          | Start unknown-client flow                |
+| `500`       | Unexpected API or database failure                      | Treat as temporarily unavailable         |
+| `503`       | CRM API is in maintenance mode                          | Show maintenance message and retry later |
 
 Except for the platform maintenance response, errors use:
 

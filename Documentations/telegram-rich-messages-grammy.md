@@ -14,14 +14,14 @@ Classic bot messages are mainly plain text plus inline formatting. Rich Messages
 
 The core Bot API additions are:
 
-| Bot API item | Purpose |
-|---|---|
-| `InputRichMessage` | The rich message payload sent by the bot. Exactly one of `markdown` or `html` must be used. |
-| `sendRichMessage` | Sends a persistent rich message to a chat. |
-| `sendRichMessageDraft` | Streams an ephemeral partial rich message while an AI answer is being generated. |
-| `editMessageText` with `rich_message` | Edits an existing message into new rich content. |
-| `Message.rich_message` | Rich content attached to received/sent message objects. |
-| `InputRichMessageContent` | Rich content for inline query / Web App / guest-query style message results. |
+| Bot API item                          | Purpose                                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `InputRichMessage`                    | The rich message payload sent by the bot. Exactly one of `markdown` or `html` must be used. |
+| `sendRichMessage`                     | Sends a persistent rich message to a chat.                                                  |
+| `sendRichMessageDraft`                | Streams an ephemeral partial rich message while an AI answer is being generated.            |
+| `editMessageText` with `rich_message` | Edits an existing message into new rich content.                                            |
+| `Message.rich_message`                | Rich content attached to received/sent message objects.                                     |
+| `InputRichMessageContent`             | Rich content for inline query / Web App / guest-query style message results.                |
 
 Official references:
 
@@ -61,10 +61,10 @@ You can send a richer document:
 ```md
 # Client Summary
 
-| Field | Value |
-|---|---|
-| Name | Ali Valiyev |
-| Phone | +998 90 123 45 67 |
+| Field  | Value                |
+| ------ | -------------------- |
+| Name   | Ali Valiyev          |
+| Phone  | +998 90 123 45 67    |
 | Status | Waiting for operator |
 
 <details>
@@ -161,7 +161,7 @@ For a very new Bot API method, the most reliable implementation style is to call
 ctx.api.raw.sendRichMessage({
   chat_id: ctx.chat.id,
   rich_message: {
-    markdown: "# Hello\n\nThis is a rich message.",
+    markdown: '# Hello\n\nThis is a rich message.',
   },
 });
 ```
@@ -184,18 +184,18 @@ Use `raw` because:
 Create `src/bot.ts`:
 
 ```ts
-import { Bot } from "grammy";
+import { Bot } from 'grammy';
 
 const token = process.env.BOT_TOKEN;
-if (!token) throw new Error("BOT_TOKEN is missing");
+if (!token) throw new Error('BOT_TOKEN is missing');
 
 const bot = new Bot(token);
 
-bot.command("start", async (ctx) => {
-  await ctx.reply("Send /rich to test Telegram Rich Messages.");
+bot.command('start', async (ctx) => {
+  await ctx.reply('Send /rich to test Telegram Rich Messages.');
 });
 
-bot.command("rich", async (ctx) => {
+bot.command('rich', async (ctx) => {
   if (!ctx.chat) return;
 
   await ctx.api.raw.sendRichMessage({
@@ -203,7 +203,7 @@ bot.command("rich", async (ctx) => {
     rich_message: {
       markdown: `# Rich Message Test
 
-Hello, **${ctx.from?.first_name ?? "there"}**.
+Hello, **${ctx.from?.first_name ?? 'there'}**.
 
 | Feature | Status |
 |---|---:|
@@ -226,7 +226,7 @@ This content is inside a collapsible block.
 });
 
 bot.catch((err) => {
-  console.error("Bot error:", err);
+  console.error('Bot error:', err);
 });
 
 bot.start();
@@ -247,8 +247,8 @@ A helper layer keeps rich-message logic out of handlers and gives you a clean fa
 Create `src/telegram-rich.ts`:
 
 ```ts
-import type { Context, InlineKeyboard } from "grammy";
-import type { Message } from "grammy/types";
+import type { Context, InlineKeyboard } from 'grammy';
+import type { Message } from 'grammy/types';
 
 export type InputRichMessageCompat = {
   html?: string;
@@ -326,9 +326,7 @@ export async function sendRichMarkdown(
     disable_notification: options.disableNotification,
     protect_content: options.protectContent,
     reply_parameters:
-      options.replyToCurrentMessage && ctx.msg
-        ? { message_id: ctx.msg.message_id }
-        : undefined,
+      options.replyToCurrentMessage && ctx.msg ? { message_id: ctx.msg.message_id } : undefined,
     reply_markup: options.replyMarkup,
   });
 }
@@ -363,13 +361,15 @@ export async function sendRichHtml(
 Use it in your bot:
 
 ```ts
-import { Bot } from "grammy";
-import { sendRichMarkdown } from "./telegram-rich.js";
+import { Bot } from 'grammy';
+import { sendRichMarkdown } from './telegram-rich.js';
 
 const bot = new Bot(process.env.BOT_TOKEN!);
 
-bot.command("report", async (ctx) => {
-  await sendRichMarkdown(ctx, `# Daily Report
+bot.command('report', async (ctx) => {
+  await sendRichMarkdown(
+    ctx,
+    `# Daily Report
 
 | Metric | Value |
 |---|---:|
@@ -377,7 +377,8 @@ bot.command("report", async (ctx) => {
 | Waiting | 3 |
 | Resolved | 14 |
 
-> Generated automatically by the support bot.`);
+> Generated automatically by the support bot.`,
+  );
 });
 
 bot.start();
@@ -390,21 +391,21 @@ bot.start();
 Create `src/safe-rich.ts`:
 
 ```ts
-import type { Context } from "grammy";
-import { sendRichMarkdown } from "./telegram-rich.js";
+import type { Context } from 'grammy';
+import { sendRichMarkdown } from './telegram-rich.js';
 
 function richEnabled(): boolean {
-  return process.env.RICH_MESSAGES_ENABLED === "true";
+  return process.env.RICH_MESSAGES_ENABLED === 'true';
 }
 
 function stripMarkdownForFallback(markdown: string): string {
   return markdown
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/__(.*?)__/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/<details[\s\S]*?<summary>([\s\S]*?)<\/summary>/gi, "\n$1\n")
-    .replace(/<[^>]+>/g, "")
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/<details[\s\S]*?<summary>([\s\S]*?)<\/summary>/gi, '\n$1\n')
+    .replace(/<[^>]+>/g, '')
     .trim();
 }
 
@@ -420,7 +421,7 @@ export async function replySmart(
       await sendRichMarkdown(ctx, markdown, { replyToCurrentMessage: true });
       return;
     } catch (error) {
-      console.error("sendRichMessage failed; falling back to sendMessage", error);
+      console.error('sendRichMessage failed; falling back to sendMessage', error);
     }
   }
 
@@ -433,12 +434,15 @@ export async function replySmart(
 Use it:
 
 ```ts
-bot.on("message:text", async (ctx) => {
-  await replySmart(ctx, `# Answer
+bot.on('message:text', async (ctx) => {
+  await replySmart(
+    ctx,
+    `# Answer
 
 You wrote:
 
-> ${ctx.message.text}`);
+> ${ctx.message.text}`,
+  );
 });
 ```
 
@@ -452,8 +456,8 @@ Telegram's Rich Markdown mode is broadly compatible with GitHub Flavored Markdow
 
 ```md
 **bold text**
-__bold text__
-*italic text*
+**bold text**
+_italic text_
 _italic text_
 ~~strikethrough text~~
 `inline code`
@@ -470,13 +474,15 @@ $x^2 + y^2$
 
 ````md
 # Heading 1
+
 ## Heading 2
+
 ### Heading 3
 
 Paragraph text.
 
 ```ts
-console.log("code block");
+console.log('code block');
 ```
 
 ---
@@ -497,10 +503,10 @@ console.log("code block");
 ### 9.3 Tables
 
 ```md
-| Metric | Value |
-|:---|---:|
-| Speed | **42 ms** |
-| Status | ready |
+| Metric |     Value |
+| :----- | --------: |
+| Speed  | **42 ms** |
+| Status |     ready |
 ```
 
 Important: table cells can contain only inline formatting.
@@ -563,9 +569,9 @@ Visible content.
 Media can be specified only as separate blocks. Media URLs must use HTTP or HTTPS.
 
 ```md
-![](https://example.com/photo.jpg "Photo caption")
-![](https://example.com/video.mp4 "Video caption")
-![](https://example.com/audio.mp3 "Audio caption")
+![](https://example.com/photo.jpg 'Photo caption')
+![](https://example.com/video.mp4 'Video caption')
+![](https://example.com/audio.mp3 'Audio caption')
 ```
 
 ### 9.8 Collage and slideshow
@@ -665,11 +671,11 @@ If any part of the HTML comes from a user, database, CRM field, or AI output, es
 ```ts
 export function escapeHtml(input: string): string {
   return input
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 ```
 
@@ -709,13 +715,13 @@ Important rules:
 Create `src/rich-stream.ts`:
 
 ```ts
-import type { Context } from "grammy";
-import type { Message } from "grammy/types";
+import type { Context } from 'grammy';
+import type { Message } from 'grammy/types';
 import type {
   InputRichMessageCompat,
   SendRichMessageDraftArgsCompat,
   SendRichMessageArgsCompat,
-} from "./telegram-rich.js";
+} from './telegram-rich.js';
 
 type RawRichApiCompat = {
   sendRichMessageDraft(args: SendRichMessageDraftArgsCompat): Promise<true>;
@@ -738,8 +744,8 @@ export async function streamRichAiAnswer(
   if (!ctx.chat) return;
 
   // sendRichMessageDraft is intended for private chats only.
-  if (ctx.chat.type !== "private") {
-    let finalText = "";
+  if (ctx.chat.type !== 'private') {
+    let finalText = '';
     for await (const chunk of chunks) finalText += chunk;
 
     await rawRich(ctx).sendRichMessage({
@@ -750,7 +756,7 @@ export async function streamRichAiAnswer(
   }
 
   const draftId = createDraftId();
-  let finalMarkdown = "";
+  let finalMarkdown = '';
 
   await rawRich(ctx).sendRichMessageDraft({
     chat_id: ctx.chat.id,
@@ -782,7 +788,7 @@ export async function streamRichAiAnswer(
   await rawRich(ctx).sendRichMessage({
     chat_id: ctx.chat.id,
     rich_message: {
-      markdown: finalMarkdown || "No answer generated.",
+      markdown: finalMarkdown || 'No answer generated.',
     },
   });
 }
@@ -792,16 +798,16 @@ Example fake stream:
 
 ```ts
 async function* fakeAiStream(): AsyncIterable<string> {
-  yield "# AI Answer\n\n";
+  yield '# AI Answer\n\n';
   await new Promise((r) => setTimeout(r, 500));
-  yield "This is a streamed ";
+  yield 'This is a streamed ';
   await new Promise((r) => setTimeout(r, 500));
-  yield "rich message answer.\n\n";
+  yield 'rich message answer.\n\n';
   await new Promise((r) => setTimeout(r, 500));
-  yield "| Part | Status |\n|---|---|\n| Draft | done |";
+  yield '| Part | Status |\n|---|---|\n| Draft | done |';
 }
 
-bot.command("stream", async (ctx) => {
+bot.command('stream', async (ctx) => {
   await streamRichAiAnswer(ctx, fakeAiStream());
 });
 ```
@@ -818,7 +824,7 @@ Example:
 const sent = await ctx.api.raw.sendRichMessage({
   chat_id: ctx.chat!.id,
   rich_message: {
-    markdown: "# Status\n\nProcessing…",
+    markdown: '# Status\n\nProcessing…',
   },
 });
 
@@ -826,7 +832,7 @@ await ctx.api.raw.editMessageText({
   chat_id: ctx.chat!.id,
   message_id: sent.message_id,
   rich_message: {
-    markdown: "# Status\n\n✅ Done",
+    markdown: '# Status\n\n✅ Done',
   },
 });
 ```
@@ -846,13 +852,13 @@ Rich Messages can be used as inline result content through `InputRichMessageCont
 Example:
 
 ```ts
-bot.on("inline_query", async (ctx) => {
+bot.on('inline_query', async (ctx) => {
   await ctx.answerInlineQuery(
     [
       {
-        type: "article",
-        id: "rich-help",
-        title: "Rich help message",
+        type: 'article',
+        id: 'rich-help',
+        title: 'Rich help message',
         input_message_content: {
           rich_message: {
             markdown: `# Help
@@ -886,13 +892,13 @@ Prefer updating `grammy` / `@grammyjs/types` instead of keeping casts forever.
 
 Telegram's Rich Message limits:
 
-| Limit | Value |
-|---|---:|
-| Rich message text | Up to 32,768 UTF-8 characters |
-| Blocks | Up to 500 blocks, including nested blocks, list items, ordered list items, table rows, quotation blocks, and details blocks |
-| Nesting | Up to 16 levels |
-| Media attachments | Up to 50 total photos, videos, and audio files |
-| Table columns | Up to 20 columns |
+| Limit             |                                                                                                                       Value |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------: |
+| Rich message text |                                                                                               Up to 32,768 UTF-8 characters |
+| Blocks            | Up to 500 blocks, including nested blocks, list items, ordered list items, table rows, quotation blocks, and details blocks |
+| Nesting           |                                                                                                             Up to 16 levels |
+| Media attachments |                                                                              Up to 50 total photos, videos, and audio files |
+| Table columns     |                                                                                                            Up to 20 columns |
 
 Engineering recommendation:
 
@@ -906,14 +912,14 @@ Engineering recommendation:
 
 ## 16. Choosing Markdown vs HTML
 
-| Use case | Prefer |
-|---|---|
-| LLM answer text | `markdown` |
-| Reports with headings, lists, tables | `markdown` |
-| Content generated by templates | `html` |
-| Precise layout with custom tags | `html` |
-| User-generated text | Either, but escape/sanitize carefully |
-| Complex mixed media | `html` or Markdown with embedded supported HTML |
+| Use case                             | Prefer                                          |
+| ------------------------------------ | ----------------------------------------------- |
+| LLM answer text                      | `markdown`                                      |
+| Reports with headings, lists, tables | `markdown`                                      |
+| Content generated by templates       | `html`                                          |
+| Precise layout with custom tags      | `html`                                          |
+| User-generated text                  | Either, but escape/sanitize carefully           |
+| Complex mixed media                  | `html` or Markdown with embedded supported HTML |
 
 Recommended default for AI bots: **generate Markdown**, then optionally post-process it.
 
@@ -954,13 +960,15 @@ Keep tables mobile-friendly with no more than 4 columns.
 
 ```ts
 export function normalizeRichMarkdown(markdown: string): string {
-  return markdown
-    // Avoid huge accidental heading chains.
-    .replace(/^#{7,}/gm, "######")
-    // Remove script/style if a model accidentally emits it.
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .trim();
+  return (
+    markdown
+      // Avoid huge accidental heading chains.
+      .replace(/^#{7,}/gm, '######')
+      // Remove script/style if a model accidentally emits it.
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .trim()
+  );
 }
 ```
 
@@ -969,15 +977,15 @@ export function normalizeRichMarkdown(markdown: string): string {
 ## 18. Support-bot example: CRM client summary
 
 ```ts
-import { Bot, InlineKeyboard } from "grammy";
-import { sendRichMarkdown } from "./telegram-rich.js";
+import { Bot, InlineKeyboard } from 'grammy';
+import { sendRichMarkdown } from './telegram-rich.js';
 
 const bot = new Bot(process.env.BOT_TOKEN!);
 
-bot.command("client", async (ctx) => {
+bot.command('client', async (ctx) => {
   const keyboard = new InlineKeyboard()
-    .text("Assign operator", "assign_operator")
-    .text("Close", "close_ticket");
+    .text('Assign operator', 'assign_operator')
+    .text('Close', 'close_ticket');
 
   await sendRichMarkdown(
     ctx,
@@ -1010,12 +1018,12 @@ Assalomu alaykum, Ali aka. Yookingiz holatini tekshirib, sizga tez orada aniq ma
   );
 });
 
-bot.callbackQuery("assign_operator", async (ctx) => {
-  await ctx.answerCallbackQuery("Assigned.");
+bot.callbackQuery('assign_operator', async (ctx) => {
+  await ctx.answerCallbackQuery('Assigned.');
 });
 
-bot.callbackQuery("close_ticket", async (ctx) => {
-  await ctx.answerCallbackQuery("Closed.");
+bot.callbackQuery('close_ticket', async (ctx) => {
+  await ctx.answerCallbackQuery('Closed.');
 });
 
 bot.start();
@@ -1026,7 +1034,9 @@ bot.start();
 ## 19. Cargo / logistics table example
 
 ```ts
-await sendRichMarkdown(ctx, `# Cargo Quote
+await sendRichMarkdown(
+  ctx,
+  `# Cargo Quote
 
 | Parameter | Value |
 |---|---:|
@@ -1048,7 +1058,8 @@ await sendRichMarkdown(ctx, `# Cargo Quote
 2. Yukning aniq manzili bormi?
 3. TN VED kodi bormi?
 
-</details>`);
+</details>`,
+);
 ```
 
 ---
@@ -1057,16 +1068,16 @@ await sendRichMarkdown(ctx, `# Cargo Quote
 
 Common issues and fixes:
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| `Bad Request: can't parse rich message` | Invalid rich Markdown/HTML | Simplify the payload, validate tags, test minimal version first. |
-| TypeScript says `sendRichMessage` does not exist | Local type declarations are old | Update `grammy` / `@grammyjs/types`; temporarily use a compatibility cast. |
-| Draft does not appear | Tried draft in non-private chat or invalid `draft_id` | Use `sendRichMessageDraft` only in private chats; make `draft_id` non-zero. |
-| Draft appears but final answer disappears | You did not call `sendRichMessage` after draft streaming | Always send the final persistent message. |
-| Media block fails | URL is not HTTP/HTTPS or bot lacks permission | Use public HTTPS URLs and ensure bot can send that media type. |
-| Table looks bad on mobile | Too many columns or long cell values | Keep tables narrow; prefer key-value tables. |
-| Links are detected unexpectedly | Automatic entity detection | Use `skip_entity_detection: true` if appropriate. |
-| User sees unsupported rich content | Client rollout/rendering issue | Feature-flag rich messages and fall back to classic `sendMessage`. |
+| Symptom                                          | Likely cause                                             | Fix                                                                         |
+| ------------------------------------------------ | -------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `Bad Request: can't parse rich message`          | Invalid rich Markdown/HTML                               | Simplify the payload, validate tags, test minimal version first.            |
+| TypeScript says `sendRichMessage` does not exist | Local type declarations are old                          | Update `grammy` / `@grammyjs/types`; temporarily use a compatibility cast.  |
+| Draft does not appear                            | Tried draft in non-private chat or invalid `draft_id`    | Use `sendRichMessageDraft` only in private chats; make `draft_id` non-zero. |
+| Draft appears but final answer disappears        | You did not call `sendRichMessage` after draft streaming | Always send the final persistent message.                                   |
+| Media block fails                                | URL is not HTTP/HTTPS or bot lacks permission            | Use public HTTPS URLs and ensure bot can send that media type.              |
+| Table looks bad on mobile                        | Too many columns or long cell values                     | Keep tables narrow; prefer key-value tables.                                |
+| Links are detected unexpectedly                  | Automatic entity detection                               | Use `skip_entity_detection: true` if appropriate.                           |
+| User sees unsupported rich content               | Client rollout/rendering issue                           | Feature-flag rich messages and fall back to classic `sendMessage`.          |
 
 ---
 

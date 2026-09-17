@@ -96,6 +96,12 @@ export const summarizeSession = (sessionData: BotSession): Record<string, unknow
         hasMessageUz: Boolean(sessionData.developerFlow.messageUz),
       }
     : undefined,
+  otpAuth: sessionData.otpAuth
+    ? {
+        sessionToken: sessionData.otpAuth.sessionToken,
+        createdAt: sessionData.otpAuth.createdAt,
+      }
+    : undefined,
 });
 
 export const summarizeTelegramText = (text: string): Record<string, unknown> => ({
@@ -334,6 +340,11 @@ export const clearSettingsFlow = (sessionData: BotSession): void => {
   if (sessionData.stage && settingsStages.has(sessionData.stage)) delete sessionData.stage;
 };
 
+export const clearOtpAuthFlow = (sessionData: BotSession): void => {
+  delete sessionData.otpAuth;
+  if (sessionData.stage === 'awaiting_otp_contact') delete sessionData.stage;
+};
+
 export const resetSession = (sessionData: BotSession, locale: Locale): void => {
   delete sessionData.client;
   delete sessionData.admin;
@@ -346,6 +357,7 @@ export const resetSession = (sessionData: BotSession, locale: Locale): void => {
   clearAdminExportFlow(sessionData);
   clearDeveloperFlow(sessionData);
   clearSettingsFlow(sessionData);
+  clearOtpAuthFlow(sessionData);
   sessionData.locale = locale;
   sessionData.stage = 'choosing_language';
 };

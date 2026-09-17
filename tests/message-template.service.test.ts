@@ -533,14 +533,14 @@ describe('BotDirectMessageService', () => {
           [
             {
               type: 'approve',
-              localizedText: { uz: 'RAD ETISH', ru: 'ОТКЛОНИТЬ' },
+              localizedText: { uz: 'Roziman', ru: 'Согласен' },
               style: 'danger',
             },
           ],
           [
             {
               type: 'reject',
-              localizedText: { uz: 'TASDIQLASH', ru: 'ОДОБРИТЬ' },
+              localizedText: { uz: 'Tuzatish kerak', ru: 'Нужны правки' },
               style: 'success',
             },
           ],
@@ -560,14 +560,14 @@ describe('BotDirectMessageService', () => {
     assert.deepEqual(approval?.inline_keyboard, [
       [
         {
-          text: '✅ Одобрить',
+          text: 'Согласен',
           callback_data: `dm:ap:a:${repairOrderUuid}`,
           style: 'success',
         },
       ],
       [
         {
-          text: '❌ Отклонить',
+          text: 'Нужны правки',
           callback_data: `dm:ap:r:${repairOrderUuid}`,
           style: 'danger',
         },

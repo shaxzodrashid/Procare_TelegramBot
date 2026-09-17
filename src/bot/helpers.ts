@@ -15,6 +15,7 @@ import {
   personalMenuKeyboard,
   registrationKeyboard,
   languageKeyboard,
+  otpContactKeyboard,
 } from './keyboards.js';
 
 export interface SettingsName {
@@ -156,9 +157,11 @@ export const currentReplyKeyboard = (sessionData: BotSession) =>
                   ? settingsLanguageKeyboard(sessionData.locale)
                   : sessionData.client || hasEmployeeMenuAccess(sessionData)
                     ? personalMenuKeyboard(sessionData)
-                    : sessionData.stage === 'awaiting_phone'
-                      ? registrationKeyboard(sessionData.locale)
-                      : languageKeyboard();
+                    : sessionData.stage === 'awaiting_otp_contact'
+                      ? otpContactKeyboard(sessionData.locale)
+                      : sessionData.stage === 'awaiting_phone'
+                        ? registrationKeyboard(sessionData.locale)
+                        : languageKeyboard();
 
 export const replyWithAdminRegistration = async (ctx: BotContext): Promise<void> => {
   await ctx.reply(

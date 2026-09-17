@@ -959,3 +959,119 @@ export const parseSendFileBody = (
     caption,
   };
 };
+
+export interface SendOtpRequestBody {
+  chat_id?: unknown;
+  telegram_chat_id?: unknown;
+  phone_number?: unknown;
+  otp?: unknown;
+  expires_in?: unknown;
+  locale?: unknown;
+  message?: unknown;
+}
+
+export interface ParsedSendOtpBody {
+  chatId?: string;
+  phoneNumber?: string;
+  otp: string;
+  expiresIn?: number;
+  locale?: 'uz' | 'ru';
+  message?: string;
+}
+
+export const parseSendOtpBody = (
+  value: unknown,
+): { ok: true; parsed: ParsedSendOtpBody } | { ok: false; message: string } => {
+  if (!isRecord(value)) {
+    return { ok: false, message: 'Request body must be a JSON object' };
+  }
+
+  const rawOtp = value.otp;
+  if (rawOtp === undefined || rawOtp === null || String(rawOtp).trim() === '') {
+    return { ok: false, message: 'otp is required' };
+  }
+  const otp = String(rawOtp).trim();
+  if (otp.length < 3 || otp.length > 32) {
+    return { ok: false, message: 'otp must be between 3 and 32 characters' };
+  }
+
+  const rawChatId = value.chat_id ?? value.telegram_chat_id;
+  const rawPhoneNumber = value.phone_number;
+
+  if (
+    (rawChatId === undefined || rawChatId === null || String(rawChatId).trim() === '') &&
+    (rawPhoneNumber === undefined ||
+      rawPhoneNumber === null ||
+      String(rawPhoneNumber).trim() === '')
+  ) {
+    return {
+      ok: false,
+      message: 'Either chat_id (or telegram_chat_id) or phone_number must be provided',
+    };
+  }
+
+  let chatId: string | undefined;
+  if (rawChatId !== undefined && rawChatId !== null && String(rawChatId).trim() !== '') {
+    const s = String(rawChatId).trim();
+    if (!/^-?[1-9]\d{0,18}$/.test(s)) {
+      return { ok: false, message: 'chat_id must be a valid Telegram chat ID' };
+    }
+    chatId = s;
+  }
+
+  let phoneNumber: string | undefined;
+  if (
+    rawPhoneNumber !== undefined &&
+    rawPhoneNumber !== null &&
+    String(rawPhoneNumber).trim() !== ''
+  ) {
+    if (typeof rawPhoneNumber !== 'string') {
+      return { ok: false, message: 'phone_number must be a string' };
+    }
+    const normalized = normalizeUzPhone(rawPhoneNumber);
+    if (!normalized) {
+      return { ok: false, message: 'phone_number must be a valid Uzbek phone number' };
+    }
+    phoneNumber = normalized;
+  }
+
+  let expiresIn: number | undefined;
+  if (value.expires_in !== undefined && value.expires_in !== null) {
+    const num = Number(value.expires_in);
+    if (!Number.isInteger(num) || num <= 0 || num > 86400) {
+      return { ok: false, message: 'expires_in must be an integer between 1 and 86400 seconds' };
+    }
+    expiresIn = num;
+  }
+
+  let locale: 'uz' | 'ru' | undefined;
+  if (value.locale !== undefined && value.locale !== null) {
+    if (value.locale !== 'uz' && value.locale !== 'ru') {
+      return { ok: false, message: 'locale must be "uz" or "ru"' };
+    }
+    locale = value.locale;
+  }
+
+  let message: string | undefined;
+  if (value.message !== undefined && value.message !== null) {
+    if (typeof value.message !== 'string' || value.message.trim() === '') {
+      return { ok: false, message: 'message must be a non-empty string' };
+    }
+    if (value.message.length > TELEGRAM_TEXT_LIMIT) {
+      return { ok: false, message: `message must be at most ${TELEGRAM_TEXT_LIMIT} characters` };
+    }
+    message = value.message;
+  }
+
+  return {
+    ok: true,
+    parsed: {
+      chatId,
+      phoneNumber,
+      otp,
+      expiresIn,
+      locale,
+      message,
+    },
+  };
+};

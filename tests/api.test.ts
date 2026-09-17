@@ -1520,4 +1520,189 @@ describe('direct message API', () => {
       assert.equal(response.statusCode, 502);
     });
   });
+
+  describe('send OTP API', () => {
+    it('returns 401 when request is unauthorized', async () => {
+      const app = createApiServer(config, logger);
+      const response = await app.inject({
+        method: 'POST',
+        url: '/internal/telegram/send-otp',
+        payload: { chat_id: 123456, otp: '123456' },
+      });
+      await app.close();
+      assert.equal(response.statusCode, 401);
+    });
+
+    it('returns 503 when otpSender is not available', async () => {
+      const app = createApiServer(config, logger);
+      const response = await app.inject({
+        method: 'POST',
+        url: '/internal/telegram/send-otp',
+        headers: authHeaders,
+        payload: { chat_id: 123456, otp: '123456' },
+      });
+      await app.close();
+      assert.equal(response.statusCode, 503);
+    });
+
+    it('returns 400 when required fields are missing', async () => {
+      const app = createApiServer(config, logger, {
+        otpSender: {
+          async sendOtp() {
+            return { status: 'sent', messageId: 101 };
+          },
+        },
+      });
+
+      // Missing otp
+      const res1 = await app.inject({
+        method: 'POST',
+        url: '/internal/telegram/send-otp',
+        headers: authHeaders,
+        payload: { chat_id: 123456 },
+      });
+      assert.equal(res1.statusCode, 400);
+
+      // Missing recipient
+      const res2 = await app.inject({
+        method: 'POST',
+        url: '/internal/telegram/send-otp',
+        headers: authHeaders,
+        payload: { otp: '123456' },
+      });
+      assert.equal(res2.statusCode, 400);
+
+      await app.close();
+    });
+
+    it('successfully sends OTP with chat_id', async () => {
+      let capturedParams: unknown;
+      const app = createApiServer(config, logger, {
+        otpSender: {
+          async sendOtp(params) {
+            capturedParams = params;
+            return { status: 'sent', messageId: 999 };
+          },
+        },
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/internal/telegram/send-otp',
+        headers: authHeaders,
+        payload: {
+          chat_id: 123456789,
+          otp: '654321',
+          expires_in: 180,
+          locale: 'uz',
+        },
+      });
+      await app.close();
+
+      assert.equal(response.statusCode, 200);
+      assert.deepEqual(response.json(), { status: 'sent', message_id: 999 });
+      assert.deepEqual(capturedParams, {
+        chatId: '123456789',
+        phoneNumber: undefined,
+        otp: '654321',
+        expiresIn: 180,
+        locale: 'uz',
+        message: undefined,
+      });
+    });
+
+    it('supports telegram_chat_id and phone_number aliases on /telegram/send-otp', async () => {
+      let capturedParams: unknown;
+      const app = createApiServer(config, logger, {
+        otpSender: {
+          async sendOtp(params) {
+            capturedParams = params;
+            return { status: 'sent', messageId: 1000 };
+          },
+        },
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/telegram/send-otp',
+        headers: authHeaders,
+        payload: {
+          phone_number: '+998 90 123 45 67',
+          otp: '112233',
+        },
+      });
+      await app.close();
+
+      assert.equal(response.statusCode, 200);
+      assert.deepEqual(response.json(), { status: 'sent', message_id: 1000 });
+      assert.deepEqual(capturedParams, {
+        chatId: undefined,
+        phoneNumber: '+998901234567',
+        otp: '112233',
+        expiresIn: undefined,
+        locale: undefined,
+        message: undefined,
+      });
+    });
+
+    it('returns 404 when user is not found', async () => {
+      const app = createApiServer(config, logger, {
+        otpSender: {
+          async sendOtp() {
+            return { status: 'not_found', message: 'User not found' };
+          },
+        },
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/internal/telegram/send-otp',
+        headers: authHeaders,
+        payload: { phone_number: '+998901234567', otp: '123456' },
+      });
+      await app.close();
+
+      assert.equal(response.statusCode, 404);
+    });
+
+    it('returns 409 when user is blocked', async () => {
+      const app = createApiServer(config, logger, {
+        otpSender: {
+          async sendOtp() {
+            return { status: 'blocked', message: 'Telegram user is marked as blocked' };
+          },
+        },
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/internal/telegram/send-otp',
+        headers: authHeaders,
+        payload: { chat_id: 123456789, otp: '123456' },
+      });
+      await app.close();
+
+      assert.equal(response.statusCode, 409);
+    });
+
+    it('returns 502 when Telegram delivery fails', async () => {
+      const app = createApiServer(config, logger, {
+        otpSender: {
+          async sendOtp() {
+            return { status: 'failed', message: 'Telegram gateway failed' };
+          },
+        },
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/internal/telegram/send-otp',
+        headers: authHeaders,
+        payload: { chat_id: 123456789, otp: '123456' },
+      });
+      await app.close();
+
+      assert.equal(response.statusCode, 502);
+    });
+  });
 });

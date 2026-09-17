@@ -12,6 +12,7 @@ import type {
   RepairOrderStatusNameStore,
 } from '../services/repair-order-status.service.js';
 import type { RepairOrderGateway } from '../services/repair-order.service.js';
+import type { OtpAuthGateway } from '../types/otp-auth.js';
 import type { SupportMessageStore } from '../services/support-message.store.js';
 import type { UnknownClientStore } from '../services/unknown-client.store.js';
 import type { Logger } from '../utils/logger.js';
@@ -55,6 +56,7 @@ export interface BotDependencies {
   repairOrderService: RepairOrderGateway;
   clientRepairOrderService: ClientRepairOrderGateway;
   repairOrderStatusService?: RepairOrderStatusGateway;
+  otpAuthService?: OtpAuthGateway;
   unknownClientStore: UnknownClientStore;
   registeredUserStore: RegisteredUserStore;
   messageTemplateStore: MessageTemplateStore;

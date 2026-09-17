@@ -15,6 +15,7 @@ import { PostgresApiErrorLocalizationStore } from '../services/api-error-localiz
 import { BotDirectMessageService } from '../services/bot-notification.service.js';
 import { HttpClientRepairOrderService } from '../services/client-repair-order.service.js';
 import { HttpClientRegistrationService } from '../services/client-registration.service.js';
+import { HttpOtpAuthService } from '../services/otp-auth.service.js';
 import { SystemHealthMonitor } from '../services/health.service.js';
 import { PostgresMessageTemplateStore } from '../services/message-template.service.js';
 import { PostgresRegisteredUserStore } from '../services/registered-user.store.js';
@@ -91,6 +92,16 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
     },
     logger,
   );
+  const otpAuthService = new HttpOtpAuthService(
+    {
+      baseUrl: config.crm.baseUrl,
+      username: config.crm.username,
+      password: config.crm.password,
+      timeoutMs: config.crm.requestTimeoutMs,
+      maxRetries: config.crm.maxRetries,
+    },
+    logger,
+  );
   const unknownClientStore = new PostgresUnknownClientStore(database);
   const registeredUserStore = new PostgresRegisteredUserStore(database);
   const messageTemplateStore = new PostgresMessageTemplateStore(database);
@@ -105,6 +116,7 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       repairOrderService,
       clientRepairOrderService,
       repairOrderStatusService,
+      otpAuthService,
       unknownClientStore,
       registeredUserStore,
       messageTemplateStore,
@@ -138,6 +150,7 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
     api = createApiServer(config, logger, {
       directMessageSender: directMessageService,
       directFileSender: directMessageService,
+      otpSender: directMessageService,
       healthReporter: healthMonitor,
     });
     await api.listen({ host: config.api.host, port: config.api.port });

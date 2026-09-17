@@ -7,6 +7,8 @@ import type { RegisteredUserStore } from './registered-user.store.js';
 import { MessageTemplateRenderer, type MessageTemplateStore } from './message-template.service.js';
 import type { SupportMessageStore } from './support-message.store.js';
 import type { Logger } from '../utils/logger.js';
+import type { Locale } from '../types/client.js';
+import { normalizeUzPhone } from '../utils/phone.js';
 import { t } from '../bot/messages.js';
 import {
   DEFAULT_TELEGRAM_PARSE_MODE,
@@ -67,6 +69,25 @@ export interface SendDirectFileParams {
 export interface DirectFileDeliveryResult {
   status: 'sent' | 'failed' | 'not_found' | 'blocked' | 'invalid_file';
   message?: string;
+}
+
+export interface SendOtpParams {
+  chatId?: string | number;
+  phoneNumber?: string;
+  otp: string | number;
+  expiresIn?: number;
+  locale?: Locale;
+  message?: string;
+}
+
+export interface OtpDeliveryResult {
+  status: 'sent' | 'failed' | 'not_found' | 'blocked' | 'invalid_request';
+  messageId?: number;
+  message?: string;
+}
+
+export interface OtpSender {
+  sendOtp(params: SendOtpParams): Promise<OtpDeliveryResult>;
 }
 
 type TelegramTemplateApi = Pick<Api, 'sendMessage' | 'sendPhoto'>;
@@ -352,7 +373,8 @@ export class BotDirectMessageService {
     private readonly users: Pick<
       RegisteredUserStore,
       'findByPhoneNumber' | 'findClientByCrmClientId'
-    >,
+    > &
+      Partial<Pick<RegisteredUserStore, 'findByTelegramId'>>,
     private readonly templates: Pick<
       MessageTemplateStore,
       'logDispatch' | 'setUserBlocked' | 'findActiveTemplateByType'
@@ -824,6 +846,111 @@ export class BotDirectMessageService {
       return { status: 'failed' };
     }
   }
+
+  async sendOtp(params: SendOtpParams): Promise<OtpDeliveryResult> {
+    let targetChatId: string;
+    let targetUserId: string | null = null;
+    let resolvedLocale: Locale = params.locale ?? 'uz';
+
+    if (
+      params.chatId !== undefined &&
+      params.chatId !== null &&
+      String(params.chatId).trim() !== ''
+    ) {
+      targetChatId = String(params.chatId).trim();
+      if (this.users.findByTelegramId) {
+        const existing = await this.users.findByTelegramId(targetChatId).catch(() => null);
+        if (existing?.user) {
+          if (existing.user.id) targetUserId = existing.user.id;
+          if (!params.locale && existing.user.locale) {
+            resolvedLocale = existing.user.locale;
+          }
+        }
+      }
+    } else if (params.phoneNumber) {
+      const normalized = normalizeUzPhone(params.phoneNumber);
+      if (!normalized) {
+        return { status: 'invalid_request', message: 'Invalid phone number' };
+      }
+      const target = await this.users.findByPhoneNumber(normalized);
+      if (!target) {
+        return { status: 'not_found', message: 'No registered user found for phone number' };
+      }
+      if (target.is_blocked) {
+        return { status: 'blocked', message: 'Telegram user is marked as blocked' };
+      }
+      targetChatId = target.telegram_id;
+      targetUserId = target.id;
+      if (!params.locale) {
+        resolvedLocale = target.locale;
+      }
+    } else {
+      return {
+        status: 'invalid_request',
+        message: 'Either chatId or phoneNumber must be provided',
+      };
+    }
+
+    const otpStr = String(params.otp).trim();
+    let text: string;
+    if (params.message) {
+      text = params.message.replace(/\{\{\s*otp\s*\}\}/g, `<code>${otpStr}</code>`);
+    } else if (params.expiresIn && params.expiresIn > 0) {
+      const minutes = Math.ceil(params.expiresIn / 60);
+      text = t(resolvedLocale, 'otpNotificationWithExpiry', {
+        otp: otpStr,
+        minutes: String(minutes),
+      });
+    } else {
+      text = t(resolvedLocale, 'otpNotification', { otp: otpStr });
+    }
+
+    const dispatchType = 'api_telegram_otp';
+
+    try {
+      const sent = await this.telegram.sendMessage(targetChatId, text, {
+        parse_mode: TELEGRAM_PARSE_MODE_HTML,
+      });
+
+      if (targetUserId) {
+        await this.templates
+          .logDispatch({
+            user_id: targetUserId,
+            template_id: null,
+            dispatch_type: dispatchType,
+            status: 'sent',
+            error_message: null,
+          })
+          .catch(() => undefined);
+      }
+
+      return { status: 'sent', messageId: sent.message_id };
+    } catch (error) {
+      if (isTelegramBlockedError(error)) {
+        await this.templates.setUserBlocked(targetChatId, true).catch(() => undefined);
+        if (targetUserId) {
+          await this.templates
+            .logDispatch({
+              user_id: targetUserId,
+              template_id: null,
+              dispatch_type: dispatchType,
+              status: 'failed',
+              error_message: 'Telegram user is marked as blocked',
+            })
+            .catch(() => undefined);
+        }
+        return { status: 'blocked', message: 'Telegram user has blocked the bot' };
+      }
+
+      const desc = error instanceof Error ? error.message : String(error);
+      if (desc.toLowerCase().includes('chat not found')) {
+        return { status: 'not_found', message: 'Telegram chat not found' };
+      }
+
+      this.logger?.error('Failed to send OTP via Telegram', error);
+      return { status: 'failed', message: 'Failed to deliver Telegram OTP' };
+    }
+  }
 }
 
 export const renderDirectMessage = (
@@ -953,7 +1080,7 @@ const appendApprovalLayout = (
       if (button.type === 'approve') {
         markup
           .text(
-            t(resolvedLocale, 'directApprovalApprove'),
+            localizedButtonText(button, locale) ?? t(resolvedLocale, 'directApprovalApprove'),
             actionButtonCallbackData(button, repairOrderUuid, orderNumber),
           )
           .success();
@@ -962,7 +1089,7 @@ const appendApprovalLayout = (
       if (button.type === 'reject') {
         markup
           .text(
-            t(resolvedLocale, 'directApprovalReject'),
+            localizedButtonText(button, locale) ?? t(resolvedLocale, 'directApprovalReject'),
             actionButtonCallbackData(button, repairOrderUuid, orderNumber),
           )
           .danger();

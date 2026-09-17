@@ -9,9 +9,9 @@ import {
   registeredHelpParseMode,
   currentReplyKeyboard,
 } from '../helpers.js';
-import { clearUnknownFlow, resetSession } from '../session.js';
+import { clearUnknownFlow, clearSettingsFlow, clearOtpAuthFlow, resetSession } from '../session.js';
 import { t } from '../messages.js';
-import { personalMenuKeyboard, languageKeyboard } from '../keyboards.js';
+import { personalMenuKeyboard, languageKeyboard, otpContactKeyboard } from '../keyboards.js';
 
 export const registerCommandHandlers = (
   bot: Bot<BotContext>,
@@ -25,6 +25,47 @@ export const registerCommandHandlers = (
           dependencies.logger.warn('Failed to clear Telegram blocked flag on /start', error),
         );
     }
+
+    const sessionToken = ctx.match?.trim();
+    if (sessionToken && dependencies.otpAuthService) {
+      clearUnknownFlow(ctx.session);
+      clearSettingsFlow(ctx.session);
+      clearOtpAuthFlow(ctx.session);
+
+      if (
+        !ctx.session.client &&
+        !hasEmployeeMenuAccess(ctx.session) &&
+        ctx.from?.language_code === 'ru'
+      ) {
+        ctx.session.locale = 'ru';
+      }
+
+      try {
+        const session = await dependencies.otpAuthService.getSession(sessionToken);
+        if (!session || session.status !== 'PENDING_TELEGRAM') {
+          await ctx.reply(t(ctx.session.locale, 'otpSessionExpired'));
+          return;
+        }
+
+        ctx.session.otpAuth = {
+          sessionToken,
+          createdAt: Date.now(),
+        };
+        ctx.session.stage = 'awaiting_otp_contact';
+
+        await ctx.reply(t(ctx.session.locale, 'otpWelcome'), {
+          parse_mode: 'HTML',
+          reply_markup: otpContactKeyboard(ctx.session.locale),
+        });
+        return;
+      } catch (error) {
+        dependencies.logger.error('Failed to validate OTP session token with backend', error);
+        await ctx.reply(t(ctx.session.locale, 'otpSessionExpired'));
+        return;
+      }
+    }
+
+    clearOtpAuthFlow(ctx.session);
 
     if (hasEmployeeMenuAccess(ctx.session)) {
       await ctx.reply(

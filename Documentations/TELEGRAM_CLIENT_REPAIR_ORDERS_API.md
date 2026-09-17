@@ -378,13 +378,13 @@ buttons for missing document URLs.
 
 ## Errors
 
-| HTTP status | Meaning |
-| --- | --- |
-| `400` | Invalid client/order parameter or pagination |
-| `401` | Missing, invalid, or unconfigured Telegram Bot Basic Auth |
-| `404` | Client/order is absent, foreign, deleted, hidden, inactive, or unmapped |
-| `500` | Unexpected API or database failure |
-| `503` | CRM API is in maintenance mode |
+| HTTP status | Meaning                                                                 |
+| ----------- | ----------------------------------------------------------------------- |
+| `400`       | Invalid client/order parameter or pagination                            |
+| `401`       | Missing, invalid, or unconfigured Telegram Bot Basic Auth               |
+| `404`       | Client/order is absent, foreign, deleted, hidden, inactive, or unmapped |
+| `500`       | Unexpected API or database failure                                      |
+| `503`       | CRM API is in maintenance mode                                          |
 
 Except for the platform maintenance response, errors use the same structured error envelope as the
 registration endpoint.

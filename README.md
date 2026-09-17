@@ -280,9 +280,10 @@ Back navigation. Approval uses confirmation, requires a rejection explanation, r
 client-owned order using the callback's trusted numeric order number (with durable message mapping
 fallback for older deliveries), verifies the returned UUID, and submits the decision to CRM. Rating
 uses grades 1–5 in one row. CRM can control button order through `layout`;
-labels and Telegram Bot API 9.4 styles remain customizable for non-decision controls. Approval
-decisions are safety-canonicalized: `approve` is always the localized green Approve button and
-`reject` is always the localized red Reject button, regardless of authored label/style fields. For
+labels remain customizable for every generated control. Approval decision labels select authored
+`localized_text` by recipient locale, with `text` and built-in localized copy as fallbacks. Their
+styles remain safety-canonicalized: `approve` is always green/success and `reject` is always
+red/danger, regardless of authored style fields. For
 already-delivered legacy keyboards, the handler follows the visible `success`/`danger` style when an
 old callback was reversed. For example, approval can put Approve above Reject:
 

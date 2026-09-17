@@ -27,6 +27,7 @@ export interface RegisteredUserStore {
   findByTelegramId(telegramId: string): Promise<UserRegistrationState | null>;
   clearRestartRequired(telegramId: string): Promise<void>;
   searchClients(query: string): Promise<UserRegistrationState[]>;
+  saveTelegramUser(record: RegisteredTelegramUserRecord): Promise<string>;
 }
 
 type ReturnedUserId = { id?: unknown } | string | number;
@@ -57,6 +58,12 @@ const parseReturnedUserId = (rows: ReturnedUserId[]): string => {
 
 export class PostgresRegisteredUserStore implements RegisteredUserStore {
   constructor(private readonly database: Knex) {}
+
+  async saveTelegramUser(record: RegisteredTelegramUserRecord): Promise<string> {
+    return await this.database.transaction(async (trx) => {
+      return await this.upsertUser(trx, record);
+    });
+  }
 
   async saveClient(record: RegisteredClientRecord): Promise<void> {
     await this.database.transaction(async (trx) => {

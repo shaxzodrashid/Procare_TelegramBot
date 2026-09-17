@@ -18,6 +18,12 @@ export const languageKeyboard = (): Keyboard =>
 export const registrationKeyboard = (locale: Locale): Keyboard =>
   new Keyboard().requestContact(t(locale, 'sharePhone')).resized().oneTime();
 
+export const otpContactKeyboard = (locale: Locale): Keyboard =>
+  new Keyboard().requestContact(t(locale, 'otpShareContact')).resized().oneTime();
+
+export const otpReturnToAppKeyboard = (locale: Locale): InlineKeyboard =>
+  new InlineKeyboard().url(t(locale, 'otpReturnToApp'), 'procare://auth/verify');
+
 export const restartKeyboard = (): Keyboard => new Keyboard().text('/start').resized().oneTime();
 
 export interface PersonalMenuUser {

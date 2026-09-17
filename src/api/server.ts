@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
 
 import type { AppConfig } from '../config/index.js';
 import type { SystemHealthSnapshot } from '../services/health.service.js';
@@ -11,12 +11,13 @@ import type {
   DirectMessageDeliveryResult,
   DirectFileDeliveryResult,
   DirectMessageAttachment,
+  OtpSender,
 } from '../services/bot-notification.service.js';
 import type { TelegramParseMode } from '../utils/telegram-formatting.js';
 import type { Logger } from '../utils/logger.js';
 import type { MessageTemplateType } from '../types/message-template.js';
 import { isAuthorized } from './auth.js';
-import { parseSendMessageBody, parseSendFileBody } from './validators.js';
+import { parseSendMessageBody, parseSendFileBody, parseSendOtpBody } from './validators.js';
 
 export interface DirectMessageSender {
   sendDirectMessage(params: {
@@ -51,6 +52,7 @@ export interface DirectFileSender {
 export interface ApiServerDependencies {
   directMessageSender?: DirectMessageSender;
   directFileSender?: DirectFileSender;
+  otpSender?: OtpSender;
   healthReporter?: {
     snapshot(): Promise<SystemHealthSnapshot>;
   };
@@ -218,6 +220,76 @@ export const createApiServer = (
       message: 'Telegram file delivery failed',
     });
   });
+
+  const handleSendOtp = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!isAuthorized(request.headers.authorization, config.api.messageSendToken)) {
+      return reply.status(401).send({
+        statusCode: 401,
+        error: 'Unauthorized',
+        message: 'A valid Bearer token is required',
+      });
+    }
+
+    if (!dependencies.otpSender) {
+      return reply.status(503).send({
+        statusCode: 503,
+        error: 'ServiceUnavailable',
+        message: 'Telegram OTP delivery is not available',
+      });
+    }
+
+    const parsed = parseSendOtpBody(request.body);
+    if (!parsed.ok) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: 'BadRequest',
+        message: parsed.message,
+      });
+    }
+
+    const result = await dependencies.otpSender.sendOtp({
+      chatId: parsed.parsed.chatId,
+      phoneNumber: parsed.parsed.phoneNumber,
+      otp: parsed.parsed.otp,
+      expiresIn: parsed.parsed.expiresIn,
+      locale: parsed.parsed.locale,
+      message: parsed.parsed.message,
+    });
+
+    if (result.status === 'sent') {
+      return reply.send({ status: 'sent', message_id: result.messageId });
+    }
+    if (result.status === 'invalid_request') {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: 'BadRequest',
+        message: result.message,
+      });
+    }
+    if (result.status === 'not_found') {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: 'NotFound',
+        message: result.message,
+      });
+    }
+    if (result.status === 'blocked') {
+      return reply.status(409).send({
+        statusCode: 409,
+        error: 'Conflict',
+        message: result.message,
+      });
+    }
+
+    return reply.status(502).send({
+      statusCode: 502,
+      error: 'BadGateway',
+      message: result.message || 'Telegram OTP delivery failed',
+    });
+  };
+
+  app.post('/internal/telegram/send-otp', handleSendOtp);
+  app.post('/telegram/send-otp', handleSendOtp);
 
   app.setErrorHandler((error, request, reply) => {
     logger.error(`Unhandled API error on ${request.method} ${request.url}`, error);

@@ -33,7 +33,13 @@ export type RegistrationStage =
   | 'developer_error_location_input'
   | 'developer_error_message_uz_input'
   | 'developer_error_message_ru_input'
-  | 'direct_message_rejection_note';
+  | 'direct_message_rejection_note'
+  | 'awaiting_otp_contact';
+
+export interface OtpAuthSession {
+  sessionToken: string;
+  createdAt: number;
+}
 
 export interface UnknownClientSession {
   phoneNumber: string;
@@ -97,6 +103,7 @@ export interface BotSession {
     submitting: boolean;
   };
   stage?: RegistrationStage;
+  otpAuth?: OtpAuthSession;
   unknownClient?: UnknownClientSession;
   repairDraft?: RepairRequestDraft;
   supportComment?: SupportCommentDraft;

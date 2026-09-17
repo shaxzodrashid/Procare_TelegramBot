@@ -32,13 +32,13 @@ The API sends a Telegram message to the registered client identified by exactly 
 | `message`               | Conditional                          | string         | Legacy one-message fallback. Required only when `localized_messages` is absent.                                                                     |
 | `variables`             | No                                   | object         | Extra primitive placeholder values. Values may be string, number, boolean, or null.                                                                 |
 | `localized_variables`   | No                                   | object         | Extra locale-specific placeholder values. Each key has `uz`, `ru`, and optional `en` text; the Bot selects the recipient's locale before rendering. |
-| `inline_keyboard`       | No                                   | object         | Generated `details`, `approval`, or `rating` actions, or a custom row-based keyboard containing URL, details, approval, or rating buttons.           |
+| `inline_keyboard`       | No                                   | object         | Generated `details`, `approval`, or `rating` actions, or a custom row-based keyboard containing URL, details, approval, or rating buttons.          |
 | `support_reply`         | No                                   | object         | Sends as a reply to a stored client support message when its mapping exists.                                                                        |
-| `type`                  | No                                   | string         | Legacy bot-template hint. It may replace the single `message` fallback, but never explicit `localized_messages`.                                     |
+| `type`                  | No                                   | string         | Legacy bot-template hint. It may replace the single `message` fallback, but never explicit `localized_messages`.                                    |
 | `crm_comment_id`        | No                                   | UUID           | CRM comment ID used to persist an outbound support-message mapping.                                                                                 |
 | `repair_order_uuid`     | No                                   | UUID           | Repair-order context when persisting an outbound support-message mapping.                                                                           |
 | `order_number`          | No                                   | string         | Order-number context when persisting an outbound support-message mapping.                                                                           |
-| `attachments`           | No                                   | array          | One to five trusted photo or document URLs. The bot downloads and size-checks every file before Telegram delivery.                                   |
+| `attachments`           | No                                   | array          | One to five trusted photo or document URLs. The bot downloads and size-checks every file before Telegram delivery.                                  |
 
 At least one of `message`, `localized_messages`, or `attachments` is required. A keyboard requires
 message text. When `localized_messages` is supplied, it is authoritative even if the legacy `type`
@@ -67,36 +67,36 @@ repair-order values**. Its only automatic values are the built-in registered-use
 above. Until the Telegram Bot adds equivalent repair-order context, a direct-message caller must
 provide the required CRM values explicitly through `variables` or `localized_variables`.
 
-| Placeholder | CRM value | Supply to the direct-message API as |
-| --- | --- | --- |
-| `{{order_number}}` | Repair-order number | `variables` |
-| `{{repair_order_uuid}}` | Repair-order UUID | `variables` |
-| `{{customer_name}}` | Stored repair-order customer name | `variables` |
-| `{{status_name_uz}}`, `{{status_name_ru}}`, `{{status_name_en}}` | Customer-visible status name for the named locale | `variables` |
-| `{{progress_step}}`, `{{progress_total_steps}}` | Current customer-status step and total steps | `variables` |
-| `{{problem_name}}` | Final-problem category name | `variables` |
-| `{{phone_category}}` | Device category | `localized_variables` |
-| `{{status_name}}` | Current customer-visible status name | `localized_variables` |
-| `{{branch_name}}` | Repair branch name | `localized_variables` |
-| `{{customer_phone_number}}` | Repair-order contact phone | `variables` |
-| `{{order_description}}`, `{{imei}}` | Stored order description and IMEI | `variables` |
-| `{{priority}}`, `{{source}}`, `{{pickup_method}}`, `{{delivery_method}}` | Order metadata | `variables` |
-| `{{agreed_date}}`, `{{estimated_ready_at}}`, `{{completed_at}}`, `{{repaired_at}}`, `{{delivered_at}}` | Order lifecycle dates | `variables` |
-| `{{total_price}}`, `{{currency}}` | Repair-order total and ISO currency code | `variables` |
-| `{{final_problems_count}}` | Number of final problems | `variables` |
-| `{{final_problems_total_price}}`, `{{parts_total_price}}` | Final-problem labor total and assigned-parts total | `variables` |
-| `{{final_problems}}` | Numbered final-problem names | `localized_variables` |
-| `{{final_problems_with_prices}}` | Final problems with labor prices | `localized_variables` |
-| `{{final_problems_with_parts}}` | Final problems with assigned part names and quantities | `localized_variables` |
-| `{{final_problems_with_total}}` | Final problems, assigned parts, and problem-plus-parts totals | `localized_variables` |
-| `{{final_problems_detailed}}` | Final problems with prices and assigned-part unit/line prices | `localized_variables` |
-| `{{initial_problems_count}}` | Number of initial problems | `variables` |
-| `{{initial_problems_total_price}}`, `{{initial_parts_total_price}}` | Initial-problem labor total and assigned-parts total | `variables` |
-| `{{initial_problems}}` | Numbered initial-problem names | `localized_variables` |
-| `{{initial_problems_with_prices}}` | Initial problems with labor prices | `localized_variables` |
-| `{{initial_problems_with_parts}}` | Initial problems with assigned part names and quantities | `localized_variables` |
-| `{{initial_problems_with_total}}` | Initial problems, assigned parts, and problem-plus-parts totals | `localized_variables` |
-| `{{initial_problems_detailed}}` | Initial problems with prices and assigned-part unit/line prices | `localized_variables` |
+| Placeholder                                                                                            | CRM value                                                       | Supply to the direct-message API as |
+| ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- | ----------------------------------- |
+| `{{order_number}}`                                                                                     | Repair-order number                                             | `variables`                         |
+| `{{repair_order_uuid}}`                                                                                | Repair-order UUID                                               | `variables`                         |
+| `{{customer_name}}`                                                                                    | Stored repair-order customer name                               | `variables`                         |
+| `{{status_name_uz}}`, `{{status_name_ru}}`, `{{status_name_en}}`                                       | Customer-visible status name for the named locale               | `variables`                         |
+| `{{progress_step}}`, `{{progress_total_steps}}`                                                        | Current customer-status step and total steps                    | `variables`                         |
+| `{{problem_name}}`                                                                                     | Final-problem category name                                     | `variables`                         |
+| `{{phone_category}}`                                                                                   | Device category                                                 | `localized_variables`               |
+| `{{status_name}}`                                                                                      | Current customer-visible status name                            | `localized_variables`               |
+| `{{branch_name}}`                                                                                      | Repair branch name                                              | `localized_variables`               |
+| `{{customer_phone_number}}`                                                                            | Repair-order contact phone                                      | `variables`                         |
+| `{{order_description}}`, `{{imei}}`                                                                    | Stored order description and IMEI                               | `variables`                         |
+| `{{priority}}`, `{{source}}`, `{{pickup_method}}`, `{{delivery_method}}`                               | Order metadata                                                  | `variables`                         |
+| `{{agreed_date}}`, `{{estimated_ready_at}}`, `{{completed_at}}`, `{{repaired_at}}`, `{{delivered_at}}` | Order lifecycle dates                                           | `variables`                         |
+| `{{total_price}}`, `{{currency}}`                                                                      | Repair-order total and ISO currency code                        | `variables`                         |
+| `{{final_problems_count}}`                                                                             | Number of final problems                                        | `variables`                         |
+| `{{final_problems_total_price}}`, `{{parts_total_price}}`                                              | Final-problem labor total and assigned-parts total              | `variables`                         |
+| `{{final_problems}}`                                                                                   | Numbered final-problem names                                    | `localized_variables`               |
+| `{{final_problems_with_prices}}`                                                                       | Final problems with labor prices                                | `localized_variables`               |
+| `{{final_problems_with_parts}}`                                                                        | Final problems with assigned part names and quantities          | `localized_variables`               |
+| `{{final_problems_with_total}}`                                                                        | Final problems, assigned parts, and problem-plus-parts totals   | `localized_variables`               |
+| `{{final_problems_detailed}}`                                                                          | Final problems with prices and assigned-part unit/line prices   | `localized_variables`               |
+| `{{initial_problems_count}}`                                                                           | Number of initial problems                                      | `variables`                         |
+| `{{initial_problems_total_price}}`, `{{initial_parts_total_price}}`                                    | Initial-problem labor total and assigned-parts total            | `variables`                         |
+| `{{initial_problems}}`                                                                                 | Numbered initial-problem names                                  | `localized_variables`               |
+| `{{initial_problems_with_prices}}`                                                                     | Initial problems with labor prices                              | `localized_variables`               |
+| `{{initial_problems_with_parts}}`                                                                      | Initial problems with assigned part names and quantities        | `localized_variables`               |
+| `{{initial_problems_with_total}}`                                                                      | Initial problems, assigned parts, and problem-plus-parts totals | `localized_variables`               |
+| `{{initial_problems_detailed}}`                                                                        | Initial problems with prices and assigned-part unit/line prices | `localized_variables`               |
 
 The problem-list values are already rendered by CRM; they are not loop expressions. For
 `localized_variables`, supply the appropriate `uz` and `ru` text for every locale-aware value.
@@ -254,20 +254,20 @@ Telegram reply. Missing or rejected reply targets fall back to a normal Telegram
 - `layout` is an array of Telegram button rows. CRM controls row placement and button order. Every
   layout button accepts `type`, `text`, `localized_text`, and `style`; `repair_order_uuid` remains at
   the keyboard level so CRM cannot attach a different order to an individual action. Every layout
-  button requires either `text` or `localized_text`. For approval decisions, the bot accepts these
-  presentation fields for contract compatibility but deliberately renders canonical localized
-  labels and colors from the semantic subtype.
+  button requires either `text` or `localized_text`. For approval decisions, the bot uses the
+  authored locale-specific label while retaining the semantic color from the subtype.
 - `details` requires exactly one button whose subtype is `details`. Without `layout`, optional
   top-level `text`, `localized_text`, or the bot's localized default is used. A top-level `style` may
   also be supplied. Back restores the exact original Telegram text entities and full original inline
   keyboard.
 - `approval` requires exactly one `reject` and one `approve` subtype. They may be placed as
   `REJECT | APPROVE`, `APPROVE | REJECT`, or as two one-button rows in either order. Approve requires
-  an explicit confirmation. The bot always renders `reject` as the localized red Reject control and
-  `approve` as the localized green Approve control, so authored labels or styles cannot make the
-  visible action contradict its callback. For already-delivered legacy keyboards, the handler also
-  treats a `success` button as Approve and a `danger` button as Reject if its stored callback was
-  reversed.
+  an explicit confirmation. The bot selects each authored `localized_text` label using the
+  recipient locale, falling back to `text` and then its built-in localized Reject/Approve label.
+  The semantic subtype still fixes `reject` as `danger` and `approve` as `success`; an authored
+  `style` cannot visually invert the decisions. For already-delivered legacy keyboards, the handler
+  also treats a `success` button as Approve and a `danger` button as Reject if its stored callback
+  was reversed.
   Reject requires a 1–4,000 character explanation and then an explicit confirmation. Before each
   CRM decision, new deliveries use the trusted numeric `order_number` embedded in the bot-generated
   callback; legacy deliveries resolve it from the exact Telegram message's durable mapping. The bot
@@ -279,10 +279,10 @@ Telegram reply. Missing or rejected reply targets fall back to a normal Telegram
   because CRM upserts the one current Telegram rating for the order.
 - Generated action keyboards always require a valid internal `repair_order_uuid`. A custom `layout`
   cannot be combined with top-level `text`, `localized_text`, or `style`. Top-level button
-  presentation is supported only by `details`; `rating` customizes its buttons through `layout`,
-  while approval `layout` controls placement only. Omitting `layout` preserves the bot's default
-  localized action layouts. Approval controls always render Reject as `danger` and Approve as
-  `success`.
+  presentation is supported only by `details`; `rating` and `approval` customize their button labels
+  through `layout`. Omitting `layout` preserves the bot's default localized action layouts. Approval
+  controls always render Reject as `danger` and Approve as `success`, regardless of an authored
+  `style`.
 
 Custom row-based keyboards use `inline_keyboard.rows`:
 

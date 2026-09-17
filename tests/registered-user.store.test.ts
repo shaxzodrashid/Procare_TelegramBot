@@ -91,6 +91,39 @@ const createDatabaseDouble = (
 };
 
 describe('PostgresRegisteredUserStore', () => {
+  it('upserts a Telegram user only without role assignments', async () => {
+    const now = new Date('2026-06-17T10:00:00.000Z');
+    const { database, calls, transactionStarted } = createDatabaseDouble('42', now);
+    const store = new PostgresRegisteredUserStore(database);
+
+    const id = await store.saveTelegramUser({
+      telegram_id: '1001',
+      telegram_username: 'alivaliyev',
+      first_name: 'Ali',
+      last_name: 'Valiyev',
+      phone_number: '+998901234567',
+      locale: 'uz',
+    });
+
+    assert.equal(id, '42');
+    assert.equal(transactionStarted(), true);
+    assert.deepEqual(calls[0], {
+      table: 'users',
+      action: 'insert',
+      payload: {
+        telegram_id: '1001',
+        telegram_username: 'alivaliyev',
+        first_name: 'Ali',
+        last_name: 'Valiyev',
+        phone_number: '+998901234567',
+        language_code: 'uz',
+        is_blocked: false,
+        last_decline_reason: null,
+        declined_at: null,
+      },
+    });
+  });
+
   it('upserts a Telegram user and client role by local user ID', async () => {
     const now = new Date('2026-06-17T10:00:00.000Z');
     const { database, calls, transactionStarted } = createDatabaseDouble('42', now);

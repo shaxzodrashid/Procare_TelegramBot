@@ -259,6 +259,22 @@ const messages = {
     developerCancelled: '✅ Developer amali bekor qilindi.',
     developerEndpointBack: '⬅️ Endpointga qaytish',
     developerBackToMenu: '⬅️ Menyuga qaytish',
+    otpSessionExpired:
+      '⚠️ Ushbu havola eskirgan yoki yaroqsiz. Iltimos, ilovadan qayta urinib ko‘ring.',
+    otpWelcome:
+      '👋 <b>ProCare tizimiga xush kelibsiz!</b>\n\nIlovadagi ro‘yxatdan o‘tishni tasdiqlash uchun pastdagi tugmani bosing:',
+    otpShareContact: '📱 Telefon raqamni yuborish',
+    otpSessionNotFound: '⚠️ Aktiv tasdiqlash sessiyasi topilmadi.',
+    otpOwnPhoneOnly: '❌ Iltimos, faqat o‘zingizning shaxsiy raqamingizni yuboring.',
+    otpSuccess:
+      '✅ <b>Raqamingiz muvaffaqiyatli tasdiqlandi!</b>\n\nTelegram hisobingiz ProCare ilovasiga ulandi. Ilovaga qaytib foydalanishingiz mumkin.',
+    otpReturnToApp: '📲 ProCare ilovasiga qaytish',
+    otpPhoneMismatch:
+      '❌ <b>Xatolik:</b> Telegram hisobingizdagi raqam ilovaga kiritilgan raqamga mos kelmadi. Iltimos, ilovada to‘g‘ri raqamni kiriting.',
+    otpNotification:
+      '🔐 <b>ProCare tasdiqlash kodi:</b> <code>{{otp}}</code>\n\nUshbu kodni hech kimga bermang!',
+    otpNotificationWithExpiry:
+      '🔐 <b>ProCare tasdiqlash kodi:</b> <code>{{otp}}</code>\n\nUshbu kodni hech kimga bermang!\n\n⏳ Kod {{minutes}} daqiqa davomida amal qiladi.',
     language: '🇷🇺 Русский',
     uzbek: '🇺🇿 O‘zbekcha',
     russian: '🇷🇺 Русский',
@@ -516,6 +532,22 @@ const messages = {
     developerCancelled: '✅ Developer-действие отменено.',
     developerEndpointBack: '⬅️ Вернуться к endpoint',
     developerBackToMenu: '⬅️ Вернуться в меню',
+    otpSessionExpired:
+      '⚠️ Ссылка устарела или недействительна. Пожалуйста, повторите попытку из приложения.',
+    otpWelcome:
+      '👋 <b>Добро пожаловать в ProCare!</b>\n\nДля подтверждения регистрации в приложении нажмите кнопку ниже:',
+    otpShareContact: '📱 Отправить номер телефона',
+    otpSessionNotFound: '⚠️ Активная сессия подтверждения не найдена.',
+    otpOwnPhoneOnly: '❌ Пожалуйста, отправьте только свой личный номер телефона.',
+    otpSuccess:
+      '✅ <b>Ваш номер успешно подтвержден!</b>\n\nВаш аккаунт Telegram подключен к приложению ProCare. Можете вернуться в приложение.',
+    otpReturnToApp: '📲 Вернуться в ProCare',
+    otpPhoneMismatch:
+      '❌ <b>Ошибка:</b> Номер телефона в Telegram не совпадает с номером, введенным в приложении. Пожалуйста, введите правильный номер в приложении.',
+    otpNotification:
+      '🔐 <b>Код подтверждения ProCare:</b> <code>{{otp}}</code>\n\nНикому не сообщайте этот код!',
+    otpNotificationWithExpiry:
+      '🔐 <b>Код подтверждения ProCare:</b> <code>{{otp}}</code>\n\nНикому не сообщайте этот код!\n\n⏳ Код действителен в течение {{minutes}} мин.',
     language: '🇺🇿 O‘zbekcha',
     uzbek: '🇺🇿 O‘zbekcha',
     russian: '🇷🇺 Русский',

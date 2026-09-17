@@ -16,12 +16,14 @@ import {
   registeredHelpKey,
   registeredHelpParseMode,
 } from '../helpers.js';
-import { clearSettingsFlow, clearUnknownFlow } from '../session.js';
+import { clearSettingsFlow, clearUnknownFlow, clearOtpAuthFlow } from '../session.js';
 import {
   personalMenuKeyboard,
   registrationKeyboard,
   settingsPhoneKeyboard,
   requestOfferKeyboard,
+  otpContactKeyboard,
+  otpReturnToAppKeyboard,
 } from '../keyboards.js';
 
 export const updateSessionLanguage = (sessionData: BotSession, locale: Locale): void => {
@@ -262,6 +264,96 @@ export const registerByPhone = async (
   }
 };
 
+const handleOtpContact = async (ctx: BotContext, dependencies: BotDependencies): Promise<void> => {
+  if (!ctx.from || !ctx.chat) return;
+
+  const authSession = ctx.session.otpAuth;
+  const isExpired = !authSession || Date.now() - authSession.createdAt > 5 * 60 * 1000;
+  if (!authSession || isExpired) {
+    clearOtpAuthFlow(ctx.session);
+    await ctx.reply(t(ctx.session.locale, 'otpSessionNotFound'));
+    return;
+  }
+
+  const contact = ctx.message?.contact;
+  if (!contact) return;
+
+  if (contact.user_id !== ctx.from.id) {
+    await ctx.reply(t(ctx.session.locale, 'otpOwnPhoneOnly'), {
+      reply_markup: otpContactKeyboard(ctx.session.locale),
+    });
+    return;
+  }
+
+  if (!dependencies.otpAuthService) {
+    await ctx.reply(t(ctx.session.locale, 'unavailable'));
+    return;
+  }
+
+  const normalizedPhone = normalizeUzPhone(contact.phone_number) ?? contact.phone_number;
+  const result = await dependencies.otpAuthService.verifyContact({
+    session_token: authSession.sessionToken,
+    telegram_user_id: ctx.from.id,
+    telegram_chat_id: ctx.chat.id,
+    contact_phone: normalizedPhone,
+    contact_user_id: contact.user_id,
+  });
+
+  if (result.success) {
+    clearOtpAuthFlow(ctx.session);
+
+    const normalized = normalizeUzPhone(contact.phone_number);
+    if (normalized) {
+      await dependencies.registeredUserStore
+        .saveTelegramUser({
+          telegram_id: String(ctx.from.id),
+          telegram_username: ctx.from.username ?? null,
+          first_name: contact.first_name || ctx.from.first_name || '',
+          last_name: contact.last_name || ctx.from.last_name || null,
+          phone_number: normalized,
+          locale: ctx.session.locale,
+        })
+        .catch((error) => {
+          dependencies.logger.warn(
+            'Failed to save Telegram user on OTP contact verification',
+            error,
+          );
+        });
+    }
+
+    await ctx.reply(t(ctx.session.locale, 'otpSuccess'), {
+      parse_mode: 'HTML',
+      reply_markup: otpReturnToAppKeyboard(ctx.session.locale),
+    });
+    return;
+  }
+
+  if (result.error === 'PHONE_NUMBER_MISMATCH' || result.error === 'PHONE_MISMATCH') {
+    await ctx.reply(t(ctx.session.locale, 'otpPhoneMismatch'), {
+      parse_mode: 'HTML',
+      reply_markup: otpContactKeyboard(ctx.session.locale),
+    });
+    return;
+  }
+
+  if (result.error === 'SESSION_EXPIRED' || result.error === 'SESSION_NOT_FOUND') {
+    clearOtpAuthFlow(ctx.session);
+    await ctx.reply(t(ctx.session.locale, 'otpSessionExpired'));
+    return;
+  }
+
+  if (result.error === 'SENDER_NOT_CONTACT_OWNER') {
+    await ctx.reply(t(ctx.session.locale, 'otpOwnPhoneOnly'), {
+      reply_markup: otpContactKeyboard(ctx.session.locale),
+    });
+    return;
+  }
+
+  await ctx.reply(t(ctx.session.locale, 'unavailable'), {
+    reply_markup: otpContactKeyboard(ctx.session.locale),
+  });
+};
+
 export const registerRegistrationHandlers = (
   bot: Bot<BotContext>,
   dependencies: BotDependencies,
@@ -317,6 +409,11 @@ export const registerRegistrationHandlers = (
   });
 
   bot.on('message:contact', async (ctx) => {
+    if (ctx.session.stage === 'awaiting_otp_contact' || Boolean(ctx.session.otpAuth)) {
+      await handleOtpContact(ctx, dependencies);
+      return;
+    }
+
     const acceptsInitialPhone =
       ctx.session.stage === 'awaiting_phone' &&
       !ctx.session.client &&
