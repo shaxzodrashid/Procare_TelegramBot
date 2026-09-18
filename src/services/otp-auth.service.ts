@@ -41,7 +41,7 @@ export class HttpOtpAuthService implements OtpAuthGateway {
 
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       try {
-        return await this.requestSession(url, path);
+        return await this.requestSession(url);
       } catch (error) {
         const isLast = attempt === attempts;
         if (isLast) {
@@ -63,7 +63,7 @@ export class HttpOtpAuthService implements OtpAuthGateway {
   }
 
   async verifyContact(params: VerifyContactParams): Promise<VerifyContactResult> {
-    const path = '/internal/telegram/verify-contact';
+    const path = '/api/v1/internal/telegram/verify-contact';
     const url = `${this.baseUrl}${path}`;
     const normalizedPhone = normalizeUzPhone(params.contact_phone) ?? params.contact_phone;
 
@@ -84,7 +84,8 @@ export class HttpOtpAuthService implements OtpAuthGateway {
       method: 'POST',
       path,
       body: {
-        ...payload,
+        telegram_user_id: payload.telegram_user_id,
+        telegram_chat_id: payload.telegram_chat_id,
         contact_phone: redactPhoneNumber(payload.contact_phone),
       },
     });
@@ -99,6 +100,7 @@ export class HttpOtpAuthService implements OtpAuthGateway {
           'content-type': 'application/json',
         },
         body: JSON.stringify(payload),
+        redirect: 'error',
         signal: AbortSignal.timeout(this.options.timeoutMs),
       });
 
@@ -119,10 +121,10 @@ export class HttpOtpAuthService implements OtpAuthGateway {
             message: typeof responseBody.message === 'string' ? responseBody.message : undefined,
           };
         }
-        return {
-          success: true,
-          user: isRecord(responseBody) ? responseBody.user : undefined,
-        };
+        if (!isRecord(responseBody) || responseBody.success !== true) {
+          return { success: false, error: 'UNAVAILABLE', message: 'Invalid verification response' };
+        }
+        return { success: true, user: responseBody.user };
       }
 
       if (response.status === 400) {
@@ -164,12 +166,12 @@ export class HttpOtpAuthService implements OtpAuthGateway {
     }
   }
 
-  private async requestSession(url: string, path: string): Promise<OtpSessionResponse | null> {
+  private async requestSession(url: string): Promise<OtpSessionResponse | null> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
 
     this.logger.extra('OTP session lookup request', {
       method: 'GET',
-      path,
+      path: '/api/v1/auth/session-status',
       timeoutMs: this.options.timeoutMs,
     });
 
@@ -183,6 +185,7 @@ export class HttpOtpAuthService implements OtpAuthGateway {
           ).toString('base64')}`,
           'content-type': 'application/json',
         },
+        redirect: 'error',
         signal: AbortSignal.timeout(this.options.timeoutMs),
       });
     } catch (error) {
@@ -200,7 +203,9 @@ export class HttpOtpAuthService implements OtpAuthGateway {
 
     const payload = (await response.json().catch(() => null)) as unknown;
     if (!isRecord(payload) || typeof payload.status !== 'string') {
-      this.logger.warn('OTP session lookup returned invalid response shape', { payload });
+      this.logger.warn('OTP session lookup returned invalid response shape', {
+        status: response.status,
+      });
       return null;
     }
 

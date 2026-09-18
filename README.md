@@ -653,3 +653,7 @@ Do not log bot tokens, passwords, authorization headers, or unnecessary personal
 
 Read `AGENTS.md` before making changes. It defines documentation precedence, coding conventions,
 flow invariants, migration policy, testing expectations, and completion checks.
+
+## Mobile Telegram auth integration
+
+See [the service integration contract and test guide](Documentations/MOBILE_AUTH_INTEGRATION.md) for credentials, service endpoints, error handling and rollout.

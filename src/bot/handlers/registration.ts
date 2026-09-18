@@ -23,7 +23,6 @@ import {
   settingsPhoneKeyboard,
   requestOfferKeyboard,
   otpContactKeyboard,
-  otpReturnToAppKeyboard,
 } from '../keyboards.js';
 
 export const updateSessionLanguage = (sessionData: BotSession, locale: Locale): void => {
@@ -323,7 +322,7 @@ const handleOtpContact = async (ctx: BotContext, dependencies: BotDependencies):
 
     await ctx.reply(t(ctx.session.locale, 'otpSuccess'), {
       parse_mode: 'HTML',
-      reply_markup: otpReturnToAppKeyboard(ctx.session.locale),
+      reply_markup: { remove_keyboard: true },
     });
     return;
   }

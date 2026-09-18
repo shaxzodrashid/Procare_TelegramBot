@@ -372,33 +372,36 @@ Do not derive this service's schema from `Docs/POSTGRES_ARCHITECTURE_REPORT.md`.
 `.env.example` is the public inventory of supported environment variables. Keep it synchronized
 with `AppConfig` and `loadConfig`.
 
-| Variable                           | Required/default          | Notes                                                     |
-| ---------------------------------- | ------------------------- | --------------------------------------------------------- |
-| `NODE_ENV`                         | `development`             | `development`, `test`, or `production`                    |
-| `LOG_LEVEL`                        | `info`                    | `info`, `debug`, or `extra-high`                          |
-| `BOT_ENABLED`                      | `true`                    | Strict lowercase boolean                                  |
-| `BOT_TOKEN`                        | Required when bot enabled | Telegram bot token; secret                                |
-| `BOT_USERNAME`                     | Optional                  | Parsed for configuration; currently not used at runtime   |
-| `RICH_MESSAGES_ENABLED`            | `false`                   | Rich order cards with automatic classic HTML fallback     |
-| `DEVELOPER_TELEGRAM_IDS`           | Optional empty list       | Comma-separated Telegram numeric IDs with Developer tools |
-| `API_ENABLED`                      | `true`                    | Strict lowercase boolean                                  |
-| `API_HOST`                         | `0.0.0.0`                 | Fastify listen host                                       |
-| `API_PORT`                         | `3000`                    | Integer from 1 through 65535                              |
-| `API_MESSAGE_SEND_TOKEN`           | Required when API enabled | Bearer token for `POST /messages/send`; secret            |
-| `CRM_BASE_URL`                     | Required                  | Trailing slashes are removed                              |
-| `TELEGRAM_BOT_BASIC_AUTH_USER`     | Required                  | CRM service credential                                    |
-| `TELEGRAM_BOT_BASIC_AUTH_PASSWORD` | Required                  | CRM service secret                                        |
-| `CRM_REQUEST_TIMEOUT_MS`           | `10000`                   | Integer from 100 through 120000                           |
-| `CRM_MAX_RETRIES`                  | `2`                       | Integer from 0 through 5                                  |
-| `DB_HOST`                          | `localhost`               | Overridden to `postgres` by Compose for the bot container |
-| `DB_PORT`                          | `5432`                    | Integer from 1 through 65535                              |
-| `DB_USER`                          | `postgres`                | PostgreSQL user                                           |
-| `DB_PASS`                          | Required                  | PostgreSQL password; secret                               |
-| `DB_NAME`                          | `probox_bot_db`           | PostgreSQL database                                       |
-| `DB_SSL`                           | `false`                   | Uses `rejectUnauthorized: false` when enabled             |
-| `DB_POOL_MIN`                      | `0`                       | Integer from 0 through 100                                |
-| `DB_POOL_MAX`                      | `10`                      | Integer from 1 through 100; must be at least pool min     |
-| `DB_ACQUIRE_TIMEOUT_MS`            | `10000`                   | Integer from 100 through 120000                           |
+| Variable                           | Required/default            | Notes                                                     |
+| ---------------------------------- | --------------------------- | --------------------------------------------------------- |
+| `NODE_ENV`                         | `development`               | `development`, `test`, or `production`                    |
+| `LOG_LEVEL`                        | `info`                      | `info`, `debug`, or `extra-high`                          |
+| `BOT_ENABLED`                      | `true`                      | Strict lowercase boolean                                  |
+| `BOT_TOKEN`                        | Required when bot enabled   | Telegram bot token; secret                                |
+| `BOT_USERNAME`                     | Optional                    | Parsed for configuration; currently not used at runtime   |
+| `RICH_MESSAGES_ENABLED`            | `false`                     | Rich order cards with automatic classic HTML fallback     |
+| `DEVELOPER_TELEGRAM_IDS`           | Optional empty list         | Comma-separated Telegram numeric IDs with Developer tools |
+| `API_ENABLED`                      | `true`                      | Strict lowercase boolean                                  |
+| `API_HOST`                         | `0.0.0.0`                   | Fastify listen host                                       |
+| `API_PORT`                         | `3000`                      | Integer from 1 through 65535                              |
+| `API_MESSAGE_SEND_TOKEN`           | Required when API enabled   | Bearer token for `POST /messages/send`; secret            |
+| `MOBILE_API_BASE_URL`              | Optional complete group     | Mobile origin, separate from CRM; no path                 |
+| `MOBILE_API_BASIC_AUTH_USER`       | Required with mobile origin | Dedicated mobile callback username                        |
+| `MOBILE_API_BASIC_AUTH_PASSWORD`   | Required with mobile origin | Dedicated mobile callback secret                          |
+| `CRM_BASE_URL`                     | Required                    | Trailing slashes are removed                              |
+| `TELEGRAM_BOT_BASIC_AUTH_USER`     | Required                    | CRM service credential                                    |
+| `TELEGRAM_BOT_BASIC_AUTH_PASSWORD` | Required                    | CRM service secret                                        |
+| `CRM_REQUEST_TIMEOUT_MS`           | `10000`                     | Integer from 100 through 120000                           |
+| `CRM_MAX_RETRIES`                  | `2`                         | Integer from 0 through 5                                  |
+| `DB_HOST`                          | `localhost`                 | Overridden to `postgres` by Compose for the bot container |
+| `DB_PORT`                          | `5432`                      | Integer from 1 through 65535                              |
+| `DB_USER`                          | `postgres`                  | PostgreSQL user                                           |
+| `DB_PASS`                          | Required                    | PostgreSQL password; secret                               |
+| `DB_NAME`                          | `probox_bot_db`             | PostgreSQL database                                       |
+| `DB_SSL`                           | `false`                     | Uses `rejectUnauthorized: false` when enabled             |
+| `DB_POOL_MIN`                      | `0`                         | Integer from 0 through 100                                |
+| `DB_POOL_MAX`                      | `10`                        | Integer from 1 through 100; must be at least pool min     |
+| `DB_ACQUIRE_TIMEOUT_MS`            | `10000`                     | Integer from 100 through 120000                           |
 
 Configuration validation aggregates issues into one `ConfigurationError`. Preserve that behavior so
 operators can fix all invalid settings in one pass.

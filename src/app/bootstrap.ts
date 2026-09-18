@@ -92,16 +92,18 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
     },
     logger,
   );
-  const otpAuthService = new HttpOtpAuthService(
-    {
-      baseUrl: config.crm.baseUrl,
-      username: config.crm.username,
-      password: config.crm.password,
-      timeoutMs: config.crm.requestTimeoutMs,
-      maxRetries: config.crm.maxRetries,
-    },
-    logger,
-  );
+  const otpAuthService = config.mobile
+    ? new HttpOtpAuthService(
+        {
+          baseUrl: config.mobile.baseUrl,
+          username: config.mobile.username,
+          password: config.mobile.password,
+          timeoutMs: config.crm.requestTimeoutMs,
+          maxRetries: config.crm.maxRetries,
+        },
+        logger,
+      )
+    : undefined;
   const unknownClientStore = new PostgresUnknownClientStore(database);
   const registeredUserStore = new PostgresRegisteredUserStore(database);
   const messageTemplateStore = new PostgresMessageTemplateStore(database);

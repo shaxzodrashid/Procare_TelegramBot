@@ -204,7 +204,7 @@ describe('OTP Auth Bot Flow', () => {
   });
 
   describe('contact sharing in OTP flow', () => {
-    it('verifies contact with backend and returns ProCare return link on success', async () => {
+    it('verifies contact with backend and removes the contact keyboard on success', async () => {
       const { bot, executeOn } = createMockBot();
       let verifiedParams: any;
       let savedUserRecord: any;
@@ -282,10 +282,7 @@ describe('OTP Auth Bot Flow', () => {
       assert.equal(session.stage, undefined);
       assert.equal(replies.length, 1);
       assert.match(replies[0]?.text ?? '', /Raqamingiz muvaffaqiyatli tasdiqlandi/);
-      assert.equal(
-        replies[0]?.options?.reply_markup?.inline_keyboard?.[0]?.[0]?.url,
-        'procare://auth/verify',
-      );
+      assert.equal(replies[0]?.options?.reply_markup?.remove_keyboard, true);
     });
 
     it('rejects contact from a different user ID (anti-spoofing)', async () => {

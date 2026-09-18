@@ -1,3 +1,5 @@
+> Integration update: use the separate-service contract in [MOBILE_AUTH_INTEGRATION.md](MOBILE_AUTH_INTEGRATION.md). It supersedes the internal routing, credentials and return-button examples in this design specification.
+
 # ProCare System Architecture & Implementation Specification
 
 ## Telegram Bot OTP-Only Registration & Authentication Flow

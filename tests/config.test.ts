@@ -59,3 +59,43 @@ describe('loadConfig', () => {
     );
   });
 });
+
+describe('mobile auth configuration', () => {
+  const mobile = {
+    MOBILE_API_BASE_URL: 'https://mobile.test/',
+    MOBILE_API_BASIC_AUTH_USER: 'mobile-bot',
+    MOBILE_API_BASIC_AUTH_PASSWORD: 'mobile-secret',
+  };
+  it('keeps mobile auth disabled without affecting CRM configuration', () => {
+    assert.equal(loadConfig(validEnv).mobile, undefined);
+  });
+  it('uses separate origins and credentials', () => {
+    const config = loadConfig({ ...validEnv, ...mobile });
+    assert.deepEqual(config.mobile, {
+      baseUrl: 'https://mobile.test',
+      username: 'mobile-bot',
+      password: 'mobile-secret',
+    });
+    assert.equal(config.crm.baseUrl, 'http://localhost:5001');
+    assert.equal(config.crm.password, 'secret');
+  });
+  for (const baseUrl of [
+    'file:///secret',
+    'https://user:secret@mobile.test',
+    'https://mobile.test/api/v1',
+    'https://mobile.test?token=x',
+  ]) {
+    it(`rejects invalid mobile origin ${baseUrl}`, () => {
+      assert.throws(
+        () => loadConfig({ ...validEnv, ...mobile, MOBILE_API_BASE_URL: baseUrl }),
+        ConfigurationError,
+      );
+    });
+  }
+  it('rejects incomplete mobile configuration', () => {
+    assert.throws(
+      () => loadConfig({ ...validEnv, MOBILE_API_BASE_URL: 'https://mobile.test' }),
+      ConfigurationError,
+    );
+  });
+});

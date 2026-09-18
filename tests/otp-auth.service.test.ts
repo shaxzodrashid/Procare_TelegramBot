@@ -19,7 +19,7 @@ describe('HttpOtpAuthService', () => {
     let capturedAuth = '';
     const service = new HttpOtpAuthService(
       {
-        baseUrl: 'http://crm.test',
+        baseUrl: 'http://mobile.test',
         username: 'bot_user',
         password: 'bot_password',
         timeoutMs: 1000,
@@ -45,7 +45,7 @@ describe('HttpOtpAuthService', () => {
 
     assert.equal(
       capturedUrl,
-      'http://crm.test/api/v1/auth/session-status?session_token=sess_abc123',
+      'http://mobile.test/api/v1/auth/session-status?session_token=sess_abc123',
     );
     assert.equal(capturedAuth, `Basic ${Buffer.from('bot_user:bot_password').toString('base64')}`);
     assert.deepEqual(session, {
@@ -58,7 +58,7 @@ describe('HttpOtpAuthService', () => {
   it('returns null when session lookup yields 404', async () => {
     const service = new HttpOtpAuthService(
       {
-        baseUrl: 'http://crm.test',
+        baseUrl: 'http://mobile.test',
         username: 'bot_user',
         password: 'bot_password',
         timeoutMs: 1000,
@@ -81,7 +81,7 @@ describe('HttpOtpAuthService', () => {
     let attempts = 0;
     const service = new HttpOtpAuthService(
       {
-        baseUrl: 'http://crm.test',
+        baseUrl: 'http://mobile.test',
         username: 'bot_user',
         password: 'bot_password',
         timeoutMs: 1000,
@@ -112,14 +112,18 @@ describe('HttpOtpAuthService', () => {
 
   it('submits verifyContact payload and returns success', async () => {
     let capturedBody: unknown;
+    let capturedUrl = '';
+    let capturedAuth = '';
     const service = new HttpOtpAuthService(
       {
-        baseUrl: 'http://crm.test',
+        baseUrl: 'http://mobile.test',
         username: 'bot_user',
         password: 'bot_password',
         timeoutMs: 1000,
         maxRetries: 0,
         fetchImpl: (async (_url, init) => {
+          capturedUrl = String(_url);
+          capturedAuth = new Headers(init?.headers).get('authorization') ?? '';
           capturedBody = JSON.parse(String(init?.body));
           return new Response(JSON.stringify({ success: true }), {
             status: 200,
@@ -138,6 +142,8 @@ describe('HttpOtpAuthService', () => {
       contact_user_id: 111,
     });
 
+    assert.equal(capturedUrl, 'http://mobile.test/api/v1/internal/telegram/verify-contact');
+    assert.equal(capturedAuth, `Basic ${Buffer.from('bot_user:bot_password').toString('base64')}`);
     assert.deepEqual(capturedBody, {
       session_token: 'sess_xyz',
       telegram_user_id: 111,
@@ -151,7 +157,7 @@ describe('HttpOtpAuthService', () => {
   it('handles phone number mismatch error from backend', async () => {
     const service = new HttpOtpAuthService(
       {
-        baseUrl: 'http://crm.test',
+        baseUrl: 'http://mobile.test',
         username: 'bot_user',
         password: 'bot_password',
         timeoutMs: 1000,
@@ -187,7 +193,7 @@ describe('HttpOtpAuthService', () => {
   it('handles 403 sender not contact owner', async () => {
     const service = new HttpOtpAuthService(
       {
-        baseUrl: 'http://crm.test',
+        baseUrl: 'http://mobile.test',
         username: 'bot_user',
         password: 'bot_password',
         timeoutMs: 1000,
@@ -219,7 +225,7 @@ describe('HttpOtpAuthService', () => {
   it('handles network error during verifyContact gracefully', async () => {
     const service = new HttpOtpAuthService(
       {
-        baseUrl: 'http://crm.test',
+        baseUrl: 'http://mobile.test',
         username: 'bot_user',
         password: 'bot_password',
         timeoutMs: 1000,
@@ -242,4 +248,31 @@ describe('HttpOtpAuthService', () => {
     assert.equal(result.success, false);
     assert.equal(result.error, 'UNAVAILABLE');
   });
+});
+
+describe('verification response validation', () => {
+  for (const payload of [null, {}, { success: 'true' }]) {
+    it(`rejects malformed success ${JSON.stringify(payload)}`, async () => {
+      const service = new HttpOtpAuthService(
+        {
+          baseUrl: 'https://mobile.test',
+          username: 'bot',
+          password: 'secret',
+          timeoutMs: 1000,
+          maxRetries: 0,
+          fetchImpl: (async () =>
+            new Response(JSON.stringify(payload), { status: 200 })) as typeof fetch,
+        },
+        logger,
+      );
+      const result = await service.verifyContact({
+        session_token: 'sess_test',
+        telegram_user_id: 1,
+        telegram_chat_id: 1,
+        contact_phone: '+998901234567',
+        contact_user_id: 1,
+      });
+      assert.equal(result.success, false);
+    });
+  }
 });

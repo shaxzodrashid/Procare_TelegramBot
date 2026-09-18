@@ -25,6 +25,7 @@ export interface AppConfig {
     requestTimeoutMs: number;
     maxRetries: number;
   };
+  mobile?: { baseUrl: string; username: string; password: string };
   database: {
     host: string;
     port: number;
@@ -173,6 +174,35 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
     issues.push('DB_POOL_MIN must be less than or equal to DB_POOL_MAX');
   }
 
+  const mobileKeys = [
+    'MOBILE_API_BASE_URL',
+    'MOBILE_API_BASIC_AUTH_USER',
+    'MOBILE_API_BASIC_AUTH_PASSWORD',
+  ] as const;
+  const mobileEnabled = mobileKeys.some((key) => Boolean(env[key]?.trim()));
+  if (mobileEnabled) {
+    for (const key of mobileKeys)
+      if (!env[key]?.trim()) issues.push(`${key} is required when mobile auth is configured`);
+    try {
+      const url = new URL(env.MOBILE_API_BASE_URL ?? '');
+      if (
+        !['http:', 'https:'].includes(url.protocol) ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash ||
+        url.pathname !== '/'
+      )
+        throw new Error();
+    } catch {
+      issues.push(
+        'MOBILE_API_BASE_URL must be an HTTP(S) origin without credentials, path, query or fragment',
+      );
+    }
+    if (env.MOBILE_API_BASIC_AUTH_USER?.includes(':'))
+      issues.push('MOBILE_API_BASIC_AUTH_USER must not contain a colon');
+  }
+
   if (issues.length > 0) throw new ConfigurationError(issues);
 
   return {
@@ -198,6 +228,13 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
       requestTimeoutMs,
       maxRetries,
     },
+    mobile: mobileEnabled
+      ? {
+          baseUrl: env.MOBILE_API_BASE_URL!.trim().replace(/\/+$/, ''),
+          username: env.MOBILE_API_BASIC_AUTH_USER!.trim(),
+          password: env.MOBILE_API_BASIC_AUTH_PASSWORD!,
+        }
+      : undefined,
     database: {
       host: env.DB_HOST?.trim() || 'localhost',
       port: databasePort,
