@@ -95,6 +95,11 @@ export const canRegisterWithManualPhone = (
   !sessionData.client &&
   !sessionData.admin;
 
+export const canVerifyOtpWithManualPhone = (sessionData: BotSession): boolean =>
+  hasDeveloperMenuAccess(sessionData) &&
+  (sessionData.stage === 'awaiting_otp_contact' || Boolean(sessionData.otpAuth));
+
+
 export const fullTelegramName = (ctx: BotContext): string =>
   [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(' ').trim() || 'Telegram user';
 

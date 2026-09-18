@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   canRegisterWithManualPhone,
+  canVerifyOtpWithManualPhone,
   clearLocalizedBotCommands,
   hasEmployeeMenuAccess,
   localizedBotCommands,
@@ -212,6 +213,45 @@ describe('manual phone registration gate', () => {
     assert.equal(canRegisterWithManualPhone(session, true), false);
   });
 });
+
+describe('manual OTP verification gate', () => {
+  it('allows typed phone numbers for developer sessions while awaiting OTP contact', () => {
+    const session: BotSession = {
+      locale: 'uz',
+      stage: 'awaiting_otp_contact',
+      developer: { is_active: true },
+    };
+
+    assert.equal(canVerifyOtpWithManualPhone(session), true);
+  });
+
+  it('allows typed phone numbers for developer sessions with active otpAuth', () => {
+    const session: BotSession = {
+      locale: 'uz',
+      developer: { is_active: true },
+      otpAuth: {
+        sessionToken: 'sess_123',
+        createdAt: Date.now(),
+      },
+    };
+
+    assert.equal(canVerifyOtpWithManualPhone(session), true);
+  });
+
+  it('rejects typed phone numbers for non-developer sessions during OTP flow', () => {
+    const session: BotSession = {
+      locale: 'uz',
+      stage: 'awaiting_otp_contact',
+      otpAuth: {
+        sessionToken: 'sess_123',
+        createdAt: Date.now(),
+      },
+    };
+
+    assert.equal(canVerifyOtpWithManualPhone(session), false);
+  });
+});
+
 
 describe('registration account classification', () => {
   it('treats is_admin registration responses as employees', () => {

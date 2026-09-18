@@ -80,6 +80,7 @@ export {
   hasEmployeeMenuAccess,
   hasDeveloperMenuAccess,
   canRegisterWithManualPhone,
+  canVerifyOtpWithManualPhone,
 } from './helpers.js';
 
 export { createRestartGateMiddleware, createSessionRestorationMiddleware } from './session.js';

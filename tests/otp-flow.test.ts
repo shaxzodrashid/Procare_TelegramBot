@@ -423,6 +423,233 @@ describe('OTP Auth Bot Flow', () => {
       assert.equal(session.stage, undefined);
       assert.match(replies[0]?.text ?? '', /Aktiv tasdiqlash sessiyasi topilmadi/);
     });
+
+    it('allows a developer to verify OTP session by typing a phone number as text', async () => {
+      const { bot, executeOn } = createMockBot();
+      let verifiedParams: any;
+      let savedUserRecord: any;
+
+      const otpAuthService: OtpAuthGateway = {
+        async getSession() {
+          return { status: 'PENDING_TELEGRAM' };
+        },
+        async verifyContact(params) {
+          verifiedParams = params;
+          return { success: true };
+        },
+      };
+
+      const registeredUserStore = {
+        async saveTelegramUser(record: any) {
+          savedUserRecord = record;
+          return 'user-1';
+        },
+      } as unknown as RegisteredUserStore;
+
+      registerRegistrationHandlers(bot, {
+        otpAuthService,
+        registeredUserStore,
+        logger: mockLogger,
+      } as unknown as BotDependencies);
+
+      const replies: Array<{ text: string; options?: any }> = [];
+      const session: BotSession = {
+        locale: 'uz',
+        stage: 'awaiting_otp_contact',
+        developer: { is_active: true },
+        otpAuth: {
+          sessionToken: 'sess_test123',
+          createdAt: Date.now(),
+        },
+      };
+
+      const ctx = {
+        from: { id: 777, username: 'devuser', first_name: 'Dev', last_name: 'Lead' },
+        chat: { id: 777 },
+        message: {
+          text: '+998901234567',
+        },
+        session,
+        reply: async (text: string, options?: any) => {
+          replies.push({ text, options });
+        },
+      } as unknown as BotContext;
+
+      await executeOn('message:text', ctx);
+
+      assert.deepEqual(verifiedParams, {
+        session_token: 'sess_test123',
+        telegram_user_id: 777,
+        telegram_chat_id: 777,
+        contact_phone: '+998901234567',
+        contact_user_id: 777,
+      });
+
+      assert.deepEqual(savedUserRecord, {
+        telegram_id: '777',
+        telegram_username: 'devuser',
+        first_name: 'Dev',
+        last_name: 'Lead',
+        phone_number: '+998901234567',
+        locale: 'uz',
+      });
+
+      assert.equal(session.otpAuth, undefined);
+      assert.equal(session.stage, undefined);
+      assert.equal(replies.length, 1);
+      assert.match(replies[0]?.text ?? '', /Raqamingiz muvaffaqiyatli tasdiqlandi/);
+      assert.equal(replies[0]?.options?.reply_markup?.remove_keyboard, true);
+    });
+
+    it('rejects invalid phone number text for developer during OTP flow', async () => {
+      const { bot, executeOn } = createMockBot();
+      let backendCalled = false;
+
+      const otpAuthService: OtpAuthGateway = {
+        async getSession() {
+          return null;
+        },
+        async verifyContact() {
+          backendCalled = true;
+          return { success: true };
+        },
+      };
+
+      registerRegistrationHandlers(bot, {
+        otpAuthService,
+        logger: mockLogger,
+      } as unknown as BotDependencies);
+
+      const replies: Array<{ text: string; options?: any }> = [];
+      const session: BotSession = {
+        locale: 'uz',
+        stage: 'awaiting_otp_contact',
+        developer: { is_active: true },
+        otpAuth: {
+          sessionToken: 'sess_test123',
+          createdAt: Date.now(),
+        },
+      };
+
+      const ctx = {
+        from: { id: 777 },
+        chat: { id: 777 },
+        message: {
+          text: 'not-a-phone-number',
+        },
+        session,
+        reply: async (text: string, options?: any) => {
+          replies.push({ text, options });
+        },
+      } as unknown as BotContext;
+
+      await executeOn('message:text', ctx);
+
+      assert.equal(backendCalled, false);
+      assert.equal(replies.length, 1);
+      assert.match(replies[0]?.text ?? '', /Telefon raqami noto‘g‘ri/);
+      assert.equal(session.stage, 'awaiting_otp_contact');
+    });
+
+    it('does not intercept text messages for non-developers during OTP flow', async () => {
+      const { bot, executeOn } = createMockBot();
+
+      registerRegistrationHandlers(bot, {
+        logger: mockLogger,
+      } as unknown as BotDependencies);
+
+      const session: BotSession = {
+        locale: 'uz',
+        stage: 'awaiting_otp_contact',
+        otpAuth: {
+          sessionToken: 'sess_test123',
+          createdAt: Date.now(),
+        },
+      };
+
+      const ctx = {
+        from: { id: 777 },
+        chat: { id: 777 },
+        message: {
+          text: '+998901234567',
+        },
+        session,
+        reply: async () => {},
+      } as unknown as BotContext;
+
+      let nextCalled = false;
+      await executeOn('message:text', ctx, async () => {
+        nextCalled = true;
+      });
+
+      assert.equal(nextCalled, true);
+      assert.equal(session.stage, 'awaiting_otp_contact');
+    });
+
+    it('allows a developer to share contact from another user without anti-spoofing rejection', async () => {
+      const { bot, executeOn } = createMockBot();
+      let verifiedParams: any;
+
+      const otpAuthService: OtpAuthGateway = {
+        async getSession() {
+          return null;
+        },
+        async verifyContact(params) {
+          verifiedParams = params;
+          return { success: true };
+        },
+      };
+
+      const registeredUserStore = {
+        async saveTelegramUser() {
+          return 'user-1';
+        },
+      } as unknown as RegisteredUserStore;
+
+      registerRegistrationHandlers(bot, {
+        otpAuthService,
+        registeredUserStore,
+        logger: mockLogger,
+      } as unknown as BotDependencies);
+
+      const replies: Array<{ text: string; options?: any }> = [];
+      const session: BotSession = {
+        locale: 'uz',
+        stage: 'awaiting_otp_contact',
+        developer: { is_active: true },
+        otpAuth: {
+          sessionToken: 'sess_test123',
+          createdAt: Date.now(),
+        },
+      };
+
+      const ctx = {
+        from: { id: 777, first_name: 'Dev' },
+        chat: { id: 777 },
+        message: {
+          contact: {
+            user_id: 999, // Different user ID
+            phone_number: '+998901234567',
+            first_name: 'Friend',
+          },
+        },
+        session,
+        reply: async (text: string, options?: any) => {
+          replies.push({ text, options });
+        },
+      } as unknown as BotContext;
+
+      await executeOn('message:contact', ctx);
+
+      assert.deepEqual(verifiedParams, {
+        session_token: 'sess_test123',
+        telegram_user_id: 777,
+        telegram_chat_id: 777,
+        contact_phone: '+998901234567',
+        contact_user_id: 777,
+      });
+      assert.match(replies[0]?.text ?? '', /Raqamingiz muvaffaqiyatli tasdiqlandi/);
+    });
   });
 
   describe('BotDirectMessageService.sendOtp', () => {
