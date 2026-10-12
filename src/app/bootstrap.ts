@@ -13,6 +13,10 @@ import { createDatabase, migrateDatabase } from '../database/database.js';
 import { PostgresActionExportService } from '../services/action-export.service.js';
 import { PostgresApiErrorLocalizationStore } from '../services/api-error-localization.service.js';
 import { BotDirectMessageService } from '../services/bot-notification.service.js';
+import {
+  EmployeeNotificationService,
+  PostgresEmployeeNotificationStore,
+} from '../services/employee-notification.service.js';
 import { HttpClientRepairOrderService } from '../services/client-repair-order.service.js';
 import { HttpClientRegistrationService } from '../services/client-registration.service.js';
 import { HttpOtpAuthService } from '../services/otp-auth.service.js';
@@ -37,6 +41,7 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
   let botTask: Promise<void> | undefined;
   let api: FastifyInstance | undefined;
   let directMessageService: BotDirectMessageService | undefined;
+  let employeeNotificationService: EmployeeNotificationService | undefined;
   let stopping = false;
 
   const database = createDatabase(config.database);
@@ -107,6 +112,7 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
   const unknownClientStore = new PostgresUnknownClientStore(database);
   const registeredUserStore = new PostgresRegisteredUserStore(database);
   const messageTemplateStore = new PostgresMessageTemplateStore(database);
+  const employeeNotificationStore = new PostgresEmployeeNotificationStore(database);
   const repairOrderStatusNameStore = new PostgresRepairOrderStatusNameStore(database);
   const apiErrorLocalizationStore = new PostgresApiErrorLocalizationStore(database);
   const supportMessageStore = new PostgresSupportMessageStore(database);
@@ -122,6 +128,7 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       unknownClientStore,
       registeredUserStore,
       messageTemplateStore,
+      employeeNotificationStore,
       repairOrderStatusNameStore,
       apiErrorLocalizationStore,
       supportMessageStore,
@@ -146,11 +153,19 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
       { logger },
     );
     logger.info(`Telegram bot @${bot.botInfo.username} authenticated`);
+    employeeNotificationService = new EmployeeNotificationService(
+      employeeNotificationStore,
+      registeredUserStore,
+      directMessageService,
+      logger,
+    );
   }
 
   if (config.api.enabled) {
     api = createApiServer(config, logger, {
       directMessageSender: directMessageService,
+      employeeNotificationStore,
+      employeeNotificationService,
       directFileSender: directMessageService,
       otpSender: directMessageService,
       healthReporter: healthMonitor,

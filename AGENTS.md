@@ -286,13 +286,22 @@ contract changes.
 
 ## Database Rules
 
-The local database currently owns nine application tables: `users`, `clients`, `employees`,
+The local database currently owns eleven application tables: `users`, `clients`, `employees`,
 `message_templates`, `message_dispatch_logs`, `support_messages`, `api_error_localizations`,
-`repair_order_status_names`, and `deployment_history`, plus Knex migration metadata.
+`repair_order_status_names`, `deployment_history`, `employee_notification_types`, and
+`employee_notification_preferences`, plus Knex migration metadata.
 `users.telegram_id` is the unique Telegram identity used for upserts. `users.should_restart` is the
 durable deploy-time session restart gate. `clients.user_id`,
 `employees.user_id`, `message_dispatch_logs.user_id`, and `support_messages.user_id` reference
 `users.id`.
+
+Employee notification types are managed by CRM through the authenticated bot API. Preferences
+are keyed by CRM employee account ID and notification type key, apply to every linked Telegram
+account, and override type defaults. Delivery must check the type's active flag, effective
+preference, and persisted employee activity. Reuse direct rich-message delivery and dispatch
+logging; preserve HTML/MarkdownV2 escaping, attachments and keyboard behavior. The seeded
+`support_comment` type controls existing assigned-employee alerts. New event producers should
+use typed notification delivery instead of bypassing preferences with a raw Telegram send.
 
 The unknown-client store persists:
 

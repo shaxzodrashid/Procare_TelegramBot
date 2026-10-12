@@ -6,6 +6,7 @@ import type { ClientRepairOrderGateway } from '../services/client-repair-order.s
 import type { ActionExportService } from '../services/action-export.service.js';
 import type { ApiErrorLocalizationStore } from '../services/api-error-localization.service.js';
 import type { MessageTemplateStore } from '../services/message-template.service.js';
+import type { EmployeeNotificationStore } from '../services/employee-notification.service.js';
 import type { RegisteredUserStore } from '../services/registered-user.store.js';
 import type {
   RepairOrderStatusGateway,
@@ -50,8 +51,10 @@ import { registerAdminStatusNamesHandlers } from './handlers/admin-status-names.
 import { registerAdminExportHandlers } from './handlers/admin-export.js';
 import { registerDirectMessageHandlers } from './handlers/direct-messages.js';
 import { registerDeveloperHandlers } from './handlers/developer.js';
+import { registerEmployeeNotificationHandlers } from './handlers/employee-notifications.js';
 
 export interface BotDependencies {
+  employeeNotificationStore?: EmployeeNotificationStore;
   registrationService: ClientRegistrationGateway;
   repairOrderService: RepairOrderGateway;
   clientRepairOrderService: ClientRepairOrderGateway;
@@ -144,6 +147,14 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
   });
 
   // Register feature handlers
+  bot.use(async (ctx, next) => {
+    if (ctx.session.employeeNotificationView && !ctx.callbackQuery?.data?.startsWith('en:')) {
+      delete ctx.session.employeeNotificationView;
+      if (ctx.session.stage === 'employee_notification_preferences') delete ctx.session.stage;
+    }
+    await next();
+  });
+  registerEmployeeNotificationHandlers(bot, runtimeDependencies);
   registerSupportHandlers(bot, token, runtimeDependencies);
   registerCommandHandlers(bot, runtimeDependencies);
   registerRegistrationHandlers(bot, runtimeDependencies);

@@ -174,123 +174,178 @@ const createDependencies = (): BotDependencies & {
 };
 
 describe('support admin notification flow', () => {
-  it('notifies assigned admins without revealing the client support message', async () => {
-    const deps = createDependencies();
-    const registeredUserStore = {
-      async findByTelegramId(telegramId: string) {
-        if (telegramId !== '700201') return null;
-        return {
-          user: {
-            id: '201',
-            telegram_id: '700201',
-            telegram_username: 'ali',
-            first_name: 'Ali',
-            last_name: 'Valiyev',
-            phone_number: '+998901234567',
-            locale: 'uz' as const,
-          },
-          client: {
-            crm_client_id: 'client-201',
-            customer_code: 'CC-201',
-            status: 'Active',
-            is_active: true,
+  for (const mode of ['legacy', 'typed', 'disabled', 'inactive'] as const) {
+    it(`handles ${mode} assigned-admin alerts without revealing the client support message`, async () => {
+      const deps = createDependencies();
+      const registeredUserStore = {
+        async findByTelegramId(telegramId: string) {
+          if (telegramId === '800301') {
+            return {
+              user: {
+                id: '301',
+                telegram_id: telegramId,
+                telegram_username: null,
+                first_name: 'Master',
+                last_name: null,
+                phone_number: '+998901111111',
+                locale: 'uz',
+                should_restart: false,
+              },
+              employee: {
+                crm_admin_id: '33333333-3333-4333-8333-333333333333',
+                is_active: true,
+                status: 'Active',
+                created_at: '2026-10-12',
+                updated_at: '2026-10-12',
+              },
+            };
+          }
+          if (telegramId !== '700201') return null;
+          return {
+            user: {
+              id: '201',
+              telegram_id: '700201',
+              telegram_username: 'ali',
+              first_name: 'Ali',
+              last_name: 'Valiyev',
+              phone_number: '+998901234567',
+              locale: 'uz' as const,
+            },
+            client: {
+              crm_client_id: 'client-201',
+              customer_code: 'CC-201',
+              status: 'Active',
+              is_active: true,
+            },
+          };
+        },
+        async findActiveEmployeesByCrmAdminIds(crmAdminIds: string[]) {
+          assert.deepEqual(crmAdminIds, ['33333333-3333-4333-8333-333333333333']);
+          return [
+            {
+              id: '301',
+              telegram_id: '800301',
+              crm_admin_id: '33333333-3333-4333-8333-333333333333',
+              locale: 'uz' as const,
+              is_blocked: false,
+            },
+          ];
+        },
+      };
+      deps.registeredUserStore = registeredUserStore as any;
+      if (mode !== 'legacy') {
+        const type = {
+          key: 'support_comment',
+          name_uz: 'Mijoz xabarlari',
+          name_ru: 'Сообщения клиентов',
+          is_active: mode !== 'inactive',
+          default_enabled: true,
+          message_template: {
+            parseMode: 'HTML',
+            localizedMessages: {
+              uz: t('uz', 'supportAdminNotification'),
+              ru: t('ru', 'supportAdminNotification'),
+            },
           },
         };
-      },
-      async findActiveEmployeesByCrmAdminIds(crmAdminIds: string[]) {
-        assert.deepEqual(crmAdminIds, ['33333333-3333-4333-8333-333333333333']);
-        return [
-          {
-            id: '301',
-            telegram_id: '800301',
-            crm_admin_id: '33333333-3333-4333-8333-333333333333',
-            locale: 'uz' as const,
-            is_blocked: false,
+        deps.employeeNotificationStore = {
+          async findType() {
+            return type;
           },
-        ];
-      },
-    };
-    deps.registeredUserStore = registeredUserStore as any;
-    const bot = createBot('fake-token', deps);
-    const apiCalls: Array<{ method: string; payload: any }> = [];
+          async listPreferences() {
+            return [{ type, enabled: mode !== 'disabled' }];
+          },
+        } as any;
+      }
+      const bot = createBot('fake-token', deps);
+      const apiCalls: Array<{ method: string; payload: any }> = [];
 
-    bot.botInfo = {
-      id: 99999,
-      is_bot: true,
-      first_name: 'TestBot',
-      username: 'test_bot',
-    } as any;
-
-    bot.api.config.use(async (_prev, method, payload: any) => {
-      apiCalls.push({ method, payload });
-      if (method === 'answerCallbackQuery') return { ok: true, result: true } as any;
-      if (method === 'deleteMessage') return { ok: true, result: true } as any;
-      return {
-        ok: true,
-        result: {
-          message_id: 1000 + apiCalls.length,
-          date: Math.floor(Date.now() / 1000),
-          chat: { id: Number(payload.chat_id), type: 'private' },
-          text: payload.text,
-        },
+      bot.botInfo = {
+        id: 99999,
+        is_bot: true,
+        first_name: 'TestBot',
+        username: 'test_bot',
       } as any;
+
+      bot.api.config.use(async (_prev, method, payload: any) => {
+        apiCalls.push({ method, payload });
+        if (method === 'answerCallbackQuery') return { ok: true, result: true } as any;
+        if (method === 'deleteMessage') return { ok: true, result: true } as any;
+        return {
+          ok: true,
+          result: {
+            message_id: 1000 + apiCalls.length,
+            date: Math.floor(Date.now() / 1000),
+            chat: { id: Number(payload.chat_id), type: 'private' },
+            text: payload.text,
+          },
+        } as any;
+      });
+
+      const clientMessage = {
+        message_id: 10,
+        date: Math.floor(Date.now() / 1000),
+        chat: { id: 700201, type: 'private' as const, first_name: 'Ali' },
+        from: { id: 700201, is_bot: false, first_name: 'Ali' },
+      };
+
+      await bot.handleUpdate({
+        update_id: 1,
+        message: { ...clientMessage, text: '📦 Mening buyurtmalarim' },
+      } as any);
+      await bot.handleUpdate({
+        update_id: 2,
+        callback_query: {
+          id: 'q2',
+          from: clientMessage.from,
+          chat_instance: 'instance_1',
+          data: 'ro:v:0:0',
+          message: clientMessage,
+        },
+      } as any);
+      await bot.handleUpdate({
+        update_id: 3,
+        callback_query: {
+          id: 'q3',
+          from: clientMessage.from,
+          chat_instance: 'instance_1',
+          data: 'ro:s',
+          message: clientMessage,
+        },
+      } as any);
+      await bot.handleUpdate({
+        update_id: 4,
+        message: { ...clientMessage, message_id: 11, text: 'Screen is broken' },
+      } as any);
+
+      const adminNotification = apiCalls.find(
+        (call) => call.method === 'sendMessage' && String(call.payload.chat_id) === '800301',
+      );
+      assert.equal(deps.supportRequests.length, 1);
+      if (mode === 'disabled' || mode === 'inactive') {
+        assert.equal(adminNotification, undefined);
+        assert.equal(deps.dispatches.length, 0);
+        return;
+      }
+      assert.ok(adminNotification);
+      assert.match(adminNotification.payload.text, /#1024/);
+      assert.match(adminNotification.payload.text, /11111111-1111-4111-8111-111111111111/);
+      assert.match(adminNotification.payload.text, /CRM/);
+      assert.equal(adminNotification.payload.parse_mode, 'HTML');
+      assert.equal(adminNotification.payload.text.includes('Screen is broken'), false);
+      assert.equal(adminNotification.payload.text.includes('Ali Valiyev'), false);
+      assert.equal(adminNotification.payload.text.includes('+998901234567'), false);
+
+      const notificationDispatch = deps.dispatches.find(
+        (dispatch) =>
+          dispatch.dispatch_type ===
+          (mode === 'legacy' ? 'support_comment_admin_notification' : 'employee:support_comment'),
+      );
+      assert.ok(notificationDispatch);
+      assert.equal(notificationDispatch.status, 'sent');
+      assert.equal(notificationDispatch.user_id, '301');
     });
-
-    const clientMessage = {
-      message_id: 10,
-      date: Math.floor(Date.now() / 1000),
-      chat: { id: 700201, type: 'private' as const, first_name: 'Ali' },
-      from: { id: 700201, is_bot: false, first_name: 'Ali' },
-    };
-
-    await bot.handleUpdate({
-      update_id: 1,
-      message: { ...clientMessage, text: '📦 Mening buyurtmalarim' },
-    } as any);
-    await bot.handleUpdate({
-      update_id: 2,
-      callback_query: {
-        id: 'q2',
-        from: clientMessage.from,
-        chat_instance: 'instance_1',
-        data: 'ro:v:0:0',
-        message: clientMessage,
-      },
-    } as any);
-    await bot.handleUpdate({
-      update_id: 3,
-      callback_query: {
-        id: 'q3',
-        from: clientMessage.from,
-        chat_instance: 'instance_1',
-        data: 'ro:s',
-        message: clientMessage,
-      },
-    } as any);
-    await bot.handleUpdate({
-      update_id: 4,
-      message: { ...clientMessage, message_id: 11, text: 'Screen is broken' },
-    } as any);
-
-    const adminNotification = apiCalls.find(
-      (call) => call.method === 'sendMessage' && String(call.payload.chat_id) === '800301',
-    );
-    assert.ok(adminNotification);
-    assert.match(adminNotification.payload.text, /#1024/);
-    assert.match(adminNotification.payload.text, /11111111-1111-4111-8111-111111111111/);
-    assert.match(adminNotification.payload.text, /CRM/);
-    assert.equal(adminNotification.payload.parse_mode, 'HTML');
-    assert.equal(adminNotification.payload.text.includes('Screen is broken'), false);
-    assert.equal(adminNotification.payload.text.includes('Ali Valiyev'), false);
-    assert.equal(adminNotification.payload.text.includes('+998901234567'), false);
-
-    const notificationDispatch = deps.dispatches.find(
-      (dispatch) => dispatch.dispatch_type === 'support_comment_admin_notification',
-    );
-    assert.ok(notificationDispatch);
-    assert.equal(notificationDispatch.status, 'sent');
-    assert.equal(notificationDispatch.user_id, '301');
-  });
+  }
 
   it('keeps support chat active and routes menu labels to CRM until the client ends it', async () => {
     const deps = createDependencies();

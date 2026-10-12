@@ -20,6 +20,7 @@ export type RegistrationStage =
   | 'request_submitted'
   | 'request_declined'
   | 'settings'
+  | 'employee_notification_preferences'
   | 'settings_awaiting_name'
   | 'settings_awaiting_phone'
   | 'settings_choosing_language'
@@ -70,6 +71,7 @@ export interface SupportCommentDraft {
 }
 
 export interface BotSession {
+  employeeNotificationView?: { messageId: number; page: number };
   locale: Locale;
   client?: ClientProfile;
   admin?: AdminProfile;

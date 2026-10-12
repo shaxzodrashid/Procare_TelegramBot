@@ -58,6 +58,10 @@ const messages = {
     adminTemplates: '🧩 Xabar shablonlari',
     adminStatusNames: '🏷 Status nomlari',
     adminExport: '📊 Excel eksport',
+    employeeNotifications: '🔔 Bildirishnomalar',
+    employeeNotificationsTitle:
+      '🔔 Bildirishnoma sozlamalari\n\nKerakli bildirishnoma turlarini yoqing yoki o‘chiring.',
+    employeeNotificationsEmpty: 'Hozircha faol bildirishnoma turlari yo‘q.',
     settings: '⚙️ Sozlamalar',
     settingsTitle: '⚙️ Sozlamalar bo‘limi. Qaysi ma’lumotni boshqaramiz?',
     settingsCurrent:
@@ -336,6 +340,10 @@ const messages = {
     adminTemplates: '🧩 Шаблоны сообщений',
     adminStatusNames: '🏷 Названия статусов',
     adminExport: '📊 Excel экспорт',
+    employeeNotifications: '🔔 Уведомления',
+    employeeNotificationsTitle:
+      '🔔 Настройки уведомлений\n\nВключайте или отключайте нужные типы уведомлений.',
+    employeeNotificationsEmpty: 'Пока нет активных типов уведомлений.',
     settings: '⚙️ Настройки',
     settingsTitle: '⚙️ Раздел настроек. Что хотите изменить?',
     settingsCurrent:

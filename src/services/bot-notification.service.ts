@@ -4,6 +4,7 @@ import type { Api } from 'grammy';
 import type { TemplateRecipient, MessageTemplateType } from '../types/message-template.js';
 import type { SupportMessageReplyTarget } from '../types/support-message.js';
 import type { RegisteredUserStore } from './registered-user.store.js';
+import type { RegisteredUserMessageTarget } from '../types/registered-user.js';
 import { MessageTemplateRenderer, type MessageTemplateStore } from './message-template.service.js';
 import type { SupportMessageStore } from './support-message.store.js';
 import type { Logger } from '../utils/logger.js';
@@ -648,12 +649,21 @@ export class BotDirectMessageService {
         : null;
     if (!user) return { status: 'not_found' };
 
+    return this.sendToRecipient(user, params);
+  }
+
+  async sendToRecipient(
+    user: RegisteredUserMessageTarget,
+    params: SendDirectMessageParams,
+    notificationType?: string,
+  ): Promise<DirectMessageDeliveryResult> {
     const template =
       params.type && !params.localizedMessages
         ? await this.templates.findActiveTemplateByType(params.type)
         : null;
 
-    const dispatchType = template ? params.type! : DIRECT_MESSAGE_DISPATCH_TYPE;
+    const dispatchType =
+      notificationType ?? (template ? params.type! : DIRECT_MESSAGE_DISPATCH_TYPE);
 
     if (user.is_blocked) {
       await this.templates.logDispatch({

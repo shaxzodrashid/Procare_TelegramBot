@@ -10,7 +10,11 @@ import {
 import type { SupportMessageContentType } from '../../types/support-message.js';
 import type { SupportMessageRecord } from '../../types/support-message.js';
 import { ClientRepairOrderError } from '../../services/client-repair-order.service.js';
-import { isTelegramBlockedError } from '../../services/bot-notification.service.js';
+import {
+  BotDirectMessageService,
+  isTelegramBlockedError,
+} from '../../services/bot-notification.service.js';
+import { EmployeeNotificationService } from '../../services/employee-notification.service.js';
 import { escapeHtml } from '../../utils/html.js';
 import { clearAdminTemplateFlow, clearSettingsFlow, clearSupportFlow } from '../session.js';
 import { personalMenuKeyboard, supportCommentKeyboard } from '../keyboards.js';
@@ -105,6 +109,26 @@ const notifyAssignedAdmins = async (
   },
 ): Promise<void> => {
   if (draft.assignedAdminIds.length === 0) return;
+  if (dependencies.employeeNotificationStore) {
+    const service = new EmployeeNotificationService(
+      dependencies.employeeNotificationStore,
+      dependencies.registeredUserStore,
+      new BotDirectMessageService(
+        dependencies.registeredUserStore,
+        dependencies.messageTemplateStore,
+        ctx.api,
+        undefined,
+        { logger: dependencies.logger },
+      ),
+      dependencies.logger,
+    );
+    await service.send({
+      typeKey: 'support_comment',
+      crmAdminIds: draft.assignedAdminIds,
+      content: { variables: { number: draft.orderNumber, id: draft.repairOrderId } },
+    });
+    return;
+  }
 
   const targets = await dependencies.registeredUserStore.findActiveEmployeesByCrmAdminIds(
     draft.assignedAdminIds,

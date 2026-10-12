@@ -46,6 +46,7 @@ const employeeMenuKeyboard = (locale: Locale): Keyboard =>
     .text(t(locale, 'adminStatusNames'))
     .text(t(locale, 'adminExport'))
     .row()
+    .text(t(locale, 'employeeNotifications'))
     .text(t(locale, 'settings'))
     .resized();
 
@@ -54,6 +55,7 @@ const developerMenuKeyboard = (user: PersonalMenuUser): Keyboard => {
   if (user.admin?.is_active) {
     keyboard.text(t(user.locale, 'adminClients')).text(t(user.locale, 'adminTemplates')).row();
     keyboard.text(t(user.locale, 'adminStatusNames')).text(t(user.locale, 'adminExport')).row();
+    keyboard.text(t(user.locale, 'employeeNotifications')).row();
     keyboard.text(t(user.locale, 'developerApiEndpoints')).text(t(user.locale, 'settings'));
   } else if (user.client) {
     keyboard.text(t(user.locale, 'orders')).text(t(user.locale, 'leaveRequestMenu')).row();

@@ -25,6 +25,7 @@ PostgreSQL, including separate client and employee role rows.
 - database-backed transactional message templates with Uzbek/Russian rendering
 - Telegram notification dispatch logging and blocked-user tracking for template messages
 - employee-only template management inside the bot
+- CRM-managed employee notification types with durable account preferences and rich message delivery
 - employee-managed customer-facing repair-order status names sourced from CRM
 - configured Developer seat for endpoint inventory and API error-location localizations
 - API-triggered direct Telegram messages to registered users by phone number
@@ -36,6 +37,12 @@ PostgreSQL, including separate client and employee role rows.
 - localized Telegram command menu for `/start`, `/help`, and `/logout`
 
 ## User Flow
+
+Employee notification integration is documented in
+[Employee notifications API](Documentations/EMPLOYEE_NOTIFICATIONS_API.md). CRM manages types and
+triggers delivery through authenticated bot endpoints; employees enable or disable individual
+types in the Notifications menu. The existing support-comment employee alert follows these
+preferences. A forward migration preserves existing registrations and seeds that alert enabled.
 
 ```text
 /start

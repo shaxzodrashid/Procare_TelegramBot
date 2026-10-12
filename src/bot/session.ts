@@ -346,6 +346,7 @@ export const clearOtpAuthFlow = (sessionData: BotSession): void => {
 };
 
 export const resetSession = (sessionData: BotSession, locale: Locale): void => {
+  delete sessionData.employeeNotificationView;
   delete sessionData.client;
   delete sessionData.admin;
   delete sessionData.repairOrdersView;

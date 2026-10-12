@@ -18,6 +18,11 @@ import type { Logger } from '../utils/logger.js';
 import type { MessageTemplateType } from '../types/message-template.js';
 import { isAuthorized } from './auth.js';
 import { parseSendMessageBody, parseSendFileBody, parseSendOtpBody } from './validators.js';
+import { registerEmployeeNotificationApi } from './employee-notifications.js';
+import type {
+  EmployeeNotificationStore,
+  EmployeeNotificationService,
+} from '../services/employee-notification.service.js';
 
 export interface DirectMessageSender {
   sendDirectMessage(params: {
@@ -50,6 +55,8 @@ export interface DirectFileSender {
 }
 
 export interface ApiServerDependencies {
+  employeeNotificationStore?: EmployeeNotificationStore;
+  employeeNotificationService?: Pick<EmployeeNotificationService, 'send'>;
   directMessageSender?: DirectMessageSender;
   directFileSender?: DirectFileSender;
   otpSender?: OtpSender;
@@ -64,6 +71,10 @@ export const createApiServer = (
   dependencies: ApiServerDependencies = {},
 ): FastifyInstance => {
   const app = Fastify({ logger: false });
+  registerEmployeeNotificationApi(app, config.api.messageSendToken, {
+    store: dependencies.employeeNotificationStore,
+    service: dependencies.employeeNotificationService,
+  });
 
   app.get('/health', async (request, reply) => {
     void request;
