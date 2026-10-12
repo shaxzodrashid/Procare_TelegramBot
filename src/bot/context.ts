@@ -5,6 +5,7 @@ import type { AdminProfile, ClientProfile, Locale } from '../types/client.js';
 import type { MessageTemplateDraft, MessageTemplateField } from '../types/message-template.js';
 import type { UserRegistrationState } from '../types/registered-user.js';
 import type { OsType, PhoneCategory, ProblemCategory } from '../types/repair-order.js';
+import type { ProfileNameField, VerifyContactParams } from '../types/otp-auth.js';
 
 export type RegistrationStage =
   | 'choosing_language'
@@ -35,11 +36,22 @@ export type RegistrationStage =
   | 'developer_error_message_uz_input'
   | 'developer_error_message_ru_input'
   | 'direct_message_rejection_note'
-  | 'awaiting_otp_contact';
+  | 'awaiting_otp_contact'
+  | 'awaiting_otp_first_name'
+  | 'awaiting_otp_last_name';
 
 export interface OtpAuthSession {
   sessionToken: string;
   createdAt: number;
+  senderId?: number;
+  chatId?: number;
+  deadline?: number;
+  verifiedContact?: VerifyContactParams;
+  requestedFields?: ProfileNameField[];
+  names?: Partial<Record<ProfileNameField, string>>;
+  displayName?: { firstName: string; lastName: string | null };
+  submitting?: boolean;
+  needsReadback?: boolean;
 }
 
 export interface UnknownClientSession {

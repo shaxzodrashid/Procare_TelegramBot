@@ -98,7 +98,7 @@ export const summarizeSession = (sessionData: BotSession): Record<string, unknow
     : undefined,
   otpAuth: sessionData.otpAuth
     ? {
-        sessionToken: sessionData.otpAuth.sessionToken,
+        hasSessionToken: Boolean(sessionData.otpAuth.sessionToken),
         createdAt: sessionData.otpAuth.createdAt,
       }
     : undefined,
@@ -123,13 +123,8 @@ export const summarizeTelegramMessage = (ctx: BotContext): Record<string, unknow
     summary.kind = 'text';
     summary.text = summarizeTelegramText(message.text);
   } else if ('contact' in message && message.contact) {
-    const { contact } = message;
     summary.kind = 'contact';
-    summary.contact = {
-      user_id: contact.user_id,
-      is_own_contact: contact.user_id === ctx.from?.id,
-      phone_number: redactPhoneNumber(contact.phone_number),
-    };
+    summary.is_own_contact = message.contact.user_id === ctx.from?.id;
   } else {
     summary.kind = 'other';
     summary.keys = Object.keys(message).slice(0, 20);
@@ -342,7 +337,7 @@ export const clearSettingsFlow = (sessionData: BotSession): void => {
 
 export const clearOtpAuthFlow = (sessionData: BotSession): void => {
   delete sessionData.otpAuth;
-  if (sessionData.stage === 'awaiting_otp_contact') delete sessionData.stage;
+  if (sessionData.stage?.startsWith('awaiting_otp_')) delete sessionData.stage;
 };
 
 export const resetSession = (sessionData: BotSession, locale: Locale): void => {

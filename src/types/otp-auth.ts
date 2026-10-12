@@ -10,7 +10,11 @@ export interface VerifyContactParams {
   telegram_chat_id: number | string;
   contact_phone: string;
   contact_user_id?: number | string | null;
+  first_name?: string;
+  last_name?: string;
 }
+
+export type ProfileNameField = 'first_name' | 'last_name';
 
 export type VerifyContactResult =
   | { success: true; user?: unknown }
@@ -25,6 +29,8 @@ export type VerifyContactResult =
         | 'UNAVAILABLE'
         | string;
       message?: string;
+      missing_fields?: ProfileNameField[];
+      location?: string;
     };
 
 export interface OtpAuthGateway {

@@ -276,3 +276,114 @@ describe('verification response validation', () => {
     });
   }
 });
+
+describe('mobile name callback contract', () => {
+  const params = {
+    session_token: 'sess_private',
+    telegram_user_id: 1,
+    telegram_chat_id: 1,
+    contact_phone: '+998901234567',
+    contact_user_id: 1,
+  };
+  const serviceFor = (fetchImpl: typeof fetch, logs: unknown[] = []) =>
+    new HttpOtpAuthService(
+      {
+        baseUrl: 'https://mobile.test',
+        username: 'mobile-only',
+        password: 'synthetic-secret',
+        timeoutMs: 1000,
+        maxRetries: 3,
+        fetchImpl,
+      },
+      {
+        ...logger,
+        extra: (...values: unknown[]) => {
+          logs.push(values);
+        },
+        warn: (...values: unknown[]) => {
+          logs.push(values);
+        },
+      },
+    );
+
+  for (const fields of [['first_name', 'last_name'], ['first_name'], ['last_name']]) {
+    it(`validates missing_fields ${fields.join(',')}`, async () => {
+      const service = serviceFor(
+        async () =>
+          new Response(
+            JSON.stringify({
+              statusCode: 400,
+              error: 'PROFILE_NAMES_REQUIRED',
+              location: fields[0],
+              missing_fields: fields,
+              timestamp: '2026-10-12T00:00:00Z',
+              path: '/api/v1/internal/telegram/verify-contact',
+            }),
+            { status: 400 },
+          ),
+      );
+      assert.deepEqual(await service.verifyContact(params), {
+        success: false,
+        error: 'PROFILE_NAMES_REQUIRED',
+        missing_fields: fields,
+      });
+    });
+  }
+  for (const fields of [
+    undefined,
+    null,
+    [],
+    ['other'],
+    ['last_name', 'first_name'],
+    ['first_name', 'first_name'],
+  ]) {
+    it(`fails closed for malformed missing_fields ${JSON.stringify(fields)}`, async () => {
+      const service = serviceFor(
+        async () =>
+          new Response(
+            JSON.stringify({ error: 'PROFILE_NAMES_REQUIRED', missing_fields: fields }),
+            { status: 400 },
+          ),
+      );
+      assert.deepEqual(await service.verifyContact(params), {
+        success: false,
+        error: 'UNAVAILABLE',
+      });
+    });
+  }
+  it('sends trimmed separate explicit names, omits unrequested fields and keeps dedicated Basic auth', async () => {
+    const logs: unknown[] = [];
+    const service = serviceFor(async (_url, init) => {
+      assert.deepEqual(JSON.parse(String(init?.body)), { ...params, last_name: 'Фамилия' });
+      assert.equal(
+        new Headers(init?.headers).get('authorization'),
+        `Basic ${Buffer.from('mobile-only:synthetic-secret').toString('base64')}`,
+      );
+      return new Response('{"success":true}', { status: 200 });
+    }, logs);
+    assert.equal(
+      (await service.verifyContact({ ...params, last_name: '  Фамилия  ' })).success,
+      true,
+    );
+    const log = JSON.stringify(logs);
+    for (const secret of ['sess_private', 'Фамилия', '+998901234567', 'synthetic-secret'])
+      assert.equal(log.includes(secret), false);
+  });
+  it('never retries an uncertain POST and sanitizes network errors and session lookup logs', async () => {
+    let calls = 0;
+    const logs: unknown[] = [];
+    const service = serviceFor(async () => {
+      calls++;
+      throw new Error('sess_private Фамилия synthetic-secret');
+    }, logs);
+    assert.equal((await service.verifyContact(params)).success, false);
+    assert.equal(calls, 1);
+    const log = JSON.stringify(logs);
+    for (const secret of ['sess_private', 'Фамилия', 'synthetic-secret'])
+      assert.equal(log.includes(secret), false);
+  });
+  it('rejects success outside HTTP 200', async () => {
+    const service = serviceFor(async () => new Response('{"success":true}', { status: 201 }));
+    assert.equal((await service.verifyContact(params)).success, false);
+  });
+});

@@ -215,17 +215,17 @@ describe('manual phone registration gate', () => {
 });
 
 describe('manual OTP verification gate', () => {
-  it('allows typed phone numbers for developer sessions while awaiting OTP contact', () => {
+  it('rejects typed phone numbers for developer sessions while awaiting OTP contact', () => {
     const session: BotSession = {
       locale: 'uz',
       stage: 'awaiting_otp_contact',
       developer: { is_active: true },
     };
 
-    assert.equal(canVerifyOtpWithManualPhone(session), true);
+    assert.equal(canVerifyOtpWithManualPhone(session), false);
   });
 
-  it('allows typed phone numbers for developer sessions with active otpAuth', () => {
+  it('rejects typed phone numbers for developer sessions with active otpAuth', () => {
     const session: BotSession = {
       locale: 'uz',
       developer: { is_active: true },
@@ -235,7 +235,7 @@ describe('manual OTP verification gate', () => {
       },
     };
 
-    assert.equal(canVerifyOtpWithManualPhone(session), true);
+    assert.equal(canVerifyOtpWithManualPhone(session), false);
   });
 
   it('rejects typed phone numbers for non-developer sessions during OTP flow', () => {
@@ -251,7 +251,6 @@ describe('manual OTP verification gate', () => {
     assert.equal(canVerifyOtpWithManualPhone(session), false);
   });
 });
-
 
 describe('registration account classification', () => {
   it('treats is_admin registration responses as employees', () => {

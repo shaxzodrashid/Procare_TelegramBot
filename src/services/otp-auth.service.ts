@@ -4,7 +4,6 @@ import type {
   VerifyContactParams,
   VerifyContactResult,
 } from '../types/otp-auth.js';
-import { redactPhoneNumber, summarizeUnknownPayload } from '../utils/log-redaction.js';
 import type { Logger } from '../utils/logger.js';
 import { normalizeUzPhone } from '../utils/phone.js';
 
@@ -42,17 +41,15 @@ export class HttpOtpAuthService implements OtpAuthGateway {
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       try {
         return await this.requestSession(url);
-      } catch (error) {
+      } catch {
         const isLast = attempt === attempts;
         if (isLast) {
-          this.logger.error('Failed to lookup OTP session after max retries', error);
+          this.logger.warn('Failed to lookup OTP session after max retries');
           return null;
         }
 
         const delayMs = 250 * 2 ** (attempt - 1);
-        this.logger.warn(`OTP session lookup attempt ${attempt} failed; retrying in ${delayMs}ms`, {
-          error: error instanceof Error ? error.message : String(error),
-        });
+        this.logger.warn(`OTP session lookup attempt ${attempt} failed; retrying in ${delayMs}ms`);
         await (this.options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))))(
           delayMs,
         );
@@ -76,6 +73,8 @@ export class HttpOtpAuthService implements OtpAuthGateway {
         params.contact_user_id !== undefined && params.contact_user_id !== null
           ? Number(params.contact_user_id)
           : Number(params.telegram_user_id),
+      ...(params.first_name !== undefined ? { first_name: params.first_name.trim() } : {}),
+      ...(params.last_name !== undefined ? { last_name: params.last_name.trim() } : {}),
     };
 
     const fetchImpl = this.options.fetchImpl ?? fetch;
@@ -83,11 +82,6 @@ export class HttpOtpAuthService implements OtpAuthGateway {
     this.logger.extra('Internal Telegram verify-contact request', {
       method: 'POST',
       path,
-      body: {
-        telegram_user_id: payload.telegram_user_id,
-        telegram_chat_id: payload.telegram_chat_id,
-        contact_phone: redactPhoneNumber(payload.contact_phone),
-      },
     });
 
     try {
@@ -109,10 +103,9 @@ export class HttpOtpAuthService implements OtpAuthGateway {
       this.logger.extra('Internal Telegram verify-contact response', {
         status: response.status,
         ok: response.ok,
-        body: summarizeUnknownPayload(responseBody),
       });
 
-      if (response.ok) {
+      if (response.status === 200) {
         if (isRecord(responseBody) && responseBody.success === false) {
           const errorCode = String(responseBody.error ?? 'UNKNOWN_ERROR');
           return {
@@ -128,6 +121,18 @@ export class HttpOtpAuthService implements OtpAuthGateway {
       }
 
       if (response.status === 400) {
+        if (isRecord(responseBody) && responseBody.error === 'PROFILE_NAMES_REQUIRED') {
+          const fields = responseBody.missing_fields;
+          if (
+            !Array.isArray(fields) ||
+            fields.length === 0 ||
+            fields.some((field) => field !== 'first_name' && field !== 'last_name') ||
+            new Set(fields).size !== fields.length ||
+            (fields.length === 2 && fields[0] !== 'first_name')
+          )
+            return { success: false, error: 'UNAVAILABLE' };
+          return { success: false, error: 'PROFILE_NAMES_REQUIRED', missing_fields: fields };
+        }
         const errorCode =
           isRecord(responseBody) && typeof responseBody.error === 'string'
             ? responseBody.error
@@ -136,7 +141,14 @@ export class HttpOtpAuthService implements OtpAuthGateway {
           isRecord(responseBody) && typeof responseBody.message === 'string'
             ? responseBody.message
             : undefined;
-        return { success: false, error: errorCode, message };
+        return {
+          success: false,
+          error: errorCode,
+          message,
+          ...(isRecord(responseBody) && typeof responseBody.location === 'string'
+            ? { location: responseBody.location }
+            : {}),
+        };
       }
 
       if (response.status === 403) {
@@ -156,12 +168,12 @@ export class HttpOtpAuthService implements OtpAuthGateway {
         error: 'UNAVAILABLE',
         message: `Backend returned status ${response.status}`,
       };
-    } catch (error) {
-      this.logger.error('Network request failed for internal verify-contact', error);
+    } catch {
+      this.logger.warn('Network request failed for internal verify-contact');
       return {
         success: false,
         error: 'UNAVAILABLE',
-        message: error instanceof Error ? error.message : 'Network error',
+        message: 'Network error',
       };
     }
   }
@@ -188,9 +200,9 @@ export class HttpOtpAuthService implements OtpAuthGateway {
         redirect: 'error',
         signal: AbortSignal.timeout(this.options.timeoutMs),
       });
-    } catch (error) {
-      this.logger.warn('OTP session lookup network failure', error);
-      throw error;
+    } catch {
+      this.logger.warn('OTP session lookup network failure');
+      throw new Error('OTP session lookup network failure');
     }
 
     if (response.status === 404 || response.status === 400) {

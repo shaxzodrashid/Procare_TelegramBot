@@ -72,14 +72,42 @@ The bot sends its dedicated mobile Basic credentials. This remains the existing 
 
 Success: HTTP 200 `{"success":true}`. Missing/invalid service credentials return 401 before verification. Invalid/expired session or phone mismatch returns 400; a contact not owned by the sender returns 403. The bot checks contact ownership before submission; mobile repeats ownership and phone/session validation. The bot does not retry this POST and rejects malformed success responses. Callback credentials are checked in constant time and are separate from app JWTs.
 
-Mobile's former `/api/v1/internal/telegram/send-otp` and `/api/v1/internal/telegram/webhook` routes are removed. Only the bot exposes OTP delivery. Mobile public auth endpoint request/response shapes are unchanged.
+### Mandatory profile names
+
+New users and linked users with either CRM name missing receive `REQUIRES_TELEGRAM_LINK` from `request-otp`, with the existing 300-second session. Linked users with both names continue to receive OTPs. The first owned-contact callback can return HTTP 400:
+
+```json
+{
+  "statusCode": 400,
+  "error": "PROFILE_NAMES_REQUIRED",
+  "message": "First and last names are required to complete registration",
+  "location": "first_name",
+  "missing_fields": ["first_name", "last_name"]
+}
+```
+
+The standard `timestamp` and `path` are also present. `missing_fields` contains only missing names, in first-name/last-name order. This response performs no user creation, linking, token issuance or verification. App polling remains `PENDING_TELEGRAM`; the original deadline keeps running.
+
+The bot asks for each requested field separately in Uzbek or Russian. It trims input and accepts 1–255 characters, including non-Latin names. It never splits a full name, substitutes Telegram display/contact names in the callback, invents a surname, or accepts a typed phone or another person's contact, including for developers. Menu actions, skip buttons, commands other than `/start` and `/cancel`, and non-text updates cannot bypass completion.
+
+The retry contains the same verified contact, session token, sender and private-chat IDs, plus only explicitly requested name fields. Existing nonblank CRM names are preserved by mobile. Ordinary validation errors and `INVALID_PROFILE_NAME` prompt correction; repeated missing-field responses resume collection. Cancellation and expiration clear the pending conversation. A new `/start sess_...` replaces it. No names, contact payloads, tokens or credentials are logged.
+
+An uncertain callback outcome triggers session-status readback, never an automatic POST retry. `VERIFIED` confirms completion even when the callback response was lost. Otherwise the bot asks the user to check again; any subsequent POST requires a `PENDING_TELEGRAM` readback first. No success message is fabricated. Bot sessions remain in memory: after a restart, reopen an unexpired link and share the owned contact again, or request a fresh link. Local conversation timing is an upper bound from opening the link; backend status checks and callback validation enforce the earlier original deadline.
+
+A valid OTP from an old session whose user still lacks names returns `PROFILE_NAMES_REQUIRED`. The app must request a fresh Telegram completion link.
+
+### Rollout order
+
+Prepare and verify both services before deployment. Deploy this backward-compatible bot handler through `deploy.sh` **before enabling the mandatory-name backend behavior**. Then enable/deploy mobile and exercise new, linked incomplete and complete accounts, including app polling, OTP delivery and the normal CRM menu. No migration or new environment variable is required. This change does not deploy either service; mocked tests are not live end-to-end acceptance.
+
+Mobile's former `/api/v1/internal/telegram/send-otp` and `/api/v1/internal/telegram/webhook` routes are removed. Only the bot exposes OTP delivery.
 
 ## Manual acceptance test
 
 1. Configure both services and restart/recreate their processes. Deploy the bot through its existing `deploy.sh` workflow. Ensure mobile can reach the bot API and the bot can reach mobile. A Compose `.env` change requires API container recreation, not just restarting it.
 2. Check mobile `/health/ready` and bot `/health`. These do not prove an auth exchange; continue with a test account.
 3. In mobile Swagger `/api/docs`, call `POST /api/v1/auth/request-otp` with `{"phone_number":"+998901234567"}` using your own Telegram number.
-4. For `REQUIRES_TELEGRAM_LINK`, open the returned deep link, start the existing bot and share your own matching contact within five minutes. Poll `/api/v1/auth/session-status?session_token=...`; expect `VERIFIED`, `access_token` and `refresh_token`. Contact sharing completes first-time auth without typing an OTP.
+4. For `REQUIRES_TELEGRAM_LINK`, open the returned deep link, start the existing bot and share your own matching contact within five minutes. Enter each missing name when prompted. Before completion, polling must remain `PENDING_TELEGRAM` without tokens. After the successful callback, poll `/api/v1/auth/session-status?session_token=...`; expect `VERIFIED`, `access_token` and `refresh_token`. Contact sharing and required names complete first-time auth without typing an OTP.
 5. The bot removes its contact keyboard and tells the user to return to the app. There is no unsupported `procare://` Telegram inline button; app polling completes the transition.
 6. After the 60-second cooldown, repeat the request. A linked user receives a six-digit OTP in the same bot. Submit `{"session_token":"sess_...","otp":"123456"}` to `/api/v1/auth/verify-otp` within 180 seconds.
 7. Use the returned JWT as Bearer auth for `/api/v1/users/me`; test `/api/v1/auth/refresh` with `{"refresh_token":"..."}`. Access tokens last 15 minutes; refresh tokens last 90 days.

@@ -269,6 +269,13 @@ const messages = {
       '👋 <b>ProCare tizimiga xush kelibsiz!</b>\n\nIlovadagi ro‘yxatdan o‘tishni tasdiqlash uchun pastdagi tugmani bosing:',
     otpShareContact: '📱 Telefon raqamni yuborish',
     otpSessionNotFound: '⚠️ Aktiv tasdiqlash sessiyasi topilmadi.',
+    otpFirstName: 'Ismingizni alohida kiriting. Bekor qilish: /cancel',
+    otpLastName: 'Familiyangizni alohida kiriting. Bekor qilish: /cancel',
+    otpInvalidName:
+      'Ism yoki familiyani matn bilan kiriting: 1–255 belgi. Bo‘sh qiymat qabul qilinmaydi.',
+    otpCancelled: 'Tasdiqlash bekor qilindi. Ilovadan yangi havola oling.',
+    otpCheckStatus:
+      'Tasdiqlash natijasini tekshirish kerak. Qayta tekshirish uchun xabar yuboring yoki ilovadan yangi havola oling.',
     otpOwnPhoneOnly: '❌ Iltimos, faqat o‘zingizning shaxsiy raqamingizni yuboring.',
     otpSuccess:
       '✅ <b>Raqamingiz muvaffaqiyatli tasdiqlandi!</b>\n\nTelegram hisobingiz ProCare ilovasiga ulandi. Ilovaga qaytib foydalanishingiz mumkin.',
@@ -546,6 +553,13 @@ const messages = {
       '👋 <b>Добро пожаловать в ProCare!</b>\n\nДля подтверждения регистрации в приложении нажмите кнопку ниже:',
     otpShareContact: '📱 Отправить номер телефона',
     otpSessionNotFound: '⚠️ Активная сессия подтверждения не найдена.',
+    otpFirstName: 'Введите ваше имя отдельно. Отмена: /cancel',
+    otpLastName: 'Введите вашу фамилию отдельно. Отмена: /cancel',
+    otpInvalidName:
+      'Введите имя или фамилию текстом: от 1 до 255 символов. Пустое значение не принимается.',
+    otpCancelled: 'Подтверждение отменено. Получите новую ссылку в приложении.',
+    otpCheckStatus:
+      'Нужно проверить результат подтверждения. Отправьте сообщение для повторной проверки или получите новую ссылку в приложении.',
     otpOwnPhoneOnly: '❌ Пожалуйста, отправьте только свой личный номер телефона.',
     otpSuccess:
       '✅ <b>Ваш номер успешно подтвержден!</b>\n\nВаш аккаунт Telegram подключен к приложению ProCare. Можете вернуться в приложение.',

@@ -664,3 +664,5 @@ flow invariants, migration policy, testing expectations, and completion checks.
 ## Mobile Telegram auth integration
 
 See [the service integration contract and test guide](Documentations/MOBILE_AUTH_INTEGRATION.md) for credentials, service endpoints, error handling and rollout.
+
+Mobile registration collects any missing first/last names explicitly after owned-contact verification, in Uzbek or Russian, within the original five-minute session. Pending completion blocks menu actions; `/cancel` clears it, and a new mobile `/start` link replaces it. Callback timeouts require session-status readback before a retry. Deploy the compatible bot handler before enabling this backend behavior, after both services pass verification. No migration or new environment variable is needed.

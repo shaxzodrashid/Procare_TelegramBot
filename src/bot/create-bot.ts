@@ -40,6 +40,7 @@ import {
 
 // Handler registrations
 import { registerCommandHandlers } from './handlers/commands.js';
+import { createMobileRegistrationMiddleware } from './handlers/mobile-registration.js';
 import { registerRegistrationHandlers } from './handlers/registration.js';
 import { registerSettingsHandlers } from './handlers/settings.js';
 import { registerRepairOrdersHandlers } from './handlers/repair-orders.js';
@@ -154,6 +155,7 @@ export const createBot = (token: string, dependencies: BotDependencies): Bot<Bot
     }
     await next();
   });
+  bot.use(createMobileRegistrationMiddleware(runtimeDependencies));
   registerEmployeeNotificationHandlers(bot, runtimeDependencies);
   registerSupportHandlers(bot, token, runtimeDependencies);
   registerCommandHandlers(bot, runtimeDependencies);

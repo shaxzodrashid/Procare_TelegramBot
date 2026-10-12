@@ -31,6 +31,10 @@ export const registerCommandHandlers = (
       clearUnknownFlow(ctx.session);
       clearSettingsFlow(ctx.session);
       clearOtpAuthFlow(ctx.session);
+      if (!ctx.from || !ctx.chat || ctx.chat.type !== 'private') {
+        await ctx.reply(t(ctx.session.locale, 'otpOwnPhoneOnly'));
+        return;
+      }
 
       if (
         !ctx.session.client &&
@@ -50,6 +54,9 @@ export const registerCommandHandlers = (
         ctx.session.otpAuth = {
           sessionToken,
           createdAt: Date.now(),
+          deadline: Date.now() + 300_000,
+          senderId: ctx.from.id,
+          chatId: ctx.chat.id,
         };
         ctx.session.stage = 'awaiting_otp_contact';
 
