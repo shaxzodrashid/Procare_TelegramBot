@@ -62,6 +62,8 @@ export interface UnknownClientSession {
 }
 
 export interface RepairRequestDraft {
+  calculatorOnly?: boolean;
+  problemPage?: number;
   osTypes: OsType[];
   selectedOs?: OsType;
   categoryPath: PhoneCategory[];

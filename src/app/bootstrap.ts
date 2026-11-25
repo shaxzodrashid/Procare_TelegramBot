@@ -72,6 +72,8 @@ export const bootstrap = async (config: AppConfig, logger: Logger): Promise<Runn
   const repairOrderService = new HttpRepairOrderService(
     {
       baseUrl: config.crm.baseUrl,
+      username: config.crm.username,
+      password: config.crm.password,
       timeoutMs: config.crm.requestTimeoutMs,
       maxRetries: config.crm.maxRetries,
     },

@@ -21,6 +21,17 @@ describe('API error localization service', () => {
     );
   });
 
+  it('registers the protected personalized calculator with service authentication', () => {
+    const endpoint = API_ENDPOINTS.find(
+      (item) => item.key === 'client_calculator_problem_categories',
+    );
+    assert.equal(endpoint?.auth, 'basic');
+    assert.equal(
+      endpoint?.path,
+      '/api/v1/telegram/clients/{clientId}/calculator-v2/problem-categories/{phoneCategoryId}',
+    );
+  });
+
   it('validates endpoint-specific location localization input', () => {
     assert.deepEqual(
       validateApiErrorLocalizationInput({

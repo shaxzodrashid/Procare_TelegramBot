@@ -26,7 +26,9 @@ export interface ProblemCategory extends LocalizedCatalogItem {
   estimated_minutes: number;
   warranty_period: number;
   sort: number;
-  cost: string;
+  cost: string | null;
+  is_disabled?: boolean;
+  currency?: { id: string; code: string; symbol: string; minor_unit: number };
 }
 
 export interface OpenRepairOrderInput {

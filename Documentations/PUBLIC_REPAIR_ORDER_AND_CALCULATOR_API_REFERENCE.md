@@ -967,3 +967,28 @@ Primary source files:
 - `src/common/utils/validation.util.ts`
 - `src/config/public.routes.ts`
 - `src/main.ts`
+
+## Personalized client calculator
+
+Registered non-admin clients have a calculator-only menu (`🧮 Ta’mirlash kalkulyatori` /
+`🧮 Калькулятор ремонта`). Reuse OS/model navigation, ten-item problem pages and Back; calculator
+mode has no request confirmation/submission. Registered-client repair requests also use personalized
+previews. Unknown clients retain the public calculator/request flow.
+
+The trusted bot calls Basic-authenticated CRM
+`GET /api/v1/telegram/clients/:client_id/calculator-v2/problem-categories/:phone_category_id`
+with the registered session's CRM client ID. It fetches pages using `limit=100&offset=...` and
+validates `{meta:{total,limit,offset},data:[CalculatorV2Item]}` at runtime. The server returns
+`Cache-Control: no-store` and reads eligibility from PostgreSQL; do not select prices from cached
+bot profile flags. Public calls remain unauthenticated and retain their existing shape.
+
+Items preserve CRM V2 labor/required-part/currency/pricing metadata. Use combined `cost` once;
+null/disabled prices display localized unavailable copy and cannot be selected. Explicit partner
+zero means free labor. Required parts, visibility and currency handling are unchanged. The estimate
+uses current prices; existing orders retain frozen service prices. The calculator-only action
+does not create an order. Existing repair-request POSTs still make one attempt.
+
+Deploy CRM migration `20261020150000_partner_service_pricing.js` and CRM code before this bot.
+The protected call reuses configured CRM service Basic credentials. No bot database migration or
+new credential is required. Tests/mocks use synthetic identities; production requires authenticated
+preview and newly created order readback.

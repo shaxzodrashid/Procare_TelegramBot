@@ -24,7 +24,7 @@ describe('personal menu keyboard', () => {
 
     assert.deepEqual(keyboardLabels(keyboard), [
       ['📦 Mening buyurtmalarim', '✍️ Ariza qoldirish'],
-      ['⚙️ Sozlamalar'],
+      ['🧮 Ta’mirlash kalkulyatori', '⚙️ Sozlamalar'],
     ]);
   });
 
@@ -73,6 +73,7 @@ describe('personal menu keyboard', () => {
 
     assert.deepEqual(keyboardLabels(keyboard), [
       ['📦 Mening buyurtmalarim', '✍️ Ariza qoldirish'],
+      ['🧮 Ta’mirlash kalkulyatori'],
       ['⚙️ API endpointlar', '⚙️ Sozlamalar'],
     ]);
   });

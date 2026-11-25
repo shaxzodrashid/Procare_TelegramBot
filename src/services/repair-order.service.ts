@@ -37,7 +37,7 @@ export class RepairOrderError extends Error {
 export interface RepairOrderGateway {
   getOsTypes(): Promise<OsType[]>;
   getPhoneCategories(osTypeId: string, parentId?: string): Promise<PhoneCategory[]>;
-  getProblemCategories(phoneCategoryId: string): Promise<ProblemCategory[]>;
+  getProblemCategories(phoneCategoryId: string, client_id?: string): Promise<ProblemCategory[]>;
   createOpenRepairOrder(input: OpenRepairOrderInput): Promise<OpenRepairOrderResult>;
 }
 
@@ -73,6 +73,46 @@ const isProblemCategories = (value: unknown): value is ProblemCategory[] =>
   value.every(
     (item) =>
       isLocalizedItem(item) && typeof item.cost === 'string' && typeof item.price === 'string',
+  );
+
+interface ProtectedProblemPage {
+  meta: { total: number; limit: number; offset: number };
+  data: ProblemCategory[];
+}
+const isProtectedProblemPage = (value: unknown): value is ProtectedProblemPage =>
+  isObject(value) &&
+  isObject(value.meta) &&
+  Number.isInteger(value.meta.total) &&
+  Number(value.meta.total) >= 0 &&
+  Number.isInteger(value.meta.limit) &&
+  Number(value.meta.limit) >= 1 &&
+  Number(value.meta.limit) <= 100 &&
+  Number.isInteger(value.meta.offset) &&
+  Number(value.meta.offset) >= 0 &&
+  Array.isArray(value.data) &&
+  value.data.length <= Number(value.meta.limit) &&
+  value.data.every(
+    (item: unknown) =>
+      isLocalizedItem(item) &&
+      isObject(item) &&
+      typeof item.price === 'string' &&
+      /^\d+(\.\d+)?$/.test(item.price) &&
+      (item.cost === null || (typeof item.cost === 'string' && /^\d+(\.\d+)?$/.test(item.cost))) &&
+      item.parent_id === null &&
+      Number.isInteger(item.sort) &&
+      Number.isInteger(item.estimated_minutes) &&
+      Number(item.estimated_minutes) >= 0 &&
+      Number.isInteger(item.warranty_period) &&
+      Number(item.warranty_period) >= 0 &&
+      typeof item.is_disabled === 'boolean' &&
+      typeof item.stock_available === 'boolean' &&
+      ['priced', 'partial', 'unpriced'].includes(String(item.pricing_status)) &&
+      Array.isArray(item.required_parts) &&
+      isObject(item.currency) &&
+      typeof item.currency.id === 'string' &&
+      typeof item.currency.code === 'string' &&
+      typeof item.currency.symbol === 'string' &&
+      Number.isInteger(item.currency.minor_unit),
   );
 
 const isOpenRepairOrderResult = (value: unknown): value is OpenRepairOrderResult =>
@@ -159,6 +199,8 @@ export class HttpRepairOrderService implements RepairOrderGateway {
   constructor(
     private readonly options: {
       baseUrl: string;
+      username?: string;
+      password?: string;
       timeoutMs: number;
       maxRetries: number;
       fetchImpl?: typeof fetch;
@@ -180,7 +222,41 @@ export class HttpRepairOrderService implements RepairOrderGateway {
     );
   }
 
-  getProblemCategories(phoneCategoryId: string): Promise<ProblemCategory[]> {
+  async getProblemCategories(
+    phoneCategoryId: string,
+    client_id?: string,
+  ): Promise<ProblemCategory[]> {
+    if (client_id) {
+      if (!this.options.username || !this.options.password) {
+        throw new RepairOrderError(
+          'unavailable',
+          'Telegram calculator service credentials are not configured',
+        );
+      }
+      const rows: ProblemCategory[] = [];
+      let offset = 0;
+      for (;;) {
+        const page = await this.request(
+          `/api/v1/telegram/clients/${encodeURIComponent(client_id)}/calculator-v2/problem-categories/${encodeURIComponent(phoneCategoryId)}?limit=100&offset=${offset}`,
+          {
+            headers: {
+              authorization: `Basic ${Buffer.from(`${this.options.username}:${this.options.password}`).toString('base64')}`,
+            },
+          },
+          isProtectedProblemPage,
+        );
+        if (page.meta.offset !== offset)
+          throw new RepairOrderError(
+            'invalid_response',
+            'Calculator returned an unexpected page offset',
+          );
+        rows.push(...page.data);
+        offset += page.data.length;
+        if (offset >= page.meta.total) return rows;
+        if (page.data.length === 0)
+          throw new RepairOrderError('invalid_response', 'Calculator pagination did not advance');
+      }
+    }
     return this.request(
       `/api/v1/calculator/problem-categories/${encodeURIComponent(phoneCategoryId)}`,
       undefined,
@@ -282,7 +358,12 @@ export class HttpRepairOrderService implements RepairOrderGateway {
         : `Public repair API request failed with status ${response.status}`;
     const location = typeof envelope?.location === 'string' ? envelope.location : undefined;
 
-    if (response.status === 400 || response.status === 409 || response.status === 422) {
+    if (
+      response.status === 400 ||
+      response.status === 409 ||
+      response.status === 422 ||
+      (response.status === 404 && path.startsWith('/api/v1/telegram/clients/'))
+    ) {
       if (location === 'telegram_open_repair_order_duplicate') {
         throw new RepairOrderError('duplicate', message, response.status, location);
       }

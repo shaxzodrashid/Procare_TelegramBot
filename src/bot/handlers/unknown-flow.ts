@@ -266,6 +266,10 @@ export const registerUnknownFlowHandlers = (
       return;
     }
 
+    if (draft.calculatorOnly) {
+      await ctx.reply(t(ctx.session.locale, 'noCategories'));
+      return;
+    }
     ctx.session.stage = 'awaiting_custom_category';
     await ctx.editMessageText(t(ctx.session.locale, 'enterCustomModel'));
   });
@@ -300,12 +304,20 @@ export const registerUnknownFlowHandlers = (
       }
 
       draft.selectedCategory = selected;
-      draft.problems = await dependencies.repairOrderService.getProblemCategories(selected.id);
+      draft.problems = await dependencies.repairOrderService.getProblemCategories(
+        selected.id,
+        ctx.session.client?.client_id,
+      );
+      draft.problemPage = 0;
       draft.selectedProblemIds = [];
       ctx.session.stage = 'choosing_problems';
-      const problemList = formatProblemList(draft.problems, ctx.session.locale);
+      const problemList = formatProblemList(
+        draft.problems,
+        ctx.session.locale,
+        draft.problemPage ?? 0,
+      );
       await ctx.editMessageText(
-        `${t(ctx.session.locale, 'chooseProblems')}\n\n${
+        `${t(ctx.session.locale, draft.calculatorOnly ? 'calculatorPrices' : 'chooseProblems')}\n\n${
           problemList || t(ctx.session.locale, 'emptyProblems')
         }`,
         {
@@ -313,6 +325,8 @@ export const registerUnknownFlowHandlers = (
             draft.problems,
             draft.selectedProblemIds,
             ctx.session.locale,
+            draft.problemPage ?? 0,
+            draft.calculatorOnly ?? false,
           ),
         },
       );
@@ -320,6 +334,36 @@ export const registerUnknownFlowHandlers = (
       dependencies.logger.error('Failed to load phone category children or problems', error);
       await ctx.reply(t(ctx.session.locale, 'requestUnavailable'));
     }
+  });
+
+  bot.callbackQuery(/^problem-page:(\d+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const draft = ctx.session.repairDraft;
+    const match = /^problem-page:(\d+)$/.exec(ctx.callbackQuery.data);
+    const page = Number(match?.[1]);
+    if (
+      ctx.session.stage !== 'choosing_problems' ||
+      !draft ||
+      !Number.isSafeInteger(page) ||
+      page < 0 ||
+      page * 10 >= draft.problems.length
+    ) {
+      await ctx.reply(t(ctx.session.locale, 'staleAction'));
+      return;
+    }
+    draft.problemPage = page;
+    await ctx.editMessageText(
+      `${t(ctx.session.locale, draft.calculatorOnly ? 'calculatorPrices' : 'chooseProblems')}\n\n${formatProblemList(draft.problems, ctx.session.locale, page)}`,
+      {
+        reply_markup: problemsKeyboard(
+          draft.problems,
+          draft.selectedProblemIds,
+          ctx.session.locale,
+          page,
+          draft.calculatorOnly ?? false,
+        ),
+      },
+    );
   });
 
   bot.callbackQuery('problem:back', async (ctx) => {
@@ -351,9 +395,13 @@ export const registerUnknownFlowHandlers = (
       return;
     }
 
+    if (draft.calculatorOnly) {
+      await ctx.reply(t(ctx.session.locale, 'staleAction'));
+      return;
+    }
     ctx.session.stage = 'awaiting_note';
     await ctx.editMessageText(
-      `${t(ctx.session.locale, 'chooseProblems')}\n\n${
+      `${t(ctx.session.locale, draft.calculatorOnly ? 'calculatorPrices' : 'chooseProblems')}\n\n${
         formatProblemList(draft.problems, ctx.session.locale) ||
         t(ctx.session.locale, 'emptyProblems')
       }`,
@@ -373,19 +421,26 @@ export const registerUnknownFlowHandlers = (
       return;
     }
 
+    if (draft.calculatorOnly || problem.is_disabled || problem.cost === null) {
+      await ctx.reply(t(ctx.session.locale, 'staleAction'));
+      return;
+    }
     draft.selectedProblemIds = draft.selectedProblemIds.includes(problem.id)
       ? draft.selectedProblemIds.filter((id) => id !== problem.id)
       : [...draft.selectedProblemIds, problem.id];
     await ctx.editMessageText(
-      `${t(ctx.session.locale, 'chooseProblems')}\n\n${formatProblemList(
+      `${t(ctx.session.locale, draft.calculatorOnly ? 'calculatorPrices' : 'chooseProblems')}\n\n${formatProblemList(
         draft.problems,
         ctx.session.locale,
+        draft.problemPage ?? 0,
       )}`,
       {
         reply_markup: problemsKeyboard(
           draft.problems,
           draft.selectedProblemIds,
           ctx.session.locale,
+          draft.problemPage ?? 0,
+          draft.calculatorOnly ?? false,
         ),
       },
     );

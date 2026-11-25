@@ -139,3 +139,10 @@ Except for the platform maintenance response, errors use:
 - Do not return passport, ID-card, birth-date, Telegram chat, or CRM-internal fields.
 - Never log the Basic Auth password, authorization header, or complete phone number.
 - Keep administrator data limited to the fields required by the bot's employee session.
+
+## Partner metadata
+
+Client registration responses now include `is_partner: boolean`; admin-only responses remain
+unchanged. The bot validates and projects it into ClientProfile. During rolling deployment,
+an absent field from an older CRM version is treated as false, but a non-boolean is rejected.
+Calculator eligibility always comes from the protected CRM route's fresh database lookup.

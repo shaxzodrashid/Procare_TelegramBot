@@ -1,3 +1,4 @@
+import { t } from './messages.js';
 import type {
   CustomerRepairFinalProblem,
   CustomerRepairOrderDetail,
@@ -413,11 +414,12 @@ export const formatCategoryPage = (
     .join('\n');
 };
 
-export const formatProblemList = (problems: ProblemCategory[], locale: Locale): string =>
+export const formatProblemList = (problems: ProblemCategory[], locale: Locale, page = 0): string =>
   problems
+    .slice(page * 10, page * 10 + 10)
     .map(
       (problem, index) =>
-        `${index + 1}. ${localizedCatalogName(problem, locale)} (${formatSomAmount(problem.cost)})`,
+        `${page * 10 + index + 1}. ${localizedCatalogName(problem, locale)} (${problem.cost === null || problem.is_disabled ? t(locale, 'priceUnavailable') : problem.currency ? formatMoney(problem.cost, problem.currency.code, locale) : formatSomAmount(problem.cost)})`,
     )
     .join('\n');
 

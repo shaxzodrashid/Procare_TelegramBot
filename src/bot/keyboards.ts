@@ -35,6 +35,7 @@ const clientMenuKeyboard = (locale: Locale): Keyboard =>
     .text(t(locale, 'orders'))
     .text(t(locale, 'leaveRequestMenu'))
     .row()
+    .text(t(locale, 'calculatorMenu'))
     .text(t(locale, 'settings'))
     .resized();
 
@@ -59,6 +60,7 @@ const developerMenuKeyboard = (user: PersonalMenuUser): Keyboard => {
     keyboard.text(t(user.locale, 'developerApiEndpoints')).text(t(user.locale, 'settings'));
   } else if (user.client) {
     keyboard.text(t(user.locale, 'orders')).text(t(user.locale, 'leaveRequestMenu')).row();
+    keyboard.text(t(user.locale, 'calculatorMenu')).row();
     keyboard.text(t(user.locale, 'developerApiEndpoints')).text(t(user.locale, 'settings'));
   } else {
     keyboard.text(t(user.locale, 'developerApiEndpoints')).text(t(user.locale, 'settings'));
@@ -143,17 +145,21 @@ export const problemsKeyboard = (
   problems: ProblemCategory[],
   selectedIds: string[],
   locale: Locale,
+  page = 0,
+  calculatorOnly = false,
 ): InlineKeyboard => {
   const selected = new Set(selectedIds);
   const keyboard = new InlineKeyboard();
-  problems.forEach((problem, index) => {
+  problems.slice(page * 10, page * 10 + 10).forEach((problem, local_index) => {
+    const index = page * 10 + local_index;
+    if (calculatorOnly || problem.is_disabled || problem.cost === null) return;
     keyboard.text(`${selected.has(problem.id) ? '☑' : '☐'} ${index + 1}`, `problem:${index}`);
     if ((index + 1) % 4 === 0) keyboard.row();
   });
-  keyboard
-    .row()
-    .text(t(locale, 'back'), 'problem:back')
-    .text(t(locale, 'continue'), 'problem:done');
+  if (page > 0) keyboard.row().text('‹', `problem-page:${page - 1}`);
+  if ((page + 1) * 10 < problems.length) keyboard.text('›', `problem-page:${page + 1}`);
+  keyboard.row().text(t(locale, 'back'), 'problem:back');
+  if (!calculatorOnly) keyboard.text(t(locale, 'continue'), 'problem:done');
   return keyboard;
 };
 

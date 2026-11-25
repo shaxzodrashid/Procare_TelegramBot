@@ -74,6 +74,14 @@ export const API_ENDPOINTS: readonly ApiEndpointDescriptor[] = [
     title: 'Public repair-order creation',
     description: 'Creates a public repair request for an unknown Telegram client.',
   },
+  {
+    key: 'client_calculator_problem_categories',
+    method: 'GET',
+    path: '/api/v1/telegram/clients/{clientId}/calculator-v2/problem-categories/{phoneCategoryId}',
+    auth: 'basic',
+    title: 'Client calculator problem categories',
+    description: 'Loads current personalized V2 estimates for a registered client.',
+  },
 ] as const;
 
 export interface ApiErrorLocalizationStore {

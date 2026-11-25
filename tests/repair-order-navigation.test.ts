@@ -84,7 +84,35 @@ const detailOrder: CustomerRepairOrderDetail = {
 
 const createDependencies = (): BotDependencies => ({
   registrationService: {} as any,
-  repairOrderService: {} as any,
+  repairOrderService: {
+    async getOsTypes() {
+      return [{ id: 'os', name_uz: 'iOS', name_ru: 'iOS', name_en: 'iOS', sort: 1 }];
+    },
+    async getPhoneCategories() {
+      return [
+        {
+          id: 'phone',
+          name_uz: 'Phone',
+          name_ru: 'Phone',
+          name_en: 'Phone',
+          has_children: false,
+          sort: 1,
+        },
+      ];
+    },
+    async getProblemCategories(_phone: string, client: string) {
+      assert.equal(client, 'client-201');
+      return Array.from({ length: 12 }, (_, i) => ({
+        id: `problem-${i}`,
+        name_uz: `Service ${i}`,
+        name_ru: `Услуга ${i}`,
+        name_en: 'Service',
+        price: '0',
+        cost: '0',
+        is_disabled: false,
+      }));
+    },
+  } as any,
   clientRepairOrderService: {
     async listClientRepairOrders() {
       return {
@@ -236,6 +264,30 @@ describe('client repair-order navigation', () => {
     assert.equal(
       apiCalls.some((call) => call.method === 'sendMessage'),
       false,
+    );
+  });
+});
+
+describe('registered partner calculator navigation', () => {
+  it('uses personalized prices, paginates, supports Back, and cannot submit a request', async () => {
+    const { bot, apiCalls } = createTestBot();
+    await bot.handleUpdate(clientMessage(901, '🧮 Ta’mirlash kalkulyatori'));
+    await bot.handleUpdate(orderCallback(902, 'os:0', 'OS'));
+    await bot.handleUpdate(orderCallback(903, 'category:0', 'Phone'));
+    const first = apiCalls.filter((call) => call.method === 'editMessageText').at(-1)!;
+    assert.match(String(first.payload.text), /Service 0/);
+    assert.doesNotMatch(JSON.stringify(first.payload.reply_markup), /problem:done/);
+    await bot.handleUpdate(orderCallback(904, 'problem-page:1', 'Prices'));
+    assert.match(
+      String(apiCalls.filter((call) => call.method === 'editMessageText').at(-1)!.payload.text),
+      /Service 10/,
+    );
+    await bot.handleUpdate(orderCallback(905, 'problem:done', 'Prices'));
+    assert.match(String(apiCalls.at(-1)!.payload.text), /eskirgan|qayta|amal/i);
+    await bot.handleUpdate(orderCallback(906, 'problem:back', 'Prices'));
+    assert.match(
+      String(apiCalls.filter((call) => call.method === 'editMessageText').at(-1)!.payload.text),
+      /Phone/,
     );
   });
 });

@@ -15,6 +15,7 @@ export interface AdminProfile {
 
 export interface ClientProfile {
   account_type: 'client';
+  is_partner?: boolean;
   client_id: string;
   first_name: string | null;
   last_name: string | null;

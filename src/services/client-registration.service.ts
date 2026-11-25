@@ -62,6 +62,7 @@ const isClientProfile = (value: unknown): value is ClientProfile => {
   if (!isRecord(value)) return false;
   return (
     value.account_type === 'client' &&
+    (value.is_partner === undefined || typeof value.is_partner === 'boolean') &&
     typeof value.client_id === 'string' &&
     isNullableString(value.first_name) &&
     isNullableString(value.last_name) &&
@@ -89,6 +90,7 @@ const toAdminProfile = (value: AdminProfile): AdminProfile => ({
 const toClientProfile = (value: ClientProfile): ClientProfile => ({
   account_type: 'client',
   client_id: value.client_id,
+  is_partner: value.is_partner ?? false,
   first_name: value.first_name,
   last_name: value.last_name,
   language: value.language,

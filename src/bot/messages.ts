@@ -42,6 +42,10 @@ const messages = {
     requestDuplicate:
       '⚠️ Ushbu telefon raqami va model bo‘yicha faol ariza allaqachon mavjud. Avvalgi arizangiz ko‘rib chiqilishini kuting.',
     leaveRequestMenu: '✍️ Ariza qoldirish',
+    calculatorMenu: '🧮 Ta’mirlash kalkulyatori',
+    calculatorIntro: 'Telefon modelini tanlab, ta’mirlash narxlarini ko‘ring.',
+    calculatorPrices: 'Ta’mirlash narxlari',
+    priceUnavailable: 'Narx mavjud emas',
     leaveRequestIntro: '🛠 Yangi ta‘mir arizasi. Telefoningizning turini tanlang:',
     modelNotListed: 'Model ro‘yxatda yo‘q',
     enterCustomModel: 'Iltimos, telefoningiz modelini yozib yuboring (masalan, iPhone 15 Pro Max):',
@@ -330,6 +334,10 @@ const messages = {
     requestDuplicate:
       '⚠️ Активная заявка для этого номера телефона и модели уже существует. Дождитесь рассмотрения предыдущей заявки.',
     leaveRequestMenu: '✍️ Оставить заявку',
+    calculatorMenu: '🧮 Калькулятор ремонта',
+    calculatorIntro: 'Выберите модель устройства, чтобы посмотреть стоимость ремонта.',
+    calculatorPrices: 'Стоимость ремонта',
+    priceUnavailable: 'Цена недоступна',
     leaveRequestIntro: '🛠 Новая заявка на ремонт. Выберите тип телефона:',
     modelNotListed: 'Модели нет в списке',
     enterCustomModel: 'Пожалуйста, введите модель вашего телефона (например, iPhone 15 Pro Max):',
